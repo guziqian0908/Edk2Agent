@@ -7,12 +7,25 @@ description: Production-grade EDK II PR automation. Two core capabilities: 1) Cr
 
 End-to-end automation for creating and updating EDK II Pull Requests, following TianoCore community standards.
 
+**Cross-Platform Support: Windows, Linux, macOS (Python)**
+
 ## Two Core Capabilities
 
 ### 1. Create PR from Issue
 
+**Python (Recommended - Cross-Platform):**
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
+```
+
+**Windows PowerShell:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766"
+```
+
+**Linux Bash:**
+```bash
+./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766"
 ```
 
 **Workflow:**
@@ -22,8 +35,19 @@ Issue URL → Parse Issue → Fork Check → Branch Create → Fix Apply → Bui
 
 ### 2. Update PR from Review Comments
 
+**Python (Recommended - Cross-Platform):**
+```bash
+python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
+```
+
+**Windows PowerShell:**
 ```powershell
 .\update-pr.ps1 -PrUrl "https://github.com/tianocore/edk2/pull/12841"
+```
+
+**Linux Bash:**
+```bash
+./update-pr.sh --pr-url "https://github.com/tianocore/edk2/pull/12841"
 ```
 
 **Workflow:**
@@ -122,28 +146,74 @@ Fixes: https://github.com/tianocore/edk2/issues/12766
 
 ## Usage
 
-### Basic Usage
+### Python (Recommended - Cross-Platform)
+
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
+```
+
+### Windows (PowerShell)
 
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766"
 ```
 
+### Linux (Bash)
+
+```bash
+chmod +x create-pr.sh
+./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766"
+```
+
 ### Skip Build (Testing)
 
+**Python:**
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766" --skip-build
+```
+
+**Windows:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -SkipBuild
 ```
 
+**Linux:**
+```bash
+./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766" --skip-build
+```
+
 ### Create Draft PR
 
+**Python:**
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766" --draft
+```
+
+**Windows:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -Draft
 ```
 
+**Linux:**
+```bash
+./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766" --draft
+```
+
 ### Force New PR (Close Old)
 
+**Python:**
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766" --force-new-pr
+```
+
+**Windows:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -ForceNewPr
+```
+
+**Linux:**
+```bash
+./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766" --force-new-pr
 ```
 
 ## English-Only Title Enforcement
@@ -246,17 +316,54 @@ Log File:        edk2-pr-20260722-133000.log
 
 ## Cross-Platform Support
 
+This skill supports Windows, Linux, and macOS via Python scripts (Recommended).
+
+### Python (Cross-Platform, Recommended)
+
+```bash
+# Works on Windows, Linux, macOS
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
+python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
+```
+
+**Prerequisites:**
+- Python 3.6+
+- GitHub CLI (`gh`)
+- Git
+
 ### Windows
 
+- Uses PowerShell scripts (`.ps1`)
 - Uses Visual Studio 2019/2022
 - Auto-detects via vswhere
 - Toolchain: VS2022/VS2019
 
+```powershell
+.\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766"
+.\update-pr.ps1 -PrUrl "https://github.com/tianocore/edk2/pull/12841"
+```
+
 ### Linux
 
+- Uses Bash scripts (`.sh`)
 - Uses GCC5 toolchain
 - Requires: gcc, nasm, build-essential
 - Runs edksetup.sh
+
+```bash
+chmod +x create-pr.sh update-pr.sh
+./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766"
+./update-pr.sh --pr-url "https://github.com/tianocore/edk2/pull/12841"
+```
+
+**Linux Prerequisites:**
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y gcc nasm build-essential python3
+
+# Install GitHub CLI
+# See: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+```
 
 ## Error Handling
 
@@ -377,8 +484,12 @@ Log File:        edk2-pr-update-20260722.log
 
 | File | Purpose |
 |------|---------|
-| `create-pr.ps1` | Create new PR from Issue |
-| `update-pr.ps1` | Update existing PR from comments |
+| `create-pr.py` | Create new PR from Issue (Cross-Platform, Recommended) |
+| `update-pr.py` | Update existing PR from comments (Cross-Platform, Recommended) |
+| `create-pr.ps1` | Create new PR from Issue (Windows) |
+| `create-pr.sh` | Create new PR from Issue (Linux) |
+| `update-pr.ps1` | Update existing PR from comments (Windows) |
+| `update-pr.sh` | Update existing PR from comments (Linux) |
 | `PrTemplateHandler.psm1` | PR template processing module |
 | `test-production.ps1` | Production test suite |
 | `SKILL.md` | This documentation |
