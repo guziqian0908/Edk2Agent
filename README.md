@@ -2,6 +2,22 @@
 
 EDK II Issue 自动生成PR自动化Skill工具集，为 OpenCode 提供 EDK II 开发自动化支持。
 
+## 目录结构
+
+```
+Edk2Agent/
+├── README.md
+└── .opencode
+    └── skills
+        ├── edk2-pr-workflow
+        │   ├── SKILL.md
+        │   ├── create-pr.ps1
+        │   ├── update-pr.ps1
+        │   └── ...
+        └── ovmf-build
+            └── SKILL.md
+```
+
 ## Skills
 
 ### 1. edk2-pr-workflow
@@ -36,33 +52,17 @@ OVMF 和 EmulatorPkg 编译运行工具。
 
 ## 安装
 
-### 方法 1：克隆仓库
+### 方法 1：OpenCode 命令安装（推荐）
 
-```powershell
-# 克隆到 OpenCode skills 目录
-git clone https://github.com/guziqian0908/Edk2Agent.git
-# 将 skills 目录内容复制到 ~/.config/opencode/skills/ 或项目的 .opencode/skills/
+```bash
+opencode skills install guziqian0908/Edk2Agent
 ```
 
-### 方法 2：手动配置
+### 方法 2：手动克隆
 
-在项目的 `.opencode/` 目录下创建 `opencode.json`：
-
-```json
-{
-  "skills": [
-    {
-      "name": "edk2-pr-workflow",
-      "description": "Production-grade EDK II PR automation.",
-      "location": "https://github.com/guziqian0908/Edk2Agent/raw/main/skills/edk2-pr-workflow/SKILL.md"
-    },
-    {
-      "name": "ovmf-build",
-      "description": "OVMF and EmulatorPkg build and run.",
-      "location": "https://github.com/guziqian0908/Edk2Agent/raw/main/skills/ovmf-build/SKILL.md"
-    }
-  ]
-}
+```powershell
+git clone https://github.com/guziqian0908/Edk2Agent.git
+# 将 .opencode/skills 目录复制到项目根目录
 ```
 
 ## 前置要求
