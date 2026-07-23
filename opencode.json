@@ -1,0 +1,14 @@
+{
+  "skills": [
+    {
+      "name": "edk2-pr-workflow",
+      "description": "Production-grade EDK II PR automation. Two core capabilities: 1) Create PR from Issue, 2) Update PR from review comments. Loads official template, enforces English titles, validates PatchCheck.",
+      "location": "skills/edk2-pr-workflow/SKILL.md"
+    },
+    {
+      "name": "ovmf-build",
+      "description": "Use when building and running OVMF (UEFI firmware for QEMU) or EmulatorPkg (Windows UEFI emulator). Installs QEMU, clones EDK2, builds OvmfPkgX64/EmulatorPkg, and runs it.",
+      "location": "skills/ovmf-build/SKILL.md"
+    }
+  ]
+}
