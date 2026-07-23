@@ -3,6 +3,9 @@
 TianoCore Wiki MCP Server
 
 MCP server providing access to EDK II documentation knowledge base.
+Sources:
+- TianoCore Wiki (https://www.tianocore.org/tianocore-wiki.github.io/)
+- TianoCore Docs (https://github.com/tianocore-docs)
 """
 
 import json
@@ -10,7 +13,7 @@ import os
 import sys
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import argparse
 
 
@@ -26,13 +29,24 @@ def load_knowledge_base() -> dict:
     return {"pages": {}, "index": {}}
 
 
-def search_wiki(query: str, limit: int = 10) -> list:
-    """Search wiki pages for query"""
+def search_wiki(query: str, limit: int = 10, source: Optional[str] = None) -> list:
+    """Search wiki pages for query
+    
+    Args:
+        query: Search query string
+        limit: Maximum number of results
+        source: Filter by source ('tianocore-wiki' or 'tianocore-docs'), None for all
+    """
     kb = load_knowledge_base()
     results = []
     query_lower = query.lower()
     
     for path, content in kb.get("pages", {}).items():
+        page_source = content.get("source", "tianocore-wiki")
+        
+        if source and page_source != source:
+            continue
+        
         title = content.get("title", "")
         body = content.get("content", "")
         
@@ -41,7 +55,8 @@ def search_wiki(query: str, limit: int = 10) -> list:
             results.append({
                 "path": path,
                 "title": title,
-                "snippet": snippet
+                "snippet": snippet,
+                "source": page_source
             })
             
             if len(results) >= limit:
@@ -91,19 +106,20 @@ async def handle_request(request: dict) -> dict:
             "tools": [
                 {
                     "name": "search_wiki",
-                    "description": "Search EDK II documentation",
+                    "description": "Search EDK II documentation from both TianoCore Wiki and tianocore-docs repository",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "query": {"type": "string", "description": "Search query"},
-                            "limit": {"type": "integer", "description": "Max results", "default": 10}
+                            "limit": {"type": "integer", "description": "Max results", "default": 10},
+                            "source": {"type": "string", "description": "Filter by source: 'tianocore-wiki' or 'tianocore-docs'", "enum": ["tianocore-wiki", "tianocore-docs"]}
                         },
                         "required": ["query"]
                     }
                 },
                 {
                     "name": "get_wiki_page",
-                    "description": "Get full content of a wiki page",
+                    "description": "Get full content of a documentation page",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -119,6 +135,14 @@ async def handle_request(request: dict) -> dict:
                         "type": "object",
                         "properties": {}
                     }
+                },
+                {
+                    "name": "list_sources",
+                    "description": "List available documentation sources",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
                 }
             ]
         }
@@ -130,7 +154,8 @@ async def handle_request(request: dict) -> dict:
         if tool_name == "search_wiki":
             query = arguments.get("query", "")
             limit = arguments.get("limit", 10)
-            results = search_wiki(query, limit)
+            source = arguments.get("source")
+            results = search_wiki(query, limit, source)
             return {"content": [{"type": "text", "text": json.dumps(results, indent=2)}]}
         
         elif tool_name == "get_wiki_page":
@@ -143,6 +168,21 @@ async def handle_request(request: dict) -> dict:
         elif tool_name == "list_categories":
             categories = list_categories()
             return {"content": [{"type": "text", "text": json.dumps(categories, indent=2)}]}
+        
+        elif tool_name == "list_sources":
+            sources = {
+                "tianocore-wiki": {
+                    "description": "TianoCore Wiki - Official EDK II documentation",
+                    "url": "https://www.tianocore.org/tianocore-wiki.github.io/",
+                    "content_type": "HTML pages"
+                },
+                "tianocore-docs": {
+                    "description": "TianoCore Docs Repository - UEFI/PI specifications and technical documents",
+                    "url": "https://github.com/tianocore-docs",
+                    "content_type": "Markdown files"
+                }
+            }
+            return {"content": [{"type": "text", "text": json.dumps(sources, indent=2)}]}
         
         return {"error": f"Unknown tool: {tool_name}"}
     
