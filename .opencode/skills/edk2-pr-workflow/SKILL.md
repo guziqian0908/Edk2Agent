@@ -36,6 +36,8 @@ PR URL → Fetch PR Info → Get Comments → Analyze Feedback → Apply Fixes �
 - **Official PR Template**: Loads and preserves tianocore/edk2 PR template structure
 - **Template Preservation**: Only removes `<_..._>` placeholders, keeps all sections
 - **English-Only Titles**: Automatic rejection of non-English commit titles
+- **BOM-Free Commits**: Uses UTF-8 without BOM to avoid PatchCheck failures
+- **Format Validation**: Auto-trims package names, ensures correct title format
 - **DCO Compliance**: Signed-off-by in commit ONLY, not duplicated in PR body
 - **Auto Fork**: Automatically forks upstream if user doesn't have one
 - **Cross-Platform Build**: Supports Windows (VS) and Linux (GCC)
@@ -195,6 +197,20 @@ If an existing PR has invalid template structure:
 - **Length**: ≤76 characters
 - **Language**: English only (non-ASCII rejected)
 - **Format**: `{Package}: {Description}`
+- **NO BOM**: Commit message files must be UTF-8 without BOM (PatchCheck requirement)
+- **NO extra spaces**: Package name must be trimmed, no space before colon
+
+### Format Validation
+
+The skill automatically enforces these rules to prevent PatchCheck failures:
+
+1. **Package name trimming**: Removes trailing whitespace from package names
+2. **BOM-free encoding**: Uses UTF-8 without BOM for commit message files
+3. **English-only check**: Rejects non-ASCII characters in titles
+
+**Common Pitfall:**
+PowerShell's `Out-File -Encoding utf8` adds BOM in PowerShell 5.1, causing PatchCheck failures.
+This skill uses `[System.IO.File]::WriteAllText()` with UTF-8 encoding (no BOM) instead.
 
 ### Full Format
 

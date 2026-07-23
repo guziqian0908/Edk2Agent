@@ -444,7 +444,8 @@ Signed-off-by: $($GitConfig.Name) <$($GitConfig.Email)>
         
         $CommitFile = Join-Path $Edk2Path "_commit_msg.txt"
         $Script:TempFiles += $CommitFile
-        $CommitMessage | Out-File -FilePath $CommitFile -Encoding utf8
+        # Use UTF-8 without BOM to avoid PatchCheck failures
+        [System.IO.File]::WriteAllText($CommitFile, $CommitMessage, [System.Text.UTF8Encoding]::new($false))
         
         git commit --amend -F $CommitFile
         
