@@ -1,0 +1,12 @@
+{
+  "name": "edk2agent-tests",
+  "version": "1.0.0",
+  "description": "Tests for EDK2 Custom OpenCode Tool",
+  "scripts": {
+    "test": "node tests/run-tests.js",
+    "test:auth": "node tests/test-auth-guard.js",
+    "test:api": "node tests/test-api-provider.js"
+  },
+  "author": "Edk2Agent Team",
+  "license": "MIT"
+}

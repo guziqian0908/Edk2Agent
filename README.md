@@ -1,25 +1,152 @@
-# Edk2Agent
+# Edk2Agent - EDK2专属OpenCode定制工具
 
-EDK II Issue 自动生成PR自动化Skill工具集，为 OpenCode 提供 EDK II 开发自动化支持。
+基于OpenCode定制的EDK2开发专属Agent工具，内置EDK2开发所需的全部Skills和MCP服务。
 
-**跨平台支持：Windows、Linux、macOS（Python）**
+## 核心特性
+
+- **🔒 登录权限控制**: 未登录状态下禁用所有Skill和MCP服务
+- **🔑 内置API兜底**: 提供内置API Token，无需配置即可使用
+- **📚 RAG知识库**: 内置EDK2文档语义检索功能
+- **🤖 自动化工作流**: EDK2 PR创建、更新全自动化
 
 ## 目录结构
 
 ```
 Edk2Agent/
+├── opencode.json              # OpenCode配置文件
+├── AGENTS.md                  # Agent指令文档
 ├── README.md
-└── .opencode
-    └── skills
-        ├── edk2-pr-workflow
-        │   ├── SKILL.md
-        │   ├── create-pr.py     # Python (推荐)
-        │   ├── update-pr.py     # Python (推荐)
-        │   ├── create-pr.ps1    # Windows PowerShell
-        │   ├── create-pr.sh     # Linux Bash
-        │   └── ...
-        └── ovmf-build
-            └── SKILL.md
+├── rag-service/               # RAG知识库服务
+│   ├── rag_service/
+│   ├── tests/
+│   └── README.md
+└── .opencode/
+    ├── skills/
+    │   ├── edk2-pr-workflow/  # PR自动化Skill
+    │   └── ovmf-build/        # OVMF编译Skill
+    ├── plugins/
+    │   ├── edk2-auth-guard.js # 登录权限控制插件
+    │   └── edk2-api-provider.js # API配置插件
+    └── commands/
+        ├── login.md           # 登录命令
+        ├── logout.md          # 登出命令
+        └── status.md          # 状态查询命令
+```
+
+## 快速开始
+
+### 1. 安装
+
+```bash
+# 克隆仓库
+git clone https://github.com/guziqian0908/Edk2Agent.git
+cd Edk2Agent
+
+# 安装OpenCode（如未安装）
+npm install -g @opencode-ai/opencode
+
+# 安装RAG服务依赖（可选，用于知识库功能）
+cd rag-service
+pip install -r requirements.txt
+cd ..
+```
+
+### 2. 登录
+
+**重要**: 必须先登录才能使用Skills和MCP服务。
+
+```bash
+# 登录命令
+opencode login <username> <token>
+
+# 或在OpenCode会话中使用
+/login <username> <token>
+```
+
+### 3. 使用
+
+登录成功后，所有Skill和MCP服务自动启用：
+
+```bash
+# 启动OpenCode
+opencode
+
+# 使用Skills
+opencode> /skill edk2-pr-workflow
+opencode> /skill ovmf-build
+
+# 查询EDK2文档
+opencode> 查询OVMF编译方法
+```
+
+## 登录系统
+
+### 登录状态持久化
+
+登录信息保存在 `~/.config/opencode/.edk2_login`，有效期24小时。
+
+```bash
+# 登录
+opencode login myuser mytoken123
+
+# 查看状态
+opencode status
+
+# 登出
+opencode logout
+```
+
+### 权限控制
+
+| 状态 | Skills | MCP服务 | API |
+|------|--------|---------|-----|
+| 未登录 | 禁用 | 禁用 | 使用内置API |
+| 已登录 | 启用 | 启用 | 用户配置优先 |
+
+## API配置
+
+### 双API优先级机制
+
+系统支持两层API配置：
+
+1. **用户自定义API** (优先级最高)
+2. **内置默认API** (兜底机制)
+
+### 配置方式
+
+**方式1: 环境变量**
+
+```bash
+# 用户自定义API（优先）
+export ANTHROPIC_API_KEY="your-api-key"
+export OPENAI_API_KEY="your-openai-key"
+
+# 内置API（系统预置，无需配置）
+# 由环境变量 EDK2_BUILTIN_ANTHROPIC_KEY 提供
+```
+
+**方式2: opencode.json配置**
+
+```json
+{
+  "provider": {
+    "anthropic": {
+      "options": {
+        "apiKey": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+### API状态日志
+
+启动时会显示当前生效的API配置：
+
+```
+[EDK2 API] API Provider Status:
+  - anthropic: User configured (key: sk-ant-...)
+  - openai: Built-in available
 ```
 
 ## Skills
@@ -75,7 +202,39 @@ OVMF 和 EmulatorPkg 编译运行工具。
 - 运行虚拟固件
 - **跨平台支持：Windows + Linux**
 
-## 安装
+## MCP服务
+
+### edk2-rag (RAG知识库)
+
+基于语义检索的EDK2文档查询服务。
+
+**功能：**
+- 自动抓取 tianocore-wiki 和 tianocore-docs
+- 向量化索引和语义搜索
+- MCP标准API接口
+
+**使用：**
+```bash
+# 启动RAG服务
+cd rag-service
+python run_server.py --fetch-docs --build-index
+
+# 在OpenCode中查询
+opencode> 查询OVMF编译步骤
+opencode> 查询UEFI驱动开发指南
+```
+
+**详细文档**: [rag-service/README.md](rag-service/README.md)
+
+## 命令列表
+
+| 命令 | 说明 | 参数 |
+|------|------|------|
+| `/login` | 登录以启用Skills/MCP | `<username> <token>` |
+| `/logout` | 登出并禁用保护功能 | 无 |
+| `/status` | 查看登录和API状态 | 无 |
+
+## 安装（详细）
 
 ### 方法 1：OpenCode 命令安装（推荐）
 
@@ -85,7 +244,7 @@ opencode skills install guziqian0908/Edk2Agent
 
 ### 方法 2：手动克隆
 
-```bash
+```powershell
 git clone https://github.com/guziqian0908/Edk2Agent.git
 # 将 .opencode/skills 目录复制到项目根目录
 ```
