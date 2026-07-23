@@ -13,7 +13,7 @@ End-to-end automation for creating and updating EDK II Pull Requests, following 
 
 ### 1. Create PR from Issue
 
-**Python (Recommended - Cross-Platform):**
+**Python (Cross-Platform):**
 ```bash
 python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
 ```
@@ -23,11 +23,6 @@ python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766"
 ```
 
-**Linux Bash:**
-```bash
-./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766"
-```
-
 **Workflow:**
 ```
 Issue URL → Parse Issue → Fork Check → Branch Create → Fix Apply → Build → Commit → PatchCheck → Push → Create PR
@@ -35,7 +30,7 @@ Issue URL → Parse Issue → Fork Check → Branch Create → Fix Apply → Bui
 
 ### 2. Update PR from Review Comments
 
-**Python (Recommended - Cross-Platform):**
+**Python (Cross-Platform):**
 ```bash
 python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
 ```
@@ -43,11 +38,6 @@ python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
 **Windows PowerShell:**
 ```powershell
 .\update-pr.ps1 -PrUrl "https://github.com/tianocore/edk2/pull/12841"
-```
-
-**Linux Bash:**
-```bash
-./update-pr.sh --pr-url "https://github.com/tianocore/edk2/pull/12841"
 ```
 
 **Workflow:**
@@ -146,7 +136,7 @@ Fixes: https://github.com/tianocore/edk2/issues/12766
 
 ## Usage
 
-### Python (Recommended - Cross-Platform)
+### Python (Cross-Platform)
 
 ```bash
 python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
@@ -156,13 +146,6 @@ python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
 
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766"
-```
-
-### Linux (Bash)
-
-```bash
-chmod +x create-pr.sh
-./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766"
 ```
 
 ### Skip Build (Testing)
@@ -177,11 +160,6 @@ python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -SkipBuild
 ```
 
-**Linux:**
-```bash
-./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766" --skip-build
-```
-
 ### Create Draft PR
 
 **Python:**
@@ -194,11 +172,6 @@ python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -Draft
 ```
 
-**Linux:**
-```bash
-./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766" --draft
-```
-
 ### Force New PR (Close Old)
 
 **Python:**
@@ -209,11 +182,6 @@ python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
 **Windows:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -ForceNewPr
-```
-
-**Linux:**
-```bash
-./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766" --force-new-pr
 ```
 
 ## English-Only Title Enforcement
@@ -316,9 +284,9 @@ Log File:        edk2-pr-20260722-133000.log
 
 ## Cross-Platform Support
 
-This skill supports Windows, Linux, and macOS via Python scripts (Recommended).
+This skill supports Windows, Linux, and macOS via Python scripts.
 
-### Python (Cross-Platform, Recommended)
+### Python (Cross-Platform)
 
 ```bash
 # Works on Windows, Linux, macOS
@@ -345,15 +313,14 @@ python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
 
 ### Linux
 
-- Uses Bash scripts (`.sh`)
+- Uses Python scripts (cross-platform)
 - Uses GCC5 toolchain
 - Requires: gcc, nasm, build-essential
 - Runs edksetup.sh
 
 ```bash
-chmod +x create-pr.sh update-pr.sh
-./create-pr.sh --issue-url "https://github.com/tianocore/edk2/issues/12766"
-./update-pr.sh --pr-url "https://github.com/tianocore/edk2/pull/12841"
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
+python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
 ```
 
 **Linux Prerequisites:**
@@ -484,12 +451,10 @@ Log File:        edk2-pr-update-20260722.log
 
 | File | Purpose |
 |------|---------|
-| `create-pr.py` | Create new PR from Issue (Cross-Platform, Recommended) |
-| `update-pr.py` | Update existing PR from comments (Cross-Platform, Recommended) |
-| `create-pr.ps1` | Create new PR from Issue (Windows) |
-| `create-pr.sh` | Create new PR from Issue (Linux) |
-| `update-pr.ps1` | Update existing PR from comments (Windows) |
-| `update-pr.sh` | Update existing PR from comments (Linux) |
+| `create-pr.py` | Create new PR from Issue (Cross-Platform) |
+| `update-pr.py` | Update existing PR from comments (Cross-Platform) |
+| `create-pr.ps1` | Create new PR from Issue (Windows PowerShell) |
+| `update-pr.ps1` | Update existing PR from comments (Windows PowerShell) |
 | `PrTemplateHandler.psm1` | PR template processing module |
 | `test-production.ps1` | Production test suite |
 | `tests/` | Cross-platform test suite |
