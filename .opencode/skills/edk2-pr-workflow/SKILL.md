@@ -492,7 +492,41 @@ Log File:        edk2-pr-update-20260722.log
 | `update-pr.sh` | Update existing PR from comments (Linux) |
 | `PrTemplateHandler.psm1` | PR template processing module |
 | `test-production.ps1` | Production test suite |
+| `tests/` | Cross-platform test suite |
 | `SKILL.md` | This documentation |
+
+## Testing
+
+### Run Tests
+
+**Python (Cross-Platform):**
+```bash
+cd .opencode/skills/edk2-pr-workflow/tests
+python test_pr_workflow.py
+```
+
+**Windows:**
+```batch
+tests\windows\run_tests.bat
+```
+
+**Linux:**
+```bash
+chmod +x tests/linux/run_tests.sh
+./tests/linux/run_tests.sh
+```
+
+### Test Cases
+
+| ID | Test Case | Description |
+|----|-----------|-------------|
+| 1 | Commit Title Format | Validate package name, colon spacing, no BOM |
+| 2 | PR Generation | Verify Signed-off-by and Fixes tag generation |
+| 3 | Cross-Platform | Test path handling and command adaptation |
+| 4 | Blank Line Boundary | Ensure pure blank line between title and body |
+| 5 | Upstream Sync | Verify rebase-only sync, no merge commits |
+
+See `tests/TEST_DOCUMENTATION.md` for detailed test specifications.
 
 ## Test Results
 
@@ -507,8 +541,13 @@ Test Summary
   TemplateStructureValidation : PASS
   AutoTestDescription : PASS
   TitleLengthValidation : PASS
+  CommitTitleFormat : PASS
+  PRGeneration : PASS
+  CrossPlatform : PASS
+  BlankLineBoundary : PASS
+  UpstreamSync : PASS
 
-Total: 7/7 tests passed
+Total: 12/12 tests passed
 ========================================
 ```
 
