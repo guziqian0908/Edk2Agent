@@ -362,6 +362,12 @@ function New-CommitTitle {
         [int]$MaxLength = 76
     )
     
+    # CRITICAL: Trim package name to remove any trailing whitespace
+    # EDK II format: {Package}: {Description} - NO space before colon
+    $Package = $Package.Trim()
+    $BriefDescription = $BriefDescription.Trim()
+    
+    # Construct title with proper format: PackageName: Description
     $Title = "$Package`: $BriefDescription"
     
     # Validate English only
@@ -704,7 +710,10 @@ function New-CompliantCommit {
         
         $CommitFile = Join-Path $Edk2Path "_commit_msg.txt"
         $Script:TempFiles += $CommitFile
-        $Message | Out-File -FilePath $CommitFile -Encoding utf8
+        
+        # CRITICAL: Use UTF-8 without BOM to avoid PatchCheck failures
+        # PowerShell's Out-File -Encoding utf8 adds BOM in PowerShell 5.1
+        [System.IO.File]::WriteAllText($CommitFile, $Message, [System.Text.UTF8Encoding]::new($false))
         
         git commit -F $CommitFile
         
@@ -782,7 +791,8 @@ function New-PullRequest {
     # Save to temp file
     $PrBodyFile = Join-Path $Edk2Path "_pr_body.md"
     $Script:TempFiles += $PrBodyFile
-    $PrBody | Out-File -FilePath $PrBodyFile -Encoding utf8
+    # Use UTF-8 without BOM for consistency
+    [System.IO.File]::WriteAllText($PrBodyFile, $PrBody, [System.Text.UTF8Encoding]::new($false))
     
     # Build PR arguments
     $PrArgs = @(
@@ -832,7 +842,8 @@ function Update-ExistingPr {
     
     $PrBodyFile = Join-Path $Edk2Path "_pr_body_update.md"
     $Script:TempFiles += $PrBodyFile
-    $PrBody | Out-File -FilePath $PrBodyFile -Encoding utf8
+    # Use UTF-8 without BOM for consistency
+    [System.IO.File]::WriteAllText($PrBodyFile, $PrBody, [System.Text.UTF8Encoding]::new($false))
     
     gh pr edit $PrNumber --repo tianocore/edk2 --body-file $PrBodyFile 2>&1
     
