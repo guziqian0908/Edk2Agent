@@ -111,6 +111,46 @@ python fetch_wiki.py --output knowledge/ --no-docs
 python fetch_wiki.py --sample --output knowledge/
 ```
 
+## Testing
+
+The MCP service includes a comprehensive test suite to verify dual-source functionality.
+
+### Run Tests
+
+```bash
+# Run all tests
+python tests/test_mcp_service.py
+
+# Run specific test class
+python -m unittest tests.test_mcp_service.TestSearchFunctionality
+
+# Run with verbosity
+python tests/test_mcp_service.py -v
+```
+
+### Test Categories
+
+| Category | Description |
+|----------|-------------|
+| Knowledge Base Init | Verify knowledge base loading and structure |
+| Search Functionality | Test search with dual-source support |
+| Page Retrieval | Test individual page retrieval |
+| Category Browse | Test category listing |
+| Boundary Conditions | Test edge cases and error handling |
+| MCP Protocol | Test MCP protocol compliance |
+| HTML Parsing | Test HTML parsing utilities |
+| Markdown Parsing | Test Markdown parsing utilities |
+
+### Test Prerequisites
+
+Initialize knowledge base before testing:
+
+```bash
+python fetch_wiki.py --sample
+```
+
+For detailed test documentation, see [tests/TEST_CASES.md](tests/TEST_CASES.md).
+
 ## References
 
 - [TianoCore Wiki](https://www.tianocore.org/tianocore-wiki.github.io/)
