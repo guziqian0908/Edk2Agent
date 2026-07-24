@@ -1,0 +1,22 @@
+# EDK2 RAG Service Dependencies
+
+# Core RAG framework
+llama-index>=0.10.0
+llama-index-vector-stores-chroma>=0.1.0
+chromadb>=0.4.0
+
+# Embedding model
+llama-index-embeddings-huggingface>=0.1.0
+sentence-transformers>=2.2.0
+
+# HTTP and utilities
+requests>=2.31.0
+pydantic>=2.0.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Optional: GPU support
+# torch>=2.0.0
