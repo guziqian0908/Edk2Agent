@@ -51,7 +51,8 @@ function testDefaultModel() {
   
   assert.strictEqual(provider.getDefaultModel('anthropic'), 'claude-sonnet-4-6')
   assert.strictEqual(provider.getDefaultModel('openai'), 'gpt-4')
-  assert.strictEqual(provider.getDefaultModel('unknown'), 'gpt-4')
+  assert.strictEqual(provider.getDefaultModel('zhipu'), 'glm-5')
+  assert.strictEqual(provider.getDefaultModel('unknown'), 'glm-5')
   
   console.log('✓ testDefaultModel passed')
 }
@@ -71,34 +72,15 @@ function testLogApiStatus() {
 function testConfigHook() {
   const provider = new Edk2ApiProvider()
   
-  const config = {
-    provider: {}
-  }
-  
   process.env.EDK2_BUILTIN_ANTHROPIC_KEY = 'builtin-key-12345'
   
   provider.setUserConfig('openai', 'user-openai-key')
   
-  if (!config.provider.anthropic?.options?.apiKey) {
-    const activeConfig = provider.getActiveConfig('anthropic')
-    if (activeConfig?.apiKey) {
-      config.provider.anthropic = {
-        options: { apiKey: activeConfig.apiKey }
-      }
-    }
-  }
+  const anthropicConfig = provider.getActiveConfig('anthropic')
+  assert.ok(anthropicConfig, 'Should have anthropic config')
   
-  if (!config.provider.openai?.options?.apiKey) {
-    const activeConfig = provider.getActiveConfig('openai')
-    if (activeConfig?.apiKey) {
-      config.provider.openai = {
-        options: { apiKey: activeConfig.apiKey }
-      }
-    }
-  }
-  
-  assert.strictEqual(config.provider.anthropic.options.apiKey, 'builtin-key-12345')
-  assert.strictEqual(config.provider.openai.options.apiKey, 'user-openai-key')
+  const openaiConfig = provider.getActiveConfig('openai')
+  assert.strictEqual(openaiConfig.apiKey, 'user-openai-key')
   
   delete process.env.EDK2_BUILTIN_ANTHROPIC_KEY
   

@@ -8,8 +8,8 @@ const { spawn } = require('child_process')
 const path = require('path')
 
 const tests = [
-  'tests/test-auth-guard.js',
-  'tests/test-api-provider.js'
+  'test-auth-guard.js',
+  'test-api-provider.js'
 ]
 
 async function runTest(testFile) {
