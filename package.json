@@ -1,6 +1,6 @@
 {
   "name": "@yourcompany/edk2-opencode",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "EDK2-dedicated OpenCode customization with built-in skills, MCP services, and RAG knowledge base",
   "keywords": [
     "edk2",
@@ -22,6 +22,7 @@
   "files": [
     "bin/",
     "lib/",
+    "scripts/",
     ".opencode/",
     "rag-service/",
     "prebuilt-vectors/",
