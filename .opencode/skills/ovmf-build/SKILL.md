@@ -7,16 +7,28 @@ description: Use when building and running OVMF (UEFI firmware for QEMU) or Emul
 
 This skill handles the complete workflow for building and running OVMF (Open Virtual Machine Firmware) using EDK2 and QEMU, as well as EmulatorPkg (Windows UEFI emulator) using WinHost.exe.
 
+**Cross-Platform Support:** Windows and Linux
+
 ## Prerequisites Check
 
 Before starting, verify the following tools are available:
 
+**Windows:**
 1. **Chocolatey** - Third-party Windows package manager (not included with Windows, requires separate installation from https://chocolatey.org)
 2. **Visual Studio Build Tools** - C compiler toolchain
 3. **Python 3.x** - Required for EDK2 build
 4. **NASM** - Assembly compiler
 
+**Linux:**
+1. **gcc** - C compiler toolchain
+2. **nasm** - Assembly compiler
+3. **build-essential** - Build tools
+4. **python3** - Required for EDK2 build
+5. **qemu-system-x86** - QEMU emulator
+
 ## Workflow Steps
+
+## Windows Workflow
 
 ### Step 1: Install QEMU
 
@@ -33,6 +45,83 @@ choco install qemu -y
 ```
 
 QEMU installs to `C:\Program Files\qemu\` by default.
+
+---
+
+## Linux Workflow
+
+### Step 1: Install QEMU (Linux)
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y qemu-system-x86
+
+# Fedora
+sudo dnf install -y qemu-system-x86
+
+# Arch Linux
+sudo pacman -S qemu-system-x86
+```
+
+### Step 2: Install Build Dependencies (Linux)
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y gcc nasm build-essential python3
+
+# Fedora
+sudo dnf install -y gcc nasm make python3
+
+# Arch Linux
+sudo pacman -S gcc nasm make python
+```
+
+### Step 3: Clone EDK2 (Linux)
+
+```bash
+git clone --depth 1 https://github.com/tianocore/edk2.git
+cd edk2
+git submodule update --init
+```
+
+### Step 4: Setup Build Environment (Linux)
+
+```bash
+cd edk2
+source edksetup.sh
+```
+
+### Step 5: Build OvmfPkgX64 (Linux)
+
+```bash
+build -p OvmfPkg/OvmfPkgX64.dsc -t GCC5 -a X64
+```
+
+### Step 6: Output Files (Linux)
+
+After successful build, output files are located at:
+
+```
+Build/OvmfX64/DEBUG_GCC5/FV/OVMF.fd
+Build/OvmfX64/DEBUG_GCC5/FV/OVMF_CODE.fd
+Build/OvmfX64/DEBUG_GCC5/FV/OVMF_VARS.fd
+```
+
+### Step 7: Run with QEMU (Linux)
+
+```bash
+# Method 1: Single firmware file
+qemu-system-x86_64 -bios Build/OvmfX64/DEBUG_GCC5/FV/OVMF.fd -m 512M
+
+# Method 2: Split firmware (CODE + VARS)
+qemu-system-x86_64 -pflash Build/OvmfX64/DEBUG_GCC5/FV/OVMF_CODE.fd \
+                   -pflash Build/OvmfX64/DEBUG_GCC5/FV/OVMF_VARS.fd \
+                   -m 512M
+```
+
+---
+
+## Windows Workflow
 
 ### Step 2: Clone EDK2
 
