@@ -13,32 +13,47 @@
 
 ## 快速开始
 
-### 方式 1: NPX 一键启动（推荐）
-
-```bash
-# 直接运行（自动下载依赖）
-npx edk2-opencode
-
-# 或全局安装后使用
-npm install -g edk2-opencode
-edk2-opencode
-```
-
-### 方式 2: 源码安装
+### 方式 1: 克隆仓库（推荐）
 
 ```bash
 # 克隆仓库
 git clone https://github.com/guziqian0908/Edk2Agent.git
 cd Edk2Agent
 
-# 安装依赖
-npm install
+# 运行测试验证安装
+node tests/run-tests.js
 
-# 安装Python依赖（用于RAG服务）
-cd rag-service
-pip install -r requirements.txt
-cd ..
+# 登录
+node bin/edk2-opencode.js login <username> <token>
+
+# 使用
+node bin/edk2-opencode.js
 ```
+
+### 方式 2: NPX 从 GitHub 安装
+
+```bash
+# 直接运行
+npx guziqian0908/Edk2Agent --version
+
+# 登录
+npx guziqian0908/Edk2Agent login <username> <token>
+```
+
+### 方式 3: 本地全局安装
+
+```bash
+git clone https://github.com/guziqian0908/Edk2Agent.git
+cd Edk2Agent
+
+# 创建全局命令
+npm link
+
+# 任意位置使用
+edk2-opencode --version
+```
+
+> **详细安装指南**: 参见 [INSTALLATION.md](INSTALLATION.md)
 
 ### 登录系统
 
