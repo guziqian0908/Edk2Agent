@@ -1,5 +1,5 @@
 {
-  "name": "edk2-opencode",
+  "name": "@yourcompany/edk2-opencode",
   "version": "1.0.0",
   "description": "EDK2-dedicated OpenCode customization with built-in skills, MCP services, and RAG knowledge base",
   "keywords": [
@@ -42,6 +42,10 @@
     "linux",
     "darwin"
   ],
+  "publishConfig": {
+    "registry": "http://localhost:4873",
+    "access": "restricted"
+  },
   "opencode": {
     "builtinApi": {
       "provider": "zhipu",
