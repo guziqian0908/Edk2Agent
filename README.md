@@ -26,31 +26,131 @@ edk2-opencode
 
 ### 方式 2: 内网私有 npm 安装
 
-**管理员发布**：
+适用于内网环境，需先部署私有 npm 仓库（如 Verdaccio）。
+
+#### 管理员：发布到私有仓库
+
+**步骤 1：部署 Verdaccio（如未部署）**
 ```bash
-# 1. 配置内网 registry
-npm config set registry http://your-internal-registry:4873
+# 安装 Verdaccio
+npm install -g verdaccio
 
-# 2. 登录（如需认证）
-npm adduser --registry http://your-internal-registry:4873
+# 启动服务（默认端口 4873）
+verdaccio
 
-# 3. 发布
-npm run publish:internal
-
-# 或指定 registry
-NPM_REGISTRY=http://your-internal-registry:4873 npm run publish:internal
+# 后台运行（推荐）
+Start-Process -FilePath "verdaccio" -WindowStyle Hidden  # Windows
+nohup verdaccio &                                        # Linux
 ```
 
-**用户安装**：
+**步骤 2：发布包**
 ```bash
-# 1. 配置内网 registry
-npm config set registry http://your-internal-registry:4873
+# 克隆项目
+git clone https://github.com/guziqian0908/Edk2Agent.git
+cd Edk2Agent
 
-# 2. 安装
+# 配置私有 registry
+npm config set registry http://your-server-ip:4873
+
+# 登录（首次需认证）
+npm adduser --registry http://your-server-ip:4873
+# 输入用户名、密码、邮箱
+
+# 发布
+npm publish --registry http://your-server-ip:4873
+
+# 或使用脚本
+NPM_REGISTRY=http://your-server-ip:4873 npm run publish:internal
+```
+
+**步骤 3：验证发布**
+```bash
+# 查看包信息
+npm view edk2-opencode --registry http://your-server-ip:4873
+
+# 访问 Web UI
+# 浏览器打开: http://your-server-ip:4873
+```
+
+#### 用户：从私有仓库安装
+
+**步骤 1：配置 registry**
+```bash
+# 设置私有 registry
+npm config set registry http://your-server-ip:4873
+
+# 或创建 .npmrc 文件
+echo "registry=http://your-server-ip:4873" > ~/.npmrc
+```
+
+**步骤 2：安装**
+```bash
+# 全局安装
 npm install -g edk2-opencode
 
-# 3. 运行
+# 验证安装
+edk2-opencode --version
+```
+
+**步骤 3：配置 API**
+```bash
+# 选择一种 API 配置
+export ANTHROPIC_API_KEY="sk-ant-xxx"    # Anthropic
+# 或
+export OPENAI_API_KEY="sk-xxx"           # OpenAI
+# 或
+export ZHIPU_API_KEY="xxx"               # 智谱
+
+# Windows PowerShell
+$env:ANTHROPIC_API_KEY="sk-ant-xxx"
+```
+
+**步骤 4：登录**
+```bash
+# 创建 GitHub Token: https://github.com/settings/tokens
+# 勾选权限: repo, read:user
+
+# 登录
+edk2-opencode login <你的GitHub用户名> <你的GitHub Token>
+
+# 验证登录
+edk2-opencode status
+```
+
+**步骤 5：启动使用**
+```bash
+# 启动
 edk2-opencode
+
+# 或查看帮助
+edk2-opencode --help
+```
+
+#### 内网安装注意事项
+
+| 项目 | 说明 |
+|------|------|
+| Registry 地址 | 替换 `your-server-ip` 为实际服务器 IP |
+| 端口 | 默认 4873，可在 Verdaccio 配置中修改 |
+| 认证 | 首次使用需 `npm adduser` 注册 |
+| 依赖 | `opencode-ai` 会自动从公网下载 |
+| 离线 | 若完全离线，需提前缓存 `opencode-ai` |
+
+#### 完全离线环境
+
+如果内网完全无法访问公网，需要预先缓存依赖：
+
+```bash
+# 在有网环境预下载
+git clone https://github.com/guziqian0908/Edk2Agent.git
+cd Edk2Agent
+npm install
+
+# 打包 node_modules
+tar -czf node_modules.tar.gz node_modules/
+
+# 拷贝到离线环境后解压
+tar -xzf node_modules.tar.gz
 ```
 
 ### 方式 3: 源码安装
