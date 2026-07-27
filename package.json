@@ -1,6 +1,6 @@
 {
-  "name": "@yourcompany/edk2-opencode",
-  "version": "1.0.2",
+  "name": "edk2-opencode",
+  "version": "1.0.7",
   "description": "EDK2-dedicated OpenCode customization with built-in skills, MCP services, and RAG knowledge base",
   "keywords": [
     "edk2",
@@ -44,8 +44,7 @@
     "darwin"
   ],
   "publishConfig": {
-    "registry": "http://localhost:4873",
-    "access": "restricted"
+    "access": "public"
   },
   "opencode": {
     "builtinApi": {
