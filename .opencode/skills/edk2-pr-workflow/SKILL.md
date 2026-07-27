@@ -7,10 +7,18 @@ description: Production-grade EDK II PR automation. Two core capabilities: 1) Cr
 
 End-to-end automation for creating and updating EDK II Pull Requests, following TianoCore community standards.
 
+**Cross-Platform Support: Windows, Linux, macOS (Python)**
+
 ## Two Core Capabilities
 
 ### 1. Create PR from Issue
 
+**Python (Cross-Platform):**
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
+```
+
+**Windows PowerShell:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766"
 ```
@@ -22,6 +30,12 @@ Issue URL → Parse Issue → Fork Check → Branch Create → Fix Apply → Bui
 
 ### 2. Update PR from Review Comments
 
+**Python (Cross-Platform):**
+```bash
+python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
+```
+
+**Windows PowerShell:**
 ```powershell
 .\update-pr.ps1 -PrUrl "https://github.com/tianocore/edk2/pull/12841"
 ```
@@ -36,6 +50,8 @@ PR URL → Fetch PR Info → Get Comments → Analyze Feedback → Apply Fixes �
 - **Official PR Template**: Loads and preserves tianocore/edk2 PR template structure
 - **Template Preservation**: Only removes `<_..._>` placeholders, keeps all sections
 - **English-Only Titles**: Automatic rejection of non-English commit titles
+- **BOM-Free Commits**: Uses UTF-8 without BOM to avoid PatchCheck failures
+- **Format Validation**: Auto-trims package names, ensures correct title format
 - **DCO Compliance**: Signed-off-by in commit ONLY, not duplicated in PR body
 - **Auto Fork**: Automatically forks upstream if user doesn't have one
 - **Cross-Platform Build**: Supports Windows (VS) and Linux (GCC)
@@ -122,7 +138,13 @@ Fixes: https://github.com/tianocore/edk2/issues/12766
 
 ## Usage
 
-### Basic Usage
+### Python (Cross-Platform)
+
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
+```
+
+### Windows (PowerShell)
 
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766"
@@ -130,18 +152,36 @@ Fixes: https://github.com/tianocore/edk2/issues/12766
 
 ### Skip Build (Testing)
 
+**Python:**
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766" --skip-build
+```
+
+**Windows:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -SkipBuild
 ```
 
 ### Create Draft PR
 
+**Python:**
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766" --draft
+```
+
+**Windows:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -Draft
 ```
 
 ### Force New PR (Close Old)
 
+**Python:**
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766" --force-new-pr
+```
+
+**Windows:**
 ```powershell
 .\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766" -ForceNewPr
 ```
@@ -195,6 +235,20 @@ If an existing PR has invalid template structure:
 - **Length**: ≤76 characters
 - **Language**: English only (non-ASCII rejected)
 - **Format**: `{Package}: {Description}`
+- **NO BOM**: Commit message files must be UTF-8 without BOM (PatchCheck requirement)
+- **NO extra spaces**: Package name must be trimmed, no space before colon
+
+### Format Validation
+
+The skill automatically enforces these rules to prevent PatchCheck failures:
+
+1. **Package name trimming**: Removes trailing whitespace from package names
+2. **BOM-free encoding**: Uses UTF-8 without BOM for commit message files
+3. **English-only check**: Rejects non-ASCII characters in titles
+
+**Common Pitfall:**
+PowerShell's `Out-File -Encoding utf8` adds BOM in PowerShell 5.1, causing PatchCheck failures.
+This skill uses `[System.IO.File]::WriteAllText()` with UTF-8 encoding (no BOM) instead.
 
 ### Full Format
 
@@ -246,17 +300,53 @@ Log File:        edk2-pr-20260722-133000.log
 
 ## Cross-Platform Support
 
+This skill supports Windows, Linux, and macOS via Python scripts.
+
+### Python (Cross-Platform)
+
+```bash
+# Works on Windows, Linux, macOS
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
+python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
+```
+
+**Prerequisites:**
+- Python 3.6+
+- GitHub CLI (`gh`)
+- Git
+
 ### Windows
 
+- Uses PowerShell scripts (`.ps1`)
 - Uses Visual Studio 2019/2022
 - Auto-detects via vswhere
 - Toolchain: VS2022/VS2019
 
+```powershell
+.\create-pr.ps1 -IssueUrl "https://github.com/tianocore/edk2/issues/12766"
+.\update-pr.ps1 -PrUrl "https://github.com/tianocore/edk2/pull/12841"
+```
+
 ### Linux
 
+- Uses Python scripts (cross-platform)
 - Uses GCC5 toolchain
 - Requires: gcc, nasm, build-essential
 - Runs edksetup.sh
+
+```bash
+python create-pr.py --issue-url "https://github.com/tianocore/edk2/issues/12766"
+python update-pr.py --pr-url "https://github.com/tianocore/edk2/pull/12841"
+```
+
+**Linux Prerequisites:**
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y gcc nasm build-essential python3
+
+# Install GitHub CLI
+# See: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+```
 
 ## Error Handling
 
@@ -377,11 +467,47 @@ Log File:        edk2-pr-update-20260722.log
 
 | File | Purpose |
 |------|---------|
-| `create-pr.ps1` | Create new PR from Issue |
-| `update-pr.ps1` | Update existing PR from comments |
+| `create-pr.py` | Create new PR from Issue (Cross-Platform) |
+| `update-pr.py` | Update existing PR from comments (Cross-Platform) |
+| `create-pr.ps1` | Create new PR from Issue (Windows PowerShell) |
+| `update-pr.ps1` | Update existing PR from comments (Windows PowerShell) |
 | `PrTemplateHandler.psm1` | PR template processing module |
 | `test-production.ps1` | Production test suite |
+| `tests/` | Cross-platform test suite |
 | `SKILL.md` | This documentation |
+
+## Testing
+
+### Run Tests
+
+**Python (Cross-Platform):**
+```bash
+cd .opencode/skills/edk2-pr-workflow/tests
+python test_pr_workflow.py
+```
+
+**Windows:**
+```batch
+tests\windows\run_tests.bat
+```
+
+**Linux:**
+```bash
+chmod +x tests/linux/run_tests.sh
+./tests/linux/run_tests.sh
+```
+
+### Test Cases
+
+| ID | Test Case | Description |
+|----|-----------|-------------|
+| 1 | Commit Title Format | Validate package name, colon spacing, no BOM |
+| 2 | PR Generation | Verify Signed-off-by and Fixes tag generation |
+| 3 | Cross-Platform | Test path handling and command adaptation |
+| 4 | Blank Line Boundary | Ensure pure blank line between title and body |
+| 5 | Upstream Sync | Verify rebase-only sync, no merge commits |
+
+See `tests/TEST_DOCUMENTATION.md` for detailed test specifications.
 
 ## Test Results
 
@@ -396,8 +522,13 @@ Test Summary
   TemplateStructureValidation : PASS
   AutoTestDescription : PASS
   TitleLengthValidation : PASS
+  CommitTitleFormat : PASS
+  PRGeneration : PASS
+  CrossPlatform : PASS
+  BlankLineBoundary : PASS
+  UpstreamSync : PASS
 
-Total: 7/7 tests passed
+Total: 12/12 tests passed
 ========================================
 ```
 

@@ -1,0 +1,64 @@
+{
+  "name": "edk2-opencode",
+  "version": "1.0.3",
+  "description": "EDK2-dedicated OpenCode customization with built-in skills, MCP services, and RAG knowledge base",
+  "keywords": [
+    "edk2",
+    "uefi",
+    "opencode",
+    "agent",
+    "rag",
+    "mcp"
+  ],
+  "author": "Gu Ziqian <guziqian0908@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guziqian0908/Edk2Agent.git"
+  },
+  "bin": {
+    "edk2-opencode": "./bin/edk2-opencode.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    ".opencode/",
+    "rag-service/",
+    "prebuilt-vectors/",
+    "opencode.json",
+    "AGENTS.md",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js",
+    "prepack": "node scripts/prepack.js",
+    "test": "node tests/run-tests.js",
+    "publish:internal": "node scripts/publish-internal.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "win32",
+    "linux",
+    "darwin"
+  ],
+  "dependencies": {
+    "opencode-ai": "latest"
+  },
+  "devDependencies": {},
+  "opencode": {
+    "builtinApi": {
+      "provider": "zhipu",
+      "model": "glm-5",
+      "description": "Built-in GLM-5 API for fallback"
+    },
+    "skills": [
+      "edk2-pr-workflow",
+      "ovmf-build"
+    ],
+    "mcp": [
+      "edk2-rag"
+    ]
+  }
+}
