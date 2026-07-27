@@ -5,8 +5,8 @@
 ## 核心特性
 
 - **📦 一键安装**: `npx edk2-opencode` 快速启动，无需手动配置
-- **🔒 登录权限控制**: 未登录状态下禁用所有Skill和MCP服务
-- **🔑 内置API兜底**: GLM-5内置API，无需配置即可使用
+- **🔐 GitHub Token认证**: 使用GitHub Personal Access Token验证登录
+- **🔑 用户自配API**: 用户配置自己的LLM API Key使用
 - **📚 RAG知识库**: 预构建EDK2文档向量库，支持离线检索
 - **⚡ 内存缓存**: 高频查询缓存，降低响应延迟
 - **🤖 自动化工作流**: EDK2 PR创建、更新全自动化
@@ -42,11 +42,22 @@ cd ..
 
 ### 登录系统
 
-**重要**: 必须先登录才能使用Skills和MCP服务。
+**重要**: 必须使用GitHub Personal Access Token登录才能使用Skills和MCP服务。
+
+#### 创建GitHub Token
+
+1. 访问 https://github.com/settings/tokens
+2. 点击 **"Generate new token (classic)"**
+3. 勾选权限：
+   - `repo` - 仓库访问权限
+   - `read:user` - 用户信息读取权限
+4. 点击 **"Generate token"** 并复制生成的Token
+
+#### 登录命令
 
 ```bash
-# 登录命令
-edk2-opencode login <username> <token>
+# 登录（使用你的GitHub用户名和Token）
+edk2-opencode login <你的GitHub用户名> <你的GitHub Token>
 
 # 查看状态
 edk2-opencode status
@@ -54,6 +65,13 @@ edk2-opencode status
 # 登出（清空缓存）
 edk2-opencode logout
 ```
+
+#### 登录验证说明
+
+- 系统会验证Token是否有效
+- Token所属用户必须与输入的用户名匹配
+- 登录信息保存在本地 `~/.config/opencode/.edk2_login`
+- Session有效期24小时
 
 ### 初始化知识库
 
@@ -107,73 +125,101 @@ Edk2Agent/
 
 ## 登录系统详解
 
+### 登录流程
+
+```
+用户输入Token → 调用GitHub API验证 → 验证用户名匹配 → 保存登录状态
+```
+
 ### 登录状态持久化
 
 登录信息保存在 `~/.config/opencode/.edk2_login`，有效期24小时。
 
 ```bash
 # 登录
-edk2-opencode login myuser mytoken123
+edk2-opencode login guziqian0908 ghp_xxxx
 
 # 查看状态
 edk2-opencode status
-# 输出: Logged in as myuser
-#       Session expires in 23 hours
+# 输出:
+# [STATUS] Logged in as guziqian0908
+# [AUTH]   Method: github
+# [TIME]   Session expires in 24 hours
+#
+# Features enabled:
+#   ✓ edk2-pr-workflow skill
+#   ✓ ovmf-build skill
+#   ✓ edk2-rag MCP service
 
 # 登出（清空缓存）
 edk2-opencode logout
-# 输出: Logged out
-#       Cache cleared
+# 输出:
+# [SUCCESS] Logged out
 ```
 
 ### 权限控制
 
-| 状态 | Skills | MCP服务 | API |
-|------|--------|---------|-----|
-| 未登录 | 禁用 | 禁用 | 使用内置GLM-5 |
-| 已登录 | 启用 | 启用 | 用户配置优先 |
+| 状态 | Skills | MCP服务 | 说明 |
+|------|--------|---------|------|
+| 未登录 | 禁用 | 禁用 | 需要GitHub Token登录 |
+| 已登录 | 启用 | 启用 | 完整功能可用 |
 
-### 全链路拦截
+### 安全说明
 
-- **Skill调用拦截**: 未登录无法加载任何Skill
-- **MCP服务拦截**: 未登录无法调用RAG检索
-- **大模型调用拦截**: 未登录降级为内置API
-- **对话提示注入**: 未登录状态自动提示登录
+- Token仅用于验证，**不存储明文**
+- 存储的是SHA256哈希后的前16位
+- 登录信息仅保存在用户本地
 
 ## API配置
 
-### 双API优先级机制
+**重要**: 本工具需要配置LLM API Key才能正常使用。请选择以下任一方式配置。
 
-系统支持多层API配置：
-
-1. **用户自定义API** (最高优先级)
-2. **内置GLM-5 API** (兜底机制)
-
-### 配置方式
-
-**方式1: 环境变量**
+### 方式1: 环境变量配置（推荐）
 
 ```bash
-# 用户自定义API（优先）
-export ANTHROPIC_API_KEY="your-api-key"
-export OPENAI_API_KEY="your-openai-key"
+# Anthropic Claude（推荐）
+export ANTHROPIC_API_KEY="sk-ant-xxx"
 
-# 内置API（系统预置，无需配置）
-export EDK2_BUILTIN_ZHIPU_KEY="your-zhipu-key"
+# 或 OpenAI GPT
+export OPENAI_API_KEY="sk-xxx"
+
+# 或 智谱 GLM
+export ZHIPU_API_KEY="xxx"
 ```
 
-**方式2: opencode.json配置**
+Windows PowerShell:
+```powershell
+$env:ANTHROPIC_API_KEY="sk-ant-xxx"
+```
+
+### 方式2: opencode.json配置
+
+在项目根目录创建或修改 `opencode.json`：
 
 ```json
 {
   "provider": {
     "anthropic": {
       "options": {
-        "apiKey": "your-api-key"
+        "apiKey": "sk-ant-xxx"
       }
     }
   }
 }
+```
+
+### API获取地址
+
+| 提供商 | 获取地址 | 推荐模型 |
+|--------|----------|----------|
+| Anthropic | https://console.anthropic.com | claude-sonnet-4-6 |
+| OpenAI | https://platform.openai.com | gpt-4 |
+| 智谱 | https://open.bigmodel.cn | glm-5 |
+
+### API优先级
+
+```
+环境变量配置 > opencode.json配置
 ```
 
 ### 对话缓存机制
@@ -343,9 +389,9 @@ rag-service
 | 命令 | 说明 | 参数 |
 |------|------|------|
 | `edk2-opencode` | 启动工具 | 无 |
-| `edk2-opencode login` | 登录 | `<username> <token>` |
+| `edk2-opencode login` | GitHub Token登录 | `<github用户名> <github_token>` |
 | `edk2-opencode logout` | 登出清缓存 | 无 |
-| `edk2-opencode status` | 查看状态 | 无 |
+| `edk2-opencode status` | 查看登录状态 | 无 |
 | `edk2-opencode --init` | 初始化RAG | 无 |
 | `edk2-opencode --update-kb` | 更新知识库 | 无 |
 | `edk2-opencode --version` | 显示版本 | 无 |
