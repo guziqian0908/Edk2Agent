@@ -115,9 +115,9 @@ function main() {
     EDK2_PACKAGE_ROOT: PACKAGE_ROOT
   };
   
-  const opencodeArgs = ['--config', path.join(PACKAGE_ROOT, 'opencode.json')];
+  const workDir = process.cwd();
   
-  const child = spawn('npx', ['opencode-ai', ...opencodeArgs], {
+  const child = spawn('npx', ['opencode-ai', workDir], {
     cwd: PACKAGE_ROOT,
     env,
     stdio: 'inherit',
