@@ -13,7 +13,7 @@
 
 ## 快速开始
 
-### 方式 1: NPX 一键启动（推荐）
+### 方式 1: NPX 一键启动（公网）
 
 ```bash
 # 直接运行（自动下载依赖）
@@ -24,7 +24,36 @@ npm install -g edk2-opencode
 edk2-opencode
 ```
 
-### 方式 2: 源码安装
+### 方式 2: 内网私有 npm 安装
+
+**管理员发布**：
+```bash
+# 1. 配置内网 registry
+npm config set registry http://your-internal-registry:4873
+
+# 2. 登录（如需认证）
+npm adduser --registry http://your-internal-registry:4873
+
+# 3. 发布
+npm run publish:internal
+
+# 或指定 registry
+NPM_REGISTRY=http://your-internal-registry:4873 npm run publish:internal
+```
+
+**用户安装**：
+```bash
+# 1. 配置内网 registry
+npm config set registry http://your-internal-registry:4873
+
+# 2. 安装
+npm install -g edk2-opencode
+
+# 3. 运行
+edk2-opencode
+```
+
+### 方式 3: 源码安装
 
 ```bash
 # 克隆仓库

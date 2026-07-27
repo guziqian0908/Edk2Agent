@@ -32,7 +32,8 @@
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "prepack": "node scripts/prepack.js",
-    "test": "node tests/run-tests.js"
+    "test": "node tests/run-tests.js",
+    "publish:internal": "node scripts/publish-internal.js"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,0 +1,15 @@
+# Internal npm registry configuration
+# Copy this file to .npmrc and modify as needed
+
+# Internal registry URL
+registry=http://your-internal-registry:4873
+
+# Or use environment variable:
+# registry=${NPM_REGISTRY}
+
+# Authentication (if required)
+# //your-internal-registry:4873/:_authToken=your-token-here
+
+# For publishing
+# email=your-email@example.com
+# always-auth=true
