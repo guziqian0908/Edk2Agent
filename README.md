@@ -30,14 +30,24 @@ node bin/edk2-opencode.js login <username> <token>
 node bin/edk2-opencode.js
 ```
 
-### 方式 2: NPX 从 GitHub 安装
+### 方式 2: NPX 从 npm 公网仓库安装（推荐）
 
 ```bash
 # 直接运行
-npx guziqian0908/Edk2Agent --version
+npx edk2-opencode
+
+# 或指定版本
+npx edk2-opencode@latest
 
 # 登录
-npx guziqian0908/Edk2Agent login <username> <token>
+npx edk2-opencode login <username> <token>
+```
+
+### 方式 3: 全局安装
+
+```bash
+npm install -g edk2-opencode
+edk2-opencode
 ```
 
 ### 方式 3: 本地全局安装
