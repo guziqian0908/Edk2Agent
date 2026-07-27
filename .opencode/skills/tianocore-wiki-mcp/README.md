@@ -1,47 +1,55 @@
-# TianoCore Wiki MCP Service
+# TianoCore Wiki MCP Service - WeKnora-style RAG
 
-EDK II 开发文档 MCP 服务，为 OpenCode 提供 TianoCore 知识库访问能力。
+基于 WeKnora 架构的 EDK II 文档 MCP 服务，为 OpenCode 提供语义搜索能力。
+
+> **架构参考**: 本服务采用腾讯 [WeKnora](https://github.com/Tencent/WeKnora) 的 RAG 设计理念，实现轻量级语义搜索方案。
+
+## 核心特性
+
+### WeKnora-style RAG 架构
+
+| 特性 | 说明 |
+|------|------|
+| **文档分块** | 智能文本分块，支持配置块大小和重叠 |
+| **向量索引** | TF-IDF 向量嵌入，支持语义相似度搜索 |
+| **混合搜索** | 结合向量搜索和关键词匹配，提高召回率 |
+| **知识库管理** | 支持多数据源，自动索引更新 |
+
+### 与 WeKnora 的关系
+
+```
+WeKnora (完整方案)          本服务 (轻量方案)
+─────────────────          ─────────────────
+完整 RAG 平台              单文件 MCP 服务
+向量数据库存储             内存向量索引
+多模型支持                 TF-IDF 嵌入
+分布式部署                 本地运行
+知识图谱                   文档分块
+Web UI                     MCP 协议
+```
 
 ## 数据源
-
-本服务整合以下两个文档源：
 
 | 数据源 | 说明 | URL |
 |--------|------|-----|
 | TianoCore Wiki | EDK II 开发文档、教程、指南 | https://www.tianocore.org/tianocore-wiki.github.io/ |
 | TianoCore Docs | UEFI/PI 规范和技术文档 | https://github.com/tianocore-docs |
 
-### TianoCore Docs 仓库内容
-
-- edk2-DecSpecification - EDK II DEC 文件规范
-- edk2-UefiSpecification - UEFI 规范文档
-- edk2-PISpecification - PI 规范文档
-- edk2-UEFI-Shell-Specification - UEFI Shell 规范
-
-## 功能
-
-- **文档搜索**: 全文搜索 EDK II 开发文档（支持按来源过滤）
-- **页面获取**: 获取完整的文档页面内容
-- **分类浏览**: 按主题浏览文档
-- **来源区分**: 搜索结果标注来源（tianocore-wiki / tianocore-docs）
-
 ## 安装
 
 ### 1. 初始化知识库
 
-首次使用需要抓取 wiki 内容：
-
 ```bash
-# 抓取完整 wiki（需要较长时间）
-python .opencode/skills/tianocore-wiki-mcp/fetch_wiki.py
-
-# 或仅抓取示例页面（推荐测试）
+# 抓取示例页面（推荐）
 python .opencode/skills/tianocore-wiki-mcp/fetch_wiki.py --sample
+
+# 抓取完整文档（需要较长时间）
+python .opencode/skills/tianocore-wiki-mcp/fetch_wiki.py
 ```
 
 ### 2. 配置 OpenCode
 
-在项目根目录创建或编辑 `opencode.json`：
+在项目根目录的 `opencode.json` 添加：
 
 ```json
 {
@@ -54,69 +62,76 @@ python .opencode/skills/tianocore-wiki-mcp/fetch_wiki.py --sample
 }
 ```
 
-### 3. 使用
+## MCP 工具
 
-启动 OpenCode 后，可以直接对话查询 EDK II 相关问题：
+### hybrid_search
 
-```
-用户: 如何开始使用 EDK II？
-OpenCode: [通过 MCP 搜索文档并返回相关内容]
-```
-
-## 可用工具
-
-### search_wiki
-
-搜索 EDK II 文档：
+混合搜索（向量 + 关键词）：
 
 ```json
 {
-  "name": "search_wiki",
+  "name": "hybrid_search",
   "arguments": {
-    "query": "UEFI specification",
-    "limit": 10,
-    "source": "tianocore-docs"
+    "query": "How to build OVMF?",
+    "top_k": 10,
+    "vector_threshold": 0.3,
+    "keyword_threshold": 0.1,
+    "source": "tianocore-wiki"
   }
 }
 ```
 
 参数说明：
 - `query`: 搜索关键词
-- `limit`: 返回结果数量限制（默认 10）
-- `source`: 可选，按来源过滤：
-  - `tianocore-wiki` - 仅搜索 Wiki 页面
-  - `tianocore-docs` - 仅搜索 Docs 文档
-  - 不指定则搜索全部来源
+- `top_k`: 返回结果数量（默认 10）
+- `vector_threshold`: 向量相似度阈值（0.0-1.0）
+- `keyword_threshold`: 关键词匹配阈值（0.0-1.0）
+- `source`: 可选，按来源过滤
 
-返回结果包含 `source` 字段标识文档来源。
+### semantic_search
 
-### get_wiki_page
-
-获取完整页面内容：
+纯语义搜索：
 
 ```json
 {
-  "name": "get_wiki_page",
+  "name": "semantic_search",
   "arguments": {
-    "path": "development/tutorials-howto/getting_started_with_edk_ii"
+    "query": "UEFI driver development",
+    "top_k": 5,
+    "threshold": 0.5
   }
 }
 ```
 
-### list_categories
+### get_document
 
-列出文档分类：
+获取完整文档：
 
 ```json
 {
-  "name": "list_categories",
-  "arguments": {}
+  "name": "get_document",
+  "arguments": {
+    "doc_id": "development/tutorials-howto/getting_started_with_edk_ii"
+  }
+}
+```
+
+### get_chunk
+
+获取特定分块：
+
+```json
+{
+  "name": "get_chunk",
+  "arguments": {
+    "chunk_id": "abc123def456"
+  }
 }
 ```
 
 ### list_sources
 
-列出可用的文档来源：
+列出数据源：
 
 ```json
 {
@@ -125,58 +140,108 @@ OpenCode: [通过 MCP 搜索文档并返回相关内容]
 }
 ```
 
-## 知识库内容
+### get_stats
 
-### TianoCore Wiki
+获取统计信息：
 
-| 分类 | 内容 |
-|------|------|
-| Getting Started | EDK II 入门指南 |
-| Development | 开发教程和贡献指南 |
-| Platforms | OVMF、EmulatorPkg 等平台文档 |
-| Specifications | UEFI/PI 规范说明 |
-| Community | 社区支持和报告指南 |
+```json
+{
+  "name": "get_stats",
+  "arguments": {}
+}
+```
 
-### TianoCore Docs
+## 架构说明
 
-| 仓库 | 内容 |
-|------|------|
-| edk2-DecSpecification | DEC 文件格式规范 |
-| edk2-UefiSpecification | UEFI 规范文档 |
-| edk2-PISpecification | PI 规范文档 |
-| edk2-UEFI-Shell-Specification | UEFI Shell 规范 |
+### RAG 流程
+
+```
+用户查询 → MCP Server → 混合搜索引擎
+                              ↓
+                    ┌─────────┴─────────┐
+                    ↓                   ↓
+              向量搜索            关键词搜索
+                    ↓                   ↓
+              相似度计算          匹配度计算
+                    └─────────┬─────────┘
+                              ↓
+                         结果合并排序
+                              ↓
+                         返回 Top-K
+```
+
+### 文档处理
+
+```
+原始文档 → 文本分块器 → 生成向量嵌入 → 存入向量索引
+             ↓
+     配置参数：
+     - chunk_size: 1024
+     - chunk_overlap: 200
+     - separators: ["\n\n", "\n", ".", " "]
+```
+
+## 性能特性
+
+| 指标 | 值 |
+|------|-----|
+| 内存使用 | ~100-500MB |
+| 搜索延迟 | ~50-200ms |
+| 索引构建 | ~1-5 分钟 |
+
+## 扩展到完整 WeKnora
+
+如需更强大的功能（如持久化向量数据库、多模型支持），可参考 WeKnora 部署：
+
+1. 部署 WeKnora 后端服务
+2. 导入 TianoCore 文档到 WeKnora 知识库
+3. 使用 WeKnora MCP Server 连接后端
+
+详见：https://github.com/Tencent/WeKnora/tree/main/mcp-server
 
 ## 目录结构
 
 ```
 .opencode/skills/tianocore-wiki-mcp/
-├── SKILL.md           # 技能描述
-├── mcp_server.py      # MCP 服务器
-├── fetch_wiki.py      # 知识库抓取脚本
-├── README.md          # 本文档
-└── knowledge/         # 知识库目录
-    ├── wiki_index.json     # 统一索引
-    └── tianocore-docs/     # Docs 仓库缓存
+── mcp_server.py      # MCP 服务器
+├── rag_engine.py     # RAG 引擎（WeKnora-style）
+├── fetch_wiki.py     # 文档抓取脚本
+├── SKILL.md          # 技能描述
+├── README.md         # 本文档
+└── knowledge/        # 知识库目录
+    ├── wiki_index.json   # 文档索引
+    └── rag_state.json    # RAG 状态缓存
 ```
 
-## 更新知识库
-
-定期更新以获取最新文档：
+## 命令行选项
 
 ```bash
-# 抓取 Wiki 和 Docs（默认）
-python .opencode/skills/tianocore-wiki-mcp/fetch_wiki.py
+# 启动 MCP 服务器
+python mcp_server.py
 
-# 仅抓取 Wiki（跳过 Docs）
-python .opencode/skills/tianocore-wiki-mcp/fetch_wiki.py --no-docs
+# 抓取文档
+python mcp_server.py --fetch
 
-# 抓取示例页面（推荐测试）
-python .opencode/skills/tianocore-wiki-mcp/fetch_wiki.py --sample
+# 重建索引
+python mcp_server.py --rebuild-index
+
+# 查看统计
+python mcp_server.py --stats
+```
+
+## 测试
+
+```bash
+# 运行测试
+python tests/test_mcp_service.py
+
+# 详细测试报告
+python tests/test_mcp_service.py -v
 ```
 
 ## 参考资料
 
+- [WeKnora 项目](https://github.com/Tencent/WeKnora) - 腾讯开源知识管理平台
 - [TianoCore Wiki](https://www.tianocore.org/tianocore-wiki.github.io/)
-- [TianoCore Docs Repository](https://github.com/tianocore-docs)
-- [EDK II Repository](https://github.com/tianocore/edk2)
 - [MCP 协议](https://modelcontextprotocol.io/)
+- [LlamaIndex 文档](https://docs.llamaindex.ai/)
