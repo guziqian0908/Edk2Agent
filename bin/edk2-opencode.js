@@ -203,15 +203,28 @@ function handleInit() {
   
   const ragServiceDir = path.join(PACKAGE_ROOT, 'rag-service');
   const prebuiltVectors = path.join(PACKAGE_ROOT, 'prebuilt-vectors');
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
   
   if (fs.existsSync(prebuiltVectors)) {
     console.log('[INFO] Using prebuilt vectors');
     return;
   }
   
+  // Install Python dependencies
+  console.log('[INFO] Installing Python dependencies...');
+  const requirementsFile = path.join(ragServiceDir, 'requirements.txt');
+  
+  try {
+    execSync(`${pythonCmd} -m pip install -r "${requirementsFile}" --quiet`, {
+      stdio: 'inherit'
+    });
+    console.log('[SUCCESS] Python dependencies installed');
+  } catch (err) {
+    console.warn('[WARN] Failed to install Python dependencies, continuing anyway...');
+  }
+  
   console.log('[INFO] Building vector index (this may take a few minutes)...');
   
-  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
   const script = path.join(ragServiceDir, 'run_server.py');
   
   try {
