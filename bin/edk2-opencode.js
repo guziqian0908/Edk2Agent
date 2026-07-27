@@ -27,7 +27,8 @@ function showWelcome() {
   console.log('╔════════════════════════════════════════════════════════════╗');
   console.log('║         EDK2-OpenCode - EDK2 Development Assistant          ║');
   console.log('╠════════════════════════════════════════════════════════════╣');
-  console.log('║  Version: 1.0.0                                              ║');
+  const pkg = require('../package.json');
+  console.log('║  Version: ' + pkg.version.padEnd(46) + '║');
   console.log('║  Skills:  edk2-pr-workflow, ovmf-build                        ║');
   console.log('║  MCP:     edk2-rag (RAG knowledge base)                       ║');
   console.log('║  API:     Built-in GLM-5 fallback                             ║');
@@ -116,7 +117,7 @@ function main() {
   
   const opencodeArgs = ['--config', path.join(PACKAGE_ROOT, 'opencode.json')];
   
-  const child = spawn('npx', ['@opencode-ai/opencode', ...opencodeArgs], {
+  const child = spawn('npx', ['opencode-ai', ...opencodeArgs], {
     cwd: PACKAGE_ROOT,
     env,
     stdio: 'inherit',
