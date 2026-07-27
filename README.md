@@ -50,26 +50,26 @@ git clone https://github.com/guziqian0908/Edk2Agent.git
 cd Edk2Agent
 
 # 配置私有 registry
-npm config set registry http://your-server-ip:4873
+npm config set registry http://192.168.122.116:4873
 
 # 登录（首次需认证）
-npm adduser --registry http://your-server-ip:4873
+npm adduser --registry http://192.168.122.116:4873
 # 输入用户名、密码、邮箱
 
 # 发布
-npm publish --registry http://your-server-ip:4873
+npm publish --registry http://192.168.122.116:4873
 
 # 或使用脚本
-NPM_REGISTRY=http://your-server-ip:4873 npm run publish:internal
+NPM_REGISTRY=http://192.168.122.116:4873 npm run publish:internal
 ```
 
 **步骤 3：验证发布**
 ```bash
 # 查看包信息
-npm view edk2-opencode --registry http://your-server-ip:4873
+npm view edk2-opencode --registry http://192.168.122.116:4873
 
 # 访问 Web UI
-# 浏览器打开: http://your-server-ip:4873
+# 浏览器打开: http://192.168.122.116:4873
 ```
 
 #### 用户：从私有仓库安装
@@ -77,10 +77,10 @@ npm view edk2-opencode --registry http://your-server-ip:4873
 **步骤 1：配置 registry**
 ```bash
 # 设置私有 registry
-npm config set registry http://your-server-ip:4873
+npm config set registry http://192.168.122.116:4873
 
 # 或创建 .npmrc 文件
-echo "registry=http://your-server-ip:4873" > ~/.npmrc
+echo "registry=http://192.168.122.116:4873" > ~/.npmrc
 ```
 
 **步骤 2：安装**
@@ -130,8 +130,8 @@ edk2-opencode --help
 
 | 项目 | 说明 |
 |------|------|
-| Registry 地址 | 替换 `your-server-ip` 为实际服务器 IP |
-| 端口 | 默认 4873，可在 Verdaccio 配置中修改 |
+| Registry 地址 | http://192.168.122.116:4873 |
+| 端口 | 4873 |
 | 认证 | 首次使用需 `npm adduser` 注册 |
 | 依赖 | `opencode-ai` 会自动从公网下载 |
 | 离线 | 若完全离线，需提前缓存 `opencode-ai` |
