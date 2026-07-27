@@ -16,9 +16,7 @@
     "type": "git",
     "url": "https://github.com/guziqian0908/Edk2Agent.git"
   },
-  "bin": {
-    "edk2-opencode": "./bin/edk2-opencode.js"
-  },
+  "bin": "bin/edk2-opencode.js",
   "files": [
     "bin/",
     "lib/",
