@@ -23,7 +23,7 @@ class Config:
     
     data_directory: str = "./data"
     wiki_output_dir: str = "wiki"
-    docs_output_dir: "docs"  # type: ignore
+    docs_output_dir: str = "docs"
     
     document_sources: List[str] = field(default_factory=lambda: ["wiki", "docs"])
     
