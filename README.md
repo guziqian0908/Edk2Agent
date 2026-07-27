@@ -13,20 +13,9 @@
 
 ## 快速开始
 
-### 方式 1: NPX 一键启动（公网）
+### 内网私有 npm 安装
 
-```bash
-# 直接运行（自动下载依赖）
-npx edk2-opencode
-
-# 或全局安装后使用
-npm install -g edk2-opencode
-edk2-opencode
-```
-
-### 方式 2: 内网私有 npm 安装
-
-适用于内网环境，需先部署私有 npm 仓库（如 Verdaccio）。
+适用于内网环境，需先配置私有 npm 仓库。
 
 #### 管理员：发布到私有仓库
 
