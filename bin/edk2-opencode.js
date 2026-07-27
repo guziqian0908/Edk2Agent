@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PACKAGE_ROOT = path.dirname(__dirname);
-const OPENCODE_BIN = path.join(PACKAGE_ROOT, 'node_modules', '@opencode-ai', 'opencode', 'bin', 'opencode');
+const OPENCODE_BIN = path.join(PACKAGE_ROOT, 'node_modules', 'opencode-ai', 'bin', 'opencode');
 
 function checkPython() {
   try {
@@ -116,7 +116,7 @@ function main() {
   
   const opencodeArgs = ['--config', path.join(PACKAGE_ROOT, 'opencode.json')];
   
-  const child = spawn('npx', ['@opencode-ai/opencode', ...opencodeArgs], {
+  const child = spawn('npx', ['opencode-ai', ...opencodeArgs], {
     cwd: PACKAGE_ROOT,
     env,
     stdio: 'inherit',

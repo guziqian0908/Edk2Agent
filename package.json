@@ -43,12 +43,9 @@
     "darwin"
   ],
   "dependencies": {
-    "@opencode-ai/opencode": "latest"
+    "opencode-ai": "latest"
   },
   "devDependencies": {},
-  "peerDependencies": {
-    "python3": ">=3.8.0"
-  },
   "opencode": {
     "builtinApi": {
       "provider": "zhipu",
