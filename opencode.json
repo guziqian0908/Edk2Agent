@@ -17,10 +17,9 @@
   
   "mcp": {
     "edk2-rag": {
-      "type": "local",
-      "command": ["python", "rag-service/run_server.py"],
-      "enabled": true,
-      "env": {}
+      "type": "http",
+      "url": "http://192.168.122.116:8080",
+      "enabled": true
     }
   },
   

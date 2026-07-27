@@ -202,16 +202,17 @@ edk2-opencode logout
 - 登录信息保存在本地 `~/.config/opencode/.edk2_login`
 - Session有效期24小时
 
-### 初始化知识库
+### 初始化知识库（服务端操作）
 
-首次使用需要初始化RAG知识库：
+知识库已部署在服务器，用户无需初始化。服务端管理员操作：
 
 ```bash
 # 初始化（下载并索引EDK2文档）
-edk2-opencode --init
+cd rag-service
+python update_knowledge_base.py
 
-# 更新知识库
-edk2-opencode --update-kb
+# 强制更新
+python update_knowledge_base.py --force
 ```
 
 ## 目录结构
@@ -372,21 +373,67 @@ const CACHE_CONFIG = {
 
 ## RAG知识库
 
+### 架构说明
+
+采用**集中式服务架构**，用户无需本地部署 RAG 服务。
+
+```
+用户电脑                        服务器
+    │                              │
+    │  HTTP请求                    │
+    │  ─────────────────────────>  │
+    │                              │  向量数据库
+    │  返回检索结果                │  chroma_db/
+    │  <─────────────────────────  │
+    │                              │
+```
+
+| 项目 | 说明 |
+|------|------|
+| 服务地址 | `http://192.168.122.116:8080` |
+| 运行位置 | 服务器集中部署 |
+| 用户无需 | 安装Python、下载文档、构建向量库 |
+
+### 服务端部署（管理员）
+
+**启动 RAG 服务**：
+```bash
+# 方式1：使用启动脚本
+node scripts/start-rag-server.js
+
+# 方式2：直接使用Python
+cd rag-service
+python run_http_server.py --host 0.0.0.0 --port 8080
+```
+
+**初始化知识库**（首次部署）：
+```bash
+cd rag-service
+python update_knowledge_base.py
+```
+
+**服务端点**：
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查 |
+| `/tools` | GET | 工具列表 |
+| `/sources` | GET | 文档来源 |
+| `/search` | POST | 检索文档 |
+| `/mcp` | POST | MCP协议端点 |
+
 ### 功能特性
 
 - **双文档源**: tianocore-wiki + tianocore-docs
-- **预构建向量库**: 开箱即用，无需首次索引
+- **集中式部署**: 用户无需本地配置
 - **内存缓存**: 高频查询直接返回缓存结果
-- **增量更新**: 支持手动刷新最新文档
+- **增量更新**: 服务端手动刷新最新文档
 
 ### MCP工具列表
 
 | 工具 | 描述 | 参数 |
 |------|------|------|
 | `search_edk2_docs` | 检索EDK2文档 | `query` (必需), `top_k` (可选) |
-| `get_edk2_doc_by_id` | 按ID获取文档 | `doc_id` (必需) |
 | `list_edk2_sources` | 列出文档来源 | 无 |
-| `get_rag_stats` | 获取服务统计 | 无 |
 
 ### 检索示例
 
@@ -397,9 +444,7 @@ opencode> 查询UEFI驱动开发指南
 opencode> 如何配置EmulatorPkg控制台分辨率
 ```
 
-### 检索结果来源标注
-
-每个检索结果自动标注文档来源：
+### 检索结果格式
 
 ```json
 {
@@ -411,33 +456,6 @@ opencode> 如何配置EmulatorPkg控制台分辨率
     "url": "https://github.com/tianocore/tianocore.github.io/wiki/Building-OVMF"
   }]
 }
-```
-
-### 内存缓存
-
-```python
-# 缓存配置
-cache_config = {
-    "max_size": 100,         # 最大缓存条目
-    "ttl_seconds": 3600,     # 有效期（秒）
-    "enabled": True
-}
-```
-
-缓存命中时日志：
-```
-[INFO] Cache hit for query
-```
-
-### 知识库更新
-
-```bash
-# 更新知识库（拉取最新文档并重建索引）
-python rag-service/update_knowledge_base.py
-
-# 强制更新
-python rag-service/update_knowledge_base.py --force
-```
 
 ## Skills
 
