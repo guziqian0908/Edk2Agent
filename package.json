@@ -1,6 +1,6 @@
 {
   "name": "edk2-opencode",
-  "version": "1.1.4",
+  "version": "1.2.0",
   "description": "EDK2-dedicated OpenCode customization with built-in skills, MCP services, and RAG knowledge base",
   "keywords": [
     "edk2",

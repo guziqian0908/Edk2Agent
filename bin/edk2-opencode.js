@@ -109,9 +109,35 @@ function main() {
   
   showWelcome();
   
+  const config = {
+    "$schema": "https://opencode.ai/config.json",
+    "username": "edk2-developer",
+    "model": "opencode/zen",
+    "small_model": "opencode/zen",
+    "default_agent": "general",
+    "logLevel": "INFO",
+    "mcp": {
+      "edk2-rag": {
+        "type": "local",
+        "command": ["python", path.join(PACKAGE_ROOT, "rag-service", "run_server.py")],
+        "enabled": true,
+        "env": {}
+      }
+    },
+    "skills": {
+      "paths": [path.join(PACKAGE_ROOT, ".opencode", "skills")]
+    },
+    "instructions": [path.join(PACKAGE_ROOT, "AGENTS.md")]
+  };
+  
+  const configPath = path.join(os.homedir(), '.config', 'opencode', 'edk2-opencode.json');
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  console.log(`[INFO] Config written to ${configPath}`);
+  
   const env = {
     ...process.env,
-    OPENCODE_CONFIG: path.join(PACKAGE_ROOT, 'opencode.json'),
+    OPENCODE_CONFIG: configPath,
     EDK2_PACKAGE_ROOT: PACKAGE_ROOT
   };
   
