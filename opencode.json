@@ -1,8 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "username": "edk2-developer",
-  "model": "anthropic/claude-sonnet-4-6",
-  "small_model": "anthropic/claude-3-5-haiku-latest",
+  "model": "opencode/zen",
+  "small_model": "opencode/zen",
   "default_agent": "general",
   "logLevel": "INFO",
   "share": "disabled",
@@ -15,19 +15,7 @@
     ]
   },
   
-  "mcp": {
-    "edk2-rag": {
-      "type": "local",
-      "command": ["python", "rag-service/run_server.py"],
-      "enabled": true,
-      "env": {}
-    }
-  },
-  
-  "plugin": [
-    "./.opencode/plugins/edk2-auth-guard.ts",
-    "./.opencode/plugins/edk2-api-provider.ts"
-  ],
+  "mcp": {},
   
   "permission": {
     "edit": "ask",
