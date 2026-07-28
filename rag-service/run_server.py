@@ -30,6 +30,11 @@ def main():
         help="Build vector index before starting server"
     )
     parser.add_argument(
+        "--force-update",
+        action="store_true",
+        help="Force update documents even if they exist"
+    )
+    parser.add_argument(
         "--stdio",
         action="store_true",
         help="Run in stdio mode (for MCP clients like OpenCode)"
@@ -83,6 +88,20 @@ def main():
                 vector_store.add_documents(documents)
                 vector_store.persist()
                 logger.info("Vector index built successfully")
+    elif args.force_update:
+        logger.info("Force updating knowledge base...")
+        fetcher = DocumentFetcher(config)
+        documents = fetcher.fetch_all()
+        
+        if documents:
+            fetcher.save_documents(Path(config.data_directory) / "documents.json")
+            logger.info(f"Saved {len(documents)} documents")
+            
+            logger.info("Rebuilding vector index...")
+            vector_store = VectorStore(config)
+            vector_store.add_documents(documents)
+            vector_store.persist()
+            logger.info("Knowledge base updated successfully")
     
     if vector_store is None:
         vector_store = VectorStore(config)
