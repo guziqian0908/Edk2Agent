@@ -9,6 +9,45 @@ This skill handles the complete workflow for building and running OVMF (Open Vir
 
 **Cross-Platform Support:** Windows and Linux
 
+## Quick Start (Automated Scripts)
+
+This skill includes automated build scripts for convenience:
+
+### Windows (PowerShell)
+
+```powershell
+# Build OVMF (clones EDK2 if needed)
+.\build-ovmf.ps1 -CloneEdk2
+
+# Build EmulatorPkg
+.\build-ovmf.ps1 -BuildEmulatorPkg -CloneEdk2
+
+# Run QEMU with OVMF
+.\run-qemu.ps1
+```
+
+### Cross-Platform (Python)
+
+```bash
+# Build OVMF
+python build-ovmf.py --clone
+
+# Build EmulatorPkg (Windows only)
+python build-ovmf.py --clone --emulator
+
+# Run QEMU
+python run-qemu.py
+```
+
+### Available Scripts
+
+| Script | Platform | Description |
+|--------|----------|-------------|
+| `build-ovmf.ps1` | Windows | PowerShell build script |
+| `build-ovmf.py` | All | Python cross-platform build script |
+| `run-qemu.ps1` | Windows | PowerShell QEMU launcher |
+| `run-qemu.py` | All | Python cross-platform QEMU launcher |
+
 ## Prerequisites Check
 
 Before starting, verify the following tools are available:
