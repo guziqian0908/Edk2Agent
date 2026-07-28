@@ -316,6 +316,33 @@ class MCPServer:
                 if self.running:
                     logger.error(f"Server error: {e}")
     
+    def start_stdio_server(self):
+        """Start MCP server using stdio for communication with OpenCode"""
+        import sys
+        
+        self.running = True
+        logger.info("MCP Server started in stdio mode")
+        
+        while self.running:
+            try:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                
+                line = line.strip()
+                if not line:
+                    continue
+                
+                response = self.handle_request(line)
+                sys.stdout.write(response + '\n')
+                sys.stdout.flush()
+                
+            except Exception as e:
+                logger.error(f"Stdio server error: {e}")
+                break
+        
+        logger.info("MCP Server stopped")
+    
     def _handle_client(self, client_socket):
         try:
             buffer = ""

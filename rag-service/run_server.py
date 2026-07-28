@@ -30,16 +30,21 @@ def main():
         help="Build vector index before starting server"
     )
     parser.add_argument(
+        "--stdio",
+        action="store_true",
+        help="Run in stdio mode (for MCP clients like OpenCode)"
+    )
+    parser.add_argument(
         "--host",
         type=str,
         default="localhost",
-        help="MCP server host"
+        help="MCP server host (socket mode only)"
     )
     parser.add_argument(
         "--port",
         type=int,
         default=8080,
-        help="MCP server port"
+        help="MCP server port (socket mode only)"
     )
     
     args = parser.parse_args()
@@ -85,7 +90,10 @@ def main():
     server = MCPServer(config, vector_store)
     
     try:
-        server.start_socket_server()
+        if args.stdio:
+            server.start_stdio_server()
+        else:
+            server.start_socket_server()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         server.stop()

@@ -119,7 +119,7 @@ function main() {
     "mcp": {
       "edk2-rag": {
         "type": "local",
-        "command": ["python", path.join(PACKAGE_ROOT, "rag-service", "run_server.py")],
+        "command": ["python", path.join(PACKAGE_ROOT, "rag-service", "run_server.py"), "--stdio"],
         "enabled": true,
         "env": {}
       }
