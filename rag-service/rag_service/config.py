@@ -19,13 +19,55 @@ class Config:
     mcp_server_port: int = 8080
     
     tianocore_wiki_url: str = "https://github.com/tianocore/tianocore.github.io/wiki"
-    tianocore_docs_repo: str = "https://github.com/tianocore/docs"
     
     data_directory: str = "./data"
     wiki_output_dir: str = "wiki"
     docs_output_dir: str = "docs"
     
     document_sources: List[str] = field(default_factory=lambda: ["wiki", "docs"])
+    
+    additional_repos: List[dict] = field(default_factory=lambda: [
+        {
+            "name": "edk2-UefiDriverWritersGuide",
+            "url": "https://github.com/tianocore-docs/edk2-UefiDriverWritersGuide.git",
+            "description": "UEFI Driver Writer's Guide"
+        },
+        {
+            "name": "edk2-BuildSpecification",
+            "url": "https://github.com/tianocore-docs/edk2-BuildSpecification.git",
+            "description": "EDK II Build Specification"
+        },
+        {
+            "name": "edk2-CCodingStandardsSpecification",
+            "url": "https://github.com/tianocore-docs/edk2-CCodingStandardsSpecification.git",
+            "description": "EDK II C Coding Standards"
+        },
+        {
+            "name": "edk2-FdfSpecification",
+            "url": "https://github.com/tianocore-docs/edk2-FdfSpecification.git",
+            "description": "EDK II FDF Specification"
+        },
+        {
+            "name": "edk2-DscSpecification",
+            "url": "https://github.com/tianocore-docs/edk2-DscSpecification.git",
+            "description": "EDK II DSC Specification"
+        },
+        {
+            "name": "edk2-InfSpecification",
+            "url": "https://github.com/tianocore-docs/edk2-InfSpecification.git",
+            "description": "EDK II INF Specification"
+        },
+        {
+            "name": "Understanding_UEFI_Secure_Boot_Chain",
+            "url": "https://github.com/tianocore-docs/Understanding_UEFI_Secure_Boot_Chain.git",
+            "description": "UEFI Secure Boot Chain Guide"
+        },
+        {
+            "name": "Training",
+            "url": "https://github.com/tianocore-docs/Training.git",
+            "description": "EDK II Training Materials"
+        }
+    ])
     
     @classmethod
     def from_file(cls, config_path: str) -> "Config":

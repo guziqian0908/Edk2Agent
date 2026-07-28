@@ -71,6 +71,10 @@ class DocumentFetcher:
             all_docs.extend(docs)
             logger.info(f"Fetched {len(docs)} documents from tianocore-docs")
         
+        additional_docs = self.fetch_additional_repos()
+        all_docs.extend(additional_docs)
+        logger.info(f"Fetched {len(additional_docs)} documents from additional repos")
+        
         self.documents = all_docs
         logger.info(f"Total documents fetched: {len(all_docs)}")
         
@@ -209,6 +213,113 @@ class DocumentFetcher:
                 documents.append(doc)
             except Exception as e:
                 logger.error(f"Error parsing {txt_file}: {e}")
+        
+        return documents
+    
+    def fetch_additional_repos(self) -> List[Document]:
+        """Fetch documents from additional tianocore-docs repositories"""
+        all_docs = []
+        
+        if not hasattr(self.config, 'additional_repos') or not self.config.additional_repos:
+            return all_docs
+        
+        data_path = Path(self.config.data_directory)
+        
+        for repo_info in self.config.additional_repos:
+            repo_name = repo_info.get("name", "")
+            repo_url = repo_info.get("url", "")
+            repo_desc = repo_info.get("description", "")
+            
+            if not repo_name or not repo_url:
+                continue
+            
+            logger.info(f"Fetching from {repo_name} ({repo_desc})...")
+            
+            repo_path = data_path / repo_name
+            
+            try:
+                if repo_path.exists():
+                    logger.info(f"Repository {repo_name} already exists, updating...")
+                    result = subprocess.run(
+                        ["git", "pull"],
+                        cwd=str(repo_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
+                else:
+                    result = subprocess.run(
+                        ["git", "clone", "--depth=1", repo_url, str(repo_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                
+                if result.returncode != 0 and "already exists" not in result.stderr:
+                    logger.warning(f"Git operation warning for {repo_name}: {result.stderr}")
+                
+                docs = self._parse_repo_content(repo_path, repo_name)
+                all_docs.extend(docs)
+                logger.info(f"Fetched {len(docs)} documents from {repo_name}")
+                
+            except subprocess.TimeoutExpired:
+                logger.error(f"Git operation timed out for {repo_name}")
+            except Exception as e:
+                logger.error(f"Error fetching {repo_name}: {e}")
+        
+        return all_docs
+    
+    def _parse_repo_content(self, repo_path: Path, repo_name: str) -> List[Document]:
+        """Parse all documents from a repository"""
+        documents = []
+        
+        # Parse markdown files
+        for md_file in repo_path.rglob("*.md"):
+            try:
+                content = md_file.read_text(encoding='utf-8')
+                title = md_file.stem
+                rel_path = md_file.relative_to(repo_path)
+                
+                doc = Document(
+                    doc_id=f"{repo_name}-{str(rel_path).replace(os.sep, '-')}",
+                    title=title,
+                    content=content,
+                    source=repo_name,
+                    url=f"https://github.com/tianocore-docs/{repo_name}/blob/main/{rel_path}",
+                    metadata={
+                        "file_path": str(md_file),
+                        "file_type": "markdown",
+                        "relative_path": str(rel_path),
+                        "repo": repo_name
+                    }
+                )
+                documents.append(doc)
+            except Exception as e:
+                logger.error(f"Error parsing {md_file}: {e}")
+        
+        # Parse HTML files (common in tianocore-docs repos)
+        for html_file in repo_path.rglob("*.html"):
+            try:
+                content = html_file.read_text(encoding='utf-8')
+                title = html_file.stem
+                rel_path = html_file.relative_to(repo_path)
+                
+                doc = Document(
+                    doc_id=f"{repo_name}-{str(rel_path).replace(os.sep, '-')}",
+                    title=title,
+                    content=content,
+                    source=repo_name,
+                    url=f"https://github.com/tianocore-docs/{repo_name}/blob/main/{rel_path}",
+                    metadata={
+                        "file_path": str(html_file),
+                        "file_type": "html",
+                        "relative_path": str(rel_path),
+                        "repo": repo_name
+                    }
+                )
+                documents.append(doc)
+            except Exception as e:
+                logger.error(f"Error parsing {html_file}: {e}")
         
         return documents
     
