@@ -7,7 +7,6 @@
   "mcp_server_host": "localhost",
   "mcp_server_port": 8080,
   "tianocore_wiki_url": "https://github.com/tianocore/tianocore.github.io/wiki",
-  "tianocore_docs_repo": "https://github.com/tianocore/docs",
   "data_directory": "./data",
   "wiki_output_dir": "wiki",
   "docs_output_dir": "docs",

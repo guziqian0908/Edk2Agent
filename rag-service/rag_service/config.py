@@ -73,7 +73,10 @@ class Config:
     def from_file(cls, config_path: str) -> "Config":
         with open(config_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        return cls(**data)
+        # Filter out unknown keys
+        valid_keys = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered_data = {k: v for k, v in data.items() if k in valid_keys}
+        return cls(**filtered_data)
     
     def to_file(self, config_path: str):
         with open(config_path, 'w', encoding='utf-8') as f:
