@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.7] - 2026-08-04
+
+### Critical Bug Fix
+
+**Fixed Init Hang Caused by print.html**
+
+Processing would hang forever at the wiki step (around 5%) because `print.html`
+(mdbook's merged print page containing all chapters) expanded to ~1.7GB of text
+and millions of chunk files, exhausting disk space.
+
+#### Root Cause
+- `extract_html_content()` used a filtered `find_next_siblings(['p', 'pre', 'ul', 'ol', 'table'])`
+  whose result set never contains headings, so the `h1-h4` break condition was
+  unreachable. Every heading re-scanned ALL following paragraphs, causing O(N^2)
+  text duplication. With `html.parser` (flat DOM) this exploded on `print.html`;
+  the old `lxml` parser masked the bug.
+
+#### Fix
+- Rewrote the heading loop to iterate unfiltered siblings and stop at the next
+  heading, restoring linear-time extraction.
+- Skip the `print.html` merged page entirely - it duplicates every chapter.
+
+### Changed
+- `extract_html_content()`: Fixed O(N^2) duplicate-text bug
+- `process_documents()`: Skip merged `print.html` pages
+- Wiki processing now completes in seconds instead of hanging
+
 ## [6.0.5] - 2026-08-04
 
 ### Critical Bug Fixes

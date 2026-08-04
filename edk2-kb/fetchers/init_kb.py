@@ -436,10 +436,16 @@ def extract_html_content(html_path: Path) -> str:
                 prefix = "#" * level
                 content_parts.append(f"\n{prefix} {heading_text}")
                 
-                # Get paragraphs under this heading
-                for sibling in heading.find_next_siblings(['p', 'pre', 'ul', 'ol', 'table']):
+                # Get paragraphs under this heading, stopping at the next heading.
+                # NOTE: use unfiltered find_next_siblings() so the h1-h4 break
+                # condition can actually fire. A filtered call only ever returns
+                # p/pre/ul/ol/table nodes, making the break unreachable and
+                # turning extraction into O(N^2) duplicate text.
+                for sibling in heading.find_next_siblings():
                     if sibling.name in ['h1', 'h2', 'h3', 'h4']:
                         break
+                    if sibling.name not in ['p', 'pre', 'ul', 'ol', 'table']:
+                        continue
                     
                     text = sibling.get_text(separator='\n', strip=True)
                     if text and len(text) > 10:
@@ -523,6 +529,12 @@ def process_documents() -> int:
     for url, info in tqdm(wiki_meta.get('pages', {}).items(), desc="Processing wiki"):
         page_path = WIKI_DIR / info.get('path', '')
         if not page_path.exists():
+            continue
+        
+        # Skip the mdbook merged print page: it duplicates every chapter and
+        # can expand to gigabytes of text, hanging processing for hours.
+        if Path(info.get('path', '')).name == 'print.html':
+            log(f"Skipping merged print page: {info.get('path')}")
             continue
         
         try:
