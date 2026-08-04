@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.9] - 2026-08-04
+
+### RAG: Hybrid Retrieval + Section-Aware Chunking
+
+Big accuracy improvement for the knowledge base MCP search.
+
+#### Chunking
+- Replaced fixed-window chunking with **section-aware chunking**
+  (`chunk_text_structured`): chunks now break on markdown heading boundaries
+  and each chunk carries its section path (e.g.
+  `EDK II Driver's Guide > 31.4.1 Configuring DebugLib`).
+- Section paths are stored in ChromaDB metadata and in the returned results,
+  so answers keep their document/章节 context.
+- Rebuilt index grew from 12,301 to 14,819 higher-quality chunks.
+
+#### Retrieval
+- Added a **SQLite FTS5 (BM25) keyword index** (`build_fts_index`,
+  `data/fts_index.db`) alongside the vector index.
+- `search()` now runs vector + keyword search and merges them with
+  **reciprocal rank fusion (RRF)**, so precise EDK2 identifiers
+  (GUIDs, PCD/API names) that dense vectors miss are still found by
+  keyword match, while paraphrased queries are caught by vectors.
+- FTS queries expand camelCase / snake_case identifiers
+  (`PcdDebugPrintErrorLevel` → `pcd debug print error level`) so both
+  tokenization styles hit.
+- Fixed SQLite cross-thread error: the FTS connection may be created by the
+  background preload thread but is used from request threads
+  (`check_same_thread=False`).
+
+### Changed
+- `init_kb.py`: `chunk_text_structured`, `build_fts_index`, section metadata
+- `search_engine.py`: hybrid `search()`, `_search_bm25`, `_merge_rrf`,
+  `_fts_query_expr`, section in results
+
 ## [6.0.8] - 2026-08-04
 
 ### Critical Bug Fix

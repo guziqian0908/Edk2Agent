@@ -10,6 +10,7 @@ searches do not pay per-request model loading costs.
 
 import json
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -70,12 +71,62 @@ def rewrite_query(query: str) -> str:
     expanded = query
     for term, expansion in TERM_EXPANSIONS.items():
         # Match term as standalone word (case-sensitive)
-        import re
         pattern = r'\b' + term + r'\b'
         if re.search(pattern, query):
             expanded = re.sub(pattern, expansion, expanded)
-    
+
     return expanded
+
+
+# FTS5 keyword search (SQLite, stdlib) fused with the vector index at query
+# time. unicode61 splits EDK2 identifiers like EFI_CPU_ARCH_PROTOCOL into
+# [efi, cpu, arch, protocol] tokens, so precise terms still match.
+_FTS_STOPWORDS = {
+    "the", "a", "an", "and", "or", "of", "to", "in", "for", "on", "with",
+    "is", "are", "was", "were", "be", "been", "being", "this", "that",
+    "these", "those", "from", "by", "as", "at", "it", "its", "into", "via",
+}
+
+
+def _camel_split(word: str) -> List[str]:
+    """Split camelCase / PascalCase identifiers into sub-words.
+
+    PcdDebugPrintErrorLevel -> [Pcd, Debug, Print, Error, Level]
+    (snake_case identifiers are already split on '_' by the caller.)
+    """
+    return re.findall(r'[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+', word)
+
+
+def _fts_query_expr(query: str) -> str:
+    """Build an FTS5 MATCH expression for a query.
+
+    FTS5's unicode61 tokenizer does NOT split camelCase identifiers
+    (PcdDebugPrintErrorLevel -> one token 'pcddebugprinterrorlevel') but DOES
+    split snake_case on '_'. To catch both, each whitespace-delimited word
+    becomes an OR of its whole-word prefix and (when it has >=2 camel sub-words)
+    an AND of the sub-word prefixes. Words are joined with AND.
+    """
+    words = [w for w in re.split(r'[\s\W]+', query) if w]
+    clauses: List[str] = []
+    for w in words:
+        inner = [w.lower() + '*']
+        subs = [p.lower() for p in _camel_split(w)
+                if len(p) >= 2 and p.lower() not in _FTS_STOPWORDS]
+        if len(subs) >= 2:
+            inner.append('(' + ' AND '.join(s + '*' for s in subs) + ')')
+        clauses.append('(' + ' OR '.join(inner) + ')')
+    return ' AND '.join(clauses)
+
+
+def _fts_tokens(query: str) -> List[str]:
+    """Tokenize a query like FTS5 unicode61 does, expanding camelCase ids."""
+    tokens: List[str] = []
+    for word in re.split(r'[\s\W_]+', query):
+        for part in _camel_split(word):
+            p = part.lower()
+            if len(p) >= 2 and p not in _FTS_STOPWORDS:
+                tokens.append(p)
+    return tokens
 
 
 class SearchEngine:
@@ -96,6 +147,8 @@ class SearchEngine:
         self._documents: List[Dict[str, Any]] = []
         self._collection = None
         self._client = None
+        self._fts_conn = None
+        self._fts_available = False
 
         if preload:
             self.start_preload()
@@ -129,6 +182,7 @@ class SearchEngine:
                 return
             if not self.chroma_dir.exists():
                 self._load_documents_index()
+                self._connect_fts()
                 self._ready = True
                 return
             try:
@@ -155,6 +209,7 @@ class SearchEngine:
                 # the document-file fallback instead of blocking startup.
                 self._load_documents_index()
                 self._load_error = f"ChromaDB unavailable ({e}); using file search"
+            self._connect_fts()
             self._ready = True
 
     def is_ready(self) -> bool:
@@ -183,7 +238,13 @@ class SearchEngine:
 
     def search(self, query: str, top_k: int = 5,
                source_filter: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Search the knowledge base.
+        """Search the knowledge base with hybrid retrieval.
+
+        Dense vector search (ChromaDB) and keyword BM25 search (SQLite FTS5)
+        are both run and merged with reciprocal rank fusion, so precise EDK2
+        identifiers (GUIDs, PCD/API names) that vectors miss are still found
+        via the keyword index, while paraphrased queries are caught by the
+        vector index.
 
         Args:
             query: Search query text.
@@ -193,12 +254,16 @@ class SearchEngine:
         """
         # Rewrite query to expand technical terms
         expanded_query = rewrite_query(query)
-        
+
         self.load()
         if self._collection is not None:
-            # Retrieve more candidates for reranking
-            candidates = self._search_chroma(expanded_query, top_k * 4, source_filter)
-            
+            # Retrieve more candidates for reranking from both indexes.
+            chroma_hits = self._search_chroma(expanded_query, top_k * 4,
+                                              source_filter)
+            fts_hits = self._search_bm25(expanded_query, top_k * 4,
+                                         source_filter)
+            candidates = self._merge_rrf(chroma_hits, fts_hits, top_k * 4)
+
             # Rerank if we have enough candidates
             if len(candidates) > top_k:
                 return self._rerank_results(query, candidates, top_k)
@@ -283,7 +348,16 @@ class SearchEngine:
                         continue
                     seen_sources.add(source_key)
 
+                    pid = None
+                    try:
+                        cid = results['ids'][0][i]
+                        if cid.startswith('doc_'):
+                            pid = int(cid[4:])
+                    except (KeyError, IndexError, TypeError, ValueError):
+                        pass
+
                     documents.append({
+                        '_pid': pid,
                         'score': round(
                             1.0 - results['distances'][0][i], 4
                         ) if results.get('distances') else 0.5,
@@ -293,6 +367,7 @@ class SearchEngine:
                                               metadata.get('file', 'Unknown')),
                         'url': metadata.get('url', ''),
                         'file': metadata.get('file', ''),
+                        'section': metadata.get('section', ''),
                         'snippet': doc[:500],
                     })
 
@@ -331,6 +406,7 @@ class SearchEngine:
                         'title': doc.get('title', doc.get('file', 'Unknown')),
                         'url': doc.get('url', ''),
                         'file': doc.get('file', ''),
+                        'section': doc.get('section', ''),
                         'snippet': self._extract_snippet(
                             content, query_terms)[:500],
                     })
@@ -339,6 +415,102 @@ class SearchEngine:
 
         results.sort(key=lambda x: x['score'], reverse=True)
         return results[:top_k]
+
+    # ------------------------------------------------------------------ #
+    # Hybrid retrieval (vector + FTS5 keyword + RRF)
+    # ------------------------------------------------------------------ #
+
+    def _connect_fts(self) -> None:
+        """Open the SQLite FTS5 keyword index (best-effort)."""
+        if self._fts_conn is not None:
+            return
+        fts_db = self.data_dir / "fts_index.db"
+        if not fts_db.exists():
+            return
+        try:
+            import sqlite3
+            # The connection may be created by the background preload thread
+            # but used from request threads, so disable the same-thread check.
+            self._fts_conn = sqlite3.connect(
+                str(fts_db), check_same_thread=False)
+            self._fts_available = True
+        except Exception:
+            self._fts_conn = None
+            self._fts_available = False
+
+    def _search_bm25(self, query: str, top_k: int,
+                     source_filter: Optional[str]) -> List[Dict[str, Any]]:
+        """Keyword search against the SQLite FTS5 index (BM25 ranking)."""
+        if not self._fts_available or self._fts_conn is None:
+            return []
+        import sqlite3
+        match_expr = _fts_query_expr(query)
+        if not match_expr:
+            return []
+        sql = (
+            "SELECT pid, source, title, url, file, repo, section, "
+            "bm25(docs), snippet(docs, 7, '[', ']', ' … ', 24) "
+            "FROM docs WHERE docs MATCH ?"
+        )
+        params: List[Any] = [match_expr]
+        if source_filter:
+            sql += " AND source = ?"
+            params.append(source_filter)
+        sql += " ORDER BY bm25(docs) LIMIT ?"
+        params.append(top_k)
+
+        try:
+            rows = self._fts_conn.execute(sql, params).fetchall()
+        except sqlite3.Error:
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for (pid, source, title, url, file_, repo, section,
+             rank, snip) in rows:
+            results.append({
+                '_pid': pid,
+                'score': round(-float(rank), 4),
+                'source': source,
+                'source_display': self._format_source(source),
+                'title': title or file_ or 'Unknown',
+                'url': url or '',
+                'file': file_ or '',
+                'section': section or '',
+                'snippet': snip or '',
+            })
+        return results
+
+    def _merge_rrf(self, chroma_hits: List[Dict[str, Any]],
+                   fts_hits: List[Dict[str, Any]],
+                   limit: int) -> List[Dict[str, Any]]:
+        """Fuse two ranked lists with reciprocal rank fusion."""
+        k = 60
+        merged: Dict[str, Dict[str, Any]] = {}
+
+        def key_of(item: Dict[str, Any], prefix: str) -> str:
+            pid = item.get('_pid')
+            if pid is not None:
+                return f"{prefix}{pid}"
+            return f"{prefix}{item.get('source')}|{item.get('title')}|{item.get('section')}"
+
+        for rank, item in enumerate(chroma_hits):
+            entry = merged.setdefault(key_of(item, 'c'), dict(item))
+            entry['rrf'] = entry.get('rrf', 0.0) + 1.0 / (k + rank + 1)
+
+        for rank, item in enumerate(fts_hits):
+            key = key_of(item, 'f')
+            if key in merged:
+                # Same doc already ranked by the vector index: keep its
+                # cleaner snippet, just bump the fused score.
+                merged[key]['rrf'] = merged[key].get('rrf', 0.0) + 1.0 / (k + rank + 1)
+            else:
+                merged[key] = dict(item, rrf=1.0 / (k + rank + 1))
+
+        ranked = sorted(merged.values(), key=lambda x: x['rrf'], reverse=True)
+        for item in ranked:
+            item.pop('rrf', None)
+            item.pop('_pid', None)
+        return ranked[:limit]
 
     # ------------------------------------------------------------------ #
     # Status

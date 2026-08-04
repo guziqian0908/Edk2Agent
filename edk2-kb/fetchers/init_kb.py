@@ -5,6 +5,7 @@ Full site crawling with incremental update support
 """
 
 import os
+import re
 import sys
 import json
 import time
@@ -461,53 +462,146 @@ def extract_html_content(html_path: Path) -> str:
         return ""
 
 
+_MARKDOWN_HEADING_RE = re.compile(r'^(#{1,6})\s+(.*)$')
+_HEADING_LEVELS = ('h1', 'h2', 'h3', 'h4', 'h5', 'h6')
+
+
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[Dict]:
     """Split text into overlapping chunks for better retrieval.
-    
+
     Args:
         text: Full text to chunk
         chunk_size: Target size of each chunk in characters
         overlap: Number of characters to overlap between chunks
-    
+
     Returns:
         List of dicts with 'text' and 'position' keys
     """
     if len(text) <= chunk_size:
         return [{'text': text, 'position': f"0-{len(text)}"}]
-    
+
     chunks = []
     start = 0
     min_chunk_size = 200  # Minimum chunk size
-    
+
     while start < len(text):
         end = min(start + chunk_size, len(text))
-        
+
         # Try to break at sentence boundary (look back 150 chars)
         if end < len(text):
             search_start = max(start, end - 150)
             last_period = text.rfind('.', search_start, end)
             last_newline = text.rfind('\n', search_start, end)
             break_point = max(last_period, last_newline)
-            
+
             if break_point > start + min_chunk_size:
                 end = break_point + 1
-        
+
         chunk_content = text[start:end].strip()
-        
+
         # Only add chunks that are meaningful size
         if len(chunk_content) >= min_chunk_size:
             chunks.append({
                 'text': chunk_content,
                 'position': f"{start}-{end}"
             })
-        
+
         # Move start with overlap, but ensure progress
         next_start = end - overlap
         if next_start <= start:
             next_start = start + chunk_size
         start = next_start
-    
+
     return chunks if chunks else [{'text': text, 'position': f"0-{len(text)}"}]
+
+
+def _split_long_text(text: str, chunk_size: int = 800,
+                     overlap: int = 100, min_chunk_size: int = 150) -> List[str]:
+    """Split an over-long section body at sentence boundaries."""
+    if len(text) <= chunk_size:
+        return [text]
+    parts = []
+    start = 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        if end < len(text):
+            search_start = max(start, end - 160)
+            # Prefer the last paragraph break, then the last sentence break.
+            last_nl = text.rfind('\n', search_start, end)
+            last_period = text.rfind('.', search_start, end)
+            break_point = max(last_nl, last_period)
+            if break_point > start + min_chunk_size:
+                end = break_point + 1
+        part = text[start:end].strip()
+        if len(part) >= min_chunk_size:
+            parts.append(part)
+        next_start = end - overlap
+        if next_start <= start:
+            next_start = start + chunk_size
+        start = next_start
+    return parts if parts else [text]
+
+
+def chunk_text_structured(text: str, chunk_size: int = 800,
+                          overlap: int = 100) -> List[Dict]:
+    """Split text into chunks that respect the markdown heading hierarchy.
+
+    Each chunk keeps its section path (the chain of headings that contains
+    it) so retrieval retains document context. Over-long sections are split
+    at sentence boundaries and each sub-chunk is prefixed with its section
+    path, dramatically improving relevance for structured EDK2 docs.
+
+    Returns:
+        List of dicts with 'text', 'position' and 'section' keys.
+    """
+    lines = text.split('\n')
+    if not lines:
+        return []
+
+    chunks: List[Dict] = []
+    heading_stack: List[Tuple[int, str]] = []
+    current_lines: List[str] = []
+
+    def section_path() -> str:
+        return ' > '.join(title for _, title in heading_stack)
+
+    def flush() -> None:
+        nonlocal current_lines
+        if not current_lines:
+            return
+        body = '\n'.join(current_lines).strip()
+        current_lines = []
+        if not body:
+            return
+        section = section_path()
+        if len(body) <= chunk_size or not section:
+            # Short section, or no heading context: keep as a single chunk.
+            if section:
+                body = f"Section: {section}\n{body}"
+            chunks.append({'text': body, 'position': f"0-{len(body)}",
+                           'section': section})
+            return
+        # Long section: split at sentence boundaries, prefix the section path.
+        for i, sub in enumerate(_split_long_text(body, chunk_size, overlap)):
+            sub_body = f"Section: {section}\n{sub}"
+            chunks.append({'text': sub_body, 'position': f"{i}:{len(sub)}",
+                           'section': section})
+
+    for line in lines:
+        m = _MARKDOWN_HEADING_RE.match(line.strip())
+        if m:
+            flush()
+            level = len(m.group(1))
+            title = m.group(2).strip()
+            while heading_stack and heading_stack[-1][0] >= level:
+                heading_stack.pop()
+            heading_stack.append((level, title))
+            current_lines.append(line)
+        else:
+            current_lines.append(line)
+    flush()
+
+    return chunks if chunks else chunk_text(text, chunk_size, overlap)
 
 
 def process_documents() -> int:
@@ -542,9 +636,11 @@ def process_documents() -> int:
             content = extract_html_content(page_path)
             
             if len(content) > 100:
-                # Chunk the document for better retrieval
-                chunks = chunk_text(content, chunk_size=800, overlap=100)
-                
+                # Chunk the document for better retrieval, keeping section
+                # headings so each chunk retains its document context.
+                chunks = chunk_text_structured(content, chunk_size=800,
+                                               overlap=100)
+
                 for chunk_idx, chunk in enumerate(chunks):
                     doc_file = PROCESSED_DIR / f"wiki_{len(documents)}.txt"
                     with open(doc_file, 'w', encoding='utf-8') as f:
@@ -552,14 +648,16 @@ def process_documents() -> int:
                         f.write(f"URL: {url}\n")
                         f.write(f"Source: tianocore-wiki\n")
                         f.write(f"Chunk: {chunk_idx+1}/{len(chunks)}\n")
-                        f.write(f"Position: {chunk['position']}\n\n")
+                        f.write(f"Section: {chunk.get('section', '')}\n")
+                        f.write(f"Position: {chunk.get('position', '')}\n\n")
                         f.write(chunk['text'])
-                    
+
                     documents.append({
                         'path': str(doc_file),
                         'source': 'tianocore-wiki',
                         'title': info.get('title', 'Unknown'),
                         'url': url,
+                        'section': chunk.get('section', ''),
                         'chunk_idx': chunk_idx,
                         'total_chunks': len(chunks)
                     })
@@ -585,10 +683,12 @@ def process_documents() -> int:
                 
                 if len(content) > 100:
                     repo_name = rel_path.split(os.sep)[0] if os.sep in rel_path else "docs"
-                    
-                    # Chunk the document for better retrieval
-                    chunks = chunk_text(content, chunk_size=800, overlap=100)
-                    
+
+                    # Chunk the document for better retrieval, keeping section
+                    # headings so each chunk retains its document context.
+                    chunks = chunk_text_structured(content, chunk_size=800,
+                                                   overlap=100)
+
                     for chunk_idx, chunk in enumerate(chunks):
                         doc_file = PROCESSED_DIR / f"docs_{len(documents)}.txt"
                         with open(doc_file, 'w', encoding='utf-8') as f:
@@ -596,14 +696,16 @@ def process_documents() -> int:
                             f.write(f"Repo: {repo_name}\n")
                             f.write(f"Source: tianocore-docs\n")
                             f.write(f"Chunk: {chunk_idx+1}/{len(chunks)}\n")
-                            f.write(f"Position: {chunk['position']}\n\n")
+                            f.write(f"Section: {chunk.get('section', '')}\n")
+                            f.write(f"Position: {chunk.get('position', '')}\n\n")
                             f.write(chunk['text'])
-                        
+
                         documents.append({
                             'path': str(doc_file),
                             'source': 'tianocore-docs',
                             'repo': repo_name,
                             'file': rel_path,
+                            'section': chunk.get('section', ''),
                             'chunk_idx': chunk_idx,
                             'total_chunks': len(chunks)
                         })
@@ -691,6 +793,7 @@ def build_chroma_index() -> int:
                     'url': doc.get('url', ''),
                     'file': doc.get('file', ''),
                     'repo': doc.get('repo', ''),
+                    'section': doc.get('section', ''),
                     'chunk_idx': doc.get('chunk_idx', 0),
                     'total_chunks': doc.get('total_chunks', 1)
                 })
@@ -707,6 +810,87 @@ def build_chroma_index() -> int:
     
     log(f"Indexed {indexed} documents into ChromaDB")
     return indexed
+
+
+FTS_DB = DATA_DIR / "fts_index.db"
+
+_FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(
+    pid UNINDEXED,
+    source UNINDEXED,
+    title,
+    url UNINDEXED,
+    file UNINDEXED,
+    repo UNINDEXED,
+    section,
+    body,
+    tokenize = 'porter unicode61'
+)
+"""
+
+
+def build_fts_index() -> int:
+    """Build a SQLite FTS5 (BM25) keyword index alongside the vector index.
+
+    The vector and keyword indexes are fused at query time with reciprocal
+    rank fusion, which dramatically improves retrieval of EDK2 identifiers
+    (GUIDs, PCD names, API names) that dense embeddings handle poorly.
+    """
+    import sqlite3
+
+    doc_index = PROCESSED_DIR / 'documents.json'
+    if not doc_index.exists():
+        log("No processed documents found, skipping FTS index", "ERROR")
+        return 0
+
+    with open(doc_index, 'r', encoding='utf-8') as f:
+        documents = json.load(f)
+
+    log(f"Building FTS5 keyword index for {len(documents)} documents...")
+
+    fts_path = FTS_DB
+    try:
+        fts_path.unlink()
+    except FileNotFoundError:
+        pass
+
+    conn = sqlite3.connect(str(fts_path))
+    conn.execute(_FTS_SCHEMA)
+
+    rows = []
+    for i, doc in enumerate(documents):
+        try:
+            with open(doc['path'], 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            # Strip the metadata header block written by process_documents.
+            body = content.split('\n\n', 1)[1] if '\n\n' in content else content
+            if not body.strip():
+                continue
+            rows.append((
+                i,                                  # pid == chroma id doc_i
+                doc.get('source', 'unknown'),
+                doc.get('title', ''),
+                doc.get('url', ''),
+                doc.get('file', ''),
+                doc.get('repo', ''),
+                doc.get('section', ''),
+                body,
+            ))
+        except Exception:
+            continue
+
+    conn.execute("BEGIN")
+    conn.executemany(
+        "INSERT INTO docs (pid, source, title, url, file, repo, section, body) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    conn.commit()
+    conn.execute(
+        "INSERT INTO docs(docs) VALUES('optimize')")
+    conn.commit()
+    conn.close()
+
+    log(f"Indexed {len(rows)} documents into FTS5 keyword index")
+    return len(rows)
 
 def main():
     parser = argparse.ArgumentParser(description='EDK2 Knowledge Base Initializer')
@@ -754,7 +938,13 @@ def main():
         log("Step 4: Building Vector Index")
         log("=" * 60)
         build_chroma_index()
-    
+
+    log("")
+    log("=" * 60)
+    log("Step 5: Building Keyword Index")
+    log("=" * 60)
+    build_fts_index()
+
     log("")
     log("=" * 60)
     log("SUCCESS: Knowledge base initialized!")
