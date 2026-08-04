@@ -2,7 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
-## [6.0.9] - 2026-08-04
+## [6.0.12] - 2026-08-04
+
+### RAG: Reranker + Multi-Query Retrieval
+
+#### Reranking (now enabled)
+- The cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`, ~22MB)
+  now runs on cached models (`local_files_only=True` - never blocks on a
+  download, missing model still degrades gracefully).
+- Device configurable via `EDK2_RERANKER_DEVICE` (default `cpu`; set `cuda`
+  to use an NVIDIA GPU, e.g. `EDK2_RERANKER_DEVICE=cuda`).
+- Search results are deduplicated by source document after reranking (one
+  file can produce several matching chunks; only the best chunk is kept).
+
+#### Multi-query retrieval
+- `search()` now runs both the original query and the expanded (term-rewritten)
+  query against the vector and keyword indexes, fusing all candidates with
+  reciprocal rank fusion before reranking - more diverse high-quality
+  candidates reach the reranker.
+
+### Changed
+- `search_engine.py`: `_rerank_results` (device + dedup), `_merge_rrf`
+  (rank groups), multi-query `search()`
+
+## [6.0.11] - 2026-08-04
+- Sync `mcp_server.py` `PKG_VERSION` with the npm package version (was stuck at 6.0.8).
+
+## [6.0.10] - 2026-08-04
+- `daemon start`: raise startup health window 20s -> 60s. The 14,819-chunk index
+  + embedding model cold-start exceeds 20s on some machines, which made
+  `daemon start` / opencode startup report failure even though the daemon
+  finished booting moments later.
 
 ### RAG: Hybrid Retrieval + Section-Aware Chunking
 

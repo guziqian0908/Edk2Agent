@@ -34,9 +34,10 @@ EMBEDDING_DEVICE = os.environ.get("EDK2_EMBEDDING_DEVICE", "cpu")
 # Reranker (cross-encoder) used to reorder the initial retrieval candidates.
 # small default keeps startup fast. local_files_only=True below guarantees
 # search never blocks on a model download (a missing/corrupt model simply
-# skips reranking). Override via EDK2_RERANKER_MODEL.
+# skips reranking). Override via EDK2_RERANKER_MODEL / EDK2_RERANKER_DEVICE.
 RERANKER_MODEL = os.environ.get(
     "EDK2_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+RERANKER_DEVICE = os.environ.get("EDK2_RERANKER_DEVICE", "cpu")
 
 # EDK2 Technical term expansion for better retrieval
 TERM_EXPANSIONS = {
@@ -257,12 +258,15 @@ class SearchEngine:
 
         self.load()
         if self._collection is not None:
-            # Retrieve more candidates for reranking from both indexes.
-            chroma_hits = self._search_chroma(expanded_query, top_k * 4,
-                                              source_filter)
-            fts_hits = self._search_bm25(expanded_query, top_k * 4,
-                                         source_filter)
-            candidates = self._merge_rrf(chroma_hits, fts_hits, top_k * 4)
+            # Multi-query retrieval: run both the original and the expanded
+            # query so each index contributes more diverse candidates, then
+            # fuse with reciprocal rank fusion.
+            queries = list(dict.fromkeys([query, expanded_query]))
+            groups: List[List[Dict[str, Any]]] = []
+            for q in queries:
+                groups.append(self._search_chroma(q, top_k * 3, source_filter))
+                groups.append(self._search_bm25(q, top_k * 3, source_filter))
+            candidates = self._merge_rrf(groups, top_k * 6)
 
             # Rerank if we have enough candidates
             if len(candidates) > top_k:
@@ -293,6 +297,7 @@ class SearchEngine:
                 self._reranker = CrossEncoder(
                     RERANKER_MODEL,
                     max_length=512,
+                    device=RERANKER_DEVICE,
                     local_files_only=True,
                 )
             
@@ -301,17 +306,26 @@ class SearchEngine:
             
             # Score with cross-encoder
             scores = self._reranker.predict(pairs)
-            
+
             # Sort by reranker score
             scored_results = list(zip(candidates, scores))
             scored_results.sort(key=lambda x: x[1], reverse=True)
-            
-            # Return top_k with updated scores
+
+            # Deduplicate by source document (a single file may have several
+            # matching chunks), keeping the highest-scoring chunk per doc.
             results = []
-            for candidate, score in scored_results[:top_k]:
+            seen_docs = set()
+            for candidate, score in scored_results:
+                doc_key = (candidate.get('source'),
+                           candidate.get('file') or candidate.get('title'))
+                if doc_key in seen_docs:
+                    continue
+                seen_docs.add(doc_key)
                 candidate['rerank_score'] = float(score)
                 results.append(candidate)
-            
+                if len(results) >= top_k:
+                    break
+
             return results
             
         except Exception as e:
@@ -480,31 +494,28 @@ class SearchEngine:
             })
         return results
 
-    def _merge_rrf(self, chroma_hits: List[Dict[str, Any]],
-                   fts_hits: List[Dict[str, Any]],
+    def _merge_rrf(self, ranked_groups: List[List[Dict[str, Any]]],
                    limit: int) -> List[Dict[str, Any]]:
-        """Fuse two ranked lists with reciprocal rank fusion."""
+        """Fuse several ranked lists with reciprocal rank fusion.
+
+        Each list contributes an independent rank space (k + rank), so
+        results from the original vs expanded query keep their own ordering.
+        """
         k = 60
         merged: Dict[str, Dict[str, Any]] = {}
 
-        def key_of(item: Dict[str, Any], prefix: str) -> str:
+        def key_of(item: Dict[str, Any]) -> str:
             pid = item.get('_pid')
             if pid is not None:
-                return f"{prefix}{pid}"
-            return f"{prefix}{item.get('source')}|{item.get('title')}|{item.get('section')}"
+                return f"{item.get('source', '?')}:{pid}"
+            return (f"{item.get('source')}|{item.get('title')}|"
+                    f"{item.get('section')}")
 
-        for rank, item in enumerate(chroma_hits):
-            entry = merged.setdefault(key_of(item, 'c'), dict(item))
-            entry['rrf'] = entry.get('rrf', 0.0) + 1.0 / (k + rank + 1)
-
-        for rank, item in enumerate(fts_hits):
-            key = key_of(item, 'f')
-            if key in merged:
-                # Same doc already ranked by the vector index: keep its
-                # cleaner snippet, just bump the fused score.
-                merged[key]['rrf'] = merged[key].get('rrf', 0.0) + 1.0 / (k + rank + 1)
-            else:
-                merged[key] = dict(item, rrf=1.0 / (k + rank + 1))
+        for group in ranked_groups:
+            for rank, item in enumerate(group):
+                key = key_of(item)
+                entry = merged.setdefault(key, dict(item, rrf=0.0))
+                entry['rrf'] += 1.0 / (k + rank + 1)
 
         ranked = sorted(merged.values(), key=lambda x: x['rrf'], reverse=True)
         for item in ranked:
