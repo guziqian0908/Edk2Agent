@@ -79,6 +79,24 @@ GUIDs, protocols, or spec sections.
 - Code / PCD / protocol names in backticks
 - For PCD or INF keyword questions, give the exact INF `[Pcds]` or DSC
   `[Pcds*]` syntax from the results
+
+## 6. Confidence reporting
+Every search result carries a `confidence` label derived from its reranker
+score:
+
+    high    - rerank score > 4  (strongly relevant)
+    medium  - rerank score 2-4  (relevant)
+    low     - rerank score 0-2  (weakly related)
+    poor    - rerank score < 0  (likely unrelated / out of scope)
+
+End your answer with a one-line "Based on:" note that lists the sources you
+used and their confidence, e.g.:
+
+    Based on: [EDK II INF Specification - 3.8 PCD Sections](url) (medium)
+
+If the strongest available source is `low` or `poor`, state up front that the
+knowledge base covers this poorly and mark the answer as an inference rather
+than a documented fact.
 """
 
 
@@ -124,6 +142,10 @@ Follow the answering guide (call get_kb_citation_guide for the full rules):
 2. Base every claim on a result and cite it inline with its `citation` field.
 3. Quote exact spec snippets for PCD / protocol / INF syntax questions.
 4. If results don't cover the question, say so instead of guessing.
+5. End the answer with a "Based on:" line listing each source and its
+   `confidence` label (high/medium/low/poor). If the strongest source is
+   low or poor, state up front that the knowledge base covers this poorly
+   and mark the answer as an inference.
 
 Question: {question}
 """

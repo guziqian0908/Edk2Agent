@@ -130,11 +130,30 @@ def _fts_tokens(query: str) -> List[str]:
     return tokens
 
 
+def _confidence(rerank_score: Optional[float]) -> str:
+    """Map a reranker score to a coarse confidence label.
+
+    ms-marco-MiniLM-L-6-v2 logits are roughly: strongly relevant >4,
+    relevant 2-4, weakly related 0-2, unrelated <0 (see eval/RESULTS.md for
+    the observed distribution).
+    """
+    if rerank_score is None:
+        return "unrated"
+    if rerank_score > 4.0:
+        return "high"
+    if rerank_score > 2.0:
+        return "medium"
+    if rerank_score > 0.0:
+        return "low"
+    return "poor"
+
+
 def _add_citation(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Attach a ready-to-cite markdown reference to each result.
 
     Format: ``[Title - Section](url)`` (url omitted when unknown). The LLM
-    can paste this verbatim to back every factual claim.
+    can paste this verbatim to back every factual claim. Also tags each
+    result with a ``confidence`` label derived from its reranker score.
     """
     for r in results:
         parts = [p for p in (r.get('title') or r.get('file') or '',
@@ -147,6 +166,7 @@ def _add_citation(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             r['citation'] = cite
         else:
             r['citation'] = url or ''
+        r['confidence'] = _confidence(r.get('rerank_score'))
     return results
 
 
@@ -295,8 +315,10 @@ class SearchEngine:
                 groups.append(self._search_bm25(q, top_k * 3, source_filter))
             candidates = self._merge_rrf(groups, top_k * 6)
 
-            # Rerank if we have enough candidates (unless disabled for eval)
-            if rerank and len(candidates) > top_k:
+            # Rerank any non-empty candidate list, so even out-of-scope
+            # queries get a rerank_score/confidence label that tells the LLM
+            # the knowledge base does not cover them.
+            if rerank and candidates:
                 return _add_citation(
                     self._rerank_results(query, candidates, top_k))
             return _add_citation(candidates[:top_k])

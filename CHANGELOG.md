@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.15] - 2026-08-04
+
+### Answer confidence visible in real usage
+
+Every `search_kb` result now carries a `confidence` label the LLM (and you)
+can see at answer time, derived from the reranker score:
+
+| confidence | rerank score | meaning |
+|---|---|---|
+| high | > 4 | strongly relevant |
+| medium | 2 - 4 | relevant |
+| low | 0 - 2 | weakly related |
+| poor | < 0 | likely unrelated / not covered |
+
+- The answering guide and `edk2_answer_prompt` now require answers to end
+  with a "Based on:" line listing each source and its confidence, and to
+  flag up-front when the strongest source is low/poor (answer is then an
+  inference, not a documented fact). So in a live Q&A session you can see,
+  per answer, how strongly the knowledge base backs it.
+- `search()` reranks any non-empty candidate set, so out-of-scope questions
+  get a `poor` label instead of an unrated result - the LLM will tell you
+  "the knowledge base does not cover this" instead of silently improvising.
+
 ## [6.0.14] - 2026-08-04
 
 ### Retrieval evaluation harness (reproducible accuracy baseline)
