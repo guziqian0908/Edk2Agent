@@ -618,8 +618,8 @@ def process_documents() -> int:
     return len(documents)
 
 def build_chroma_index() -> int:
-    """Build ChromaDB vector index with BGE-M3 embedding"""
-    log("Building ChromaDB vector index with BGE-M3...")
+    """Build ChromaDB vector index with the configured embedding model"""
+    log("Building ChromaDB vector index...")
     
     CHROMA_DIR.mkdir(parents=True, exist_ok=True)
     
@@ -630,16 +630,19 @@ def build_chroma_index() -> int:
         log("ChromaDB not available, skipping index build", "ERROR")
         return 0
     
-    # Use BGE-M3 for better multilingual and technical document understanding
-    log("Loading BGE-M3 embedding model (first run will download ~2.2GB)...")
+    # Embedding model + device (override via env vars). all-MiniLM-L6-v2 is the
+    # default: it is small (~74MB), fast to load and does not block startup.
+    model_name = os.environ.get("EDK2_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    device = os.environ.get("EDK2_EMBEDDING_DEVICE", "cpu")
+    log(f"Loading embedding model {model_name} (device={device})...")
     try:
         embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="BAAI/bge-m3",
-            device="cpu",
+            model_name=model_name,
+            device=device,
             normalize_embeddings=True
         )
     except Exception as e:
-        log(f"Failed to load BGE-M3, using default: {e}", "WARNING")
+        log(f"Failed to load {model_name}, using default: {e}", "WARNING")
         embedding_func = None
     
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))

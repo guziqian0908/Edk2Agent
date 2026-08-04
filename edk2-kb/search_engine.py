@@ -23,6 +23,20 @@ SOURCE_DISPLAY = {
     'tianocore-docs': 'tianocore-docs (仓库)',
 }
 
+# Embedding model used for retrieval. all-MiniLM-L6-v2 is small (~74MB) and
+# fast to load; BAAI/bge-m3 (~2.2GB) historically failed to download and
+# blocked daemon startup. Override via EDK2_EMBEDDING_MODEL / DEVICE.
+EMBEDDING_MODEL = os.environ.get(
+    "EDK2_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+EMBEDDING_DEVICE = os.environ.get("EDK2_EMBEDDING_DEVICE", "cpu")
+
+# Reranker (cross-encoder) used to reorder the initial retrieval candidates.
+# small default keeps startup fast. local_files_only=True below guarantees
+# search never blocks on a model download (a missing/corrupt model simply
+# skips reranking). Override via EDK2_RERANKER_MODEL.
+RERANKER_MODEL = os.environ.get(
+    "EDK2_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+
 # EDK2 Technical term expansion for better retrieval
 TERM_EXPANSIONS = {
     'PCD': 'Platform Configuration Database PCD',
@@ -103,30 +117,44 @@ class SearchEngine:
                 self._load_error = str(e)
 
     def load(self) -> None:
-        """Load the ChromaDB index. Idempotent and thread-safe."""
+        """Load the ChromaDB index. Idempotent and thread-safe.
+
+        The embedding model is only constructed when a ChromaDB index
+        actually exists. Without an index the lightweight document-file
+        fallback is used, so /health never blocks on a (possibly failing)
+        model download/load.
+        """
         with self._lock:
             if self._ready:
+                return
+            if not self.chroma_dir.exists():
+                self._load_documents_index()
+                self._ready = True
                 return
             try:
                 import chromadb
                 from chromadb.utils import embedding_functions
                 
-                # Use BGE-M3 embedding (must match the one used during indexing)
+                # Use the same embedding model used during indexing
                 embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
-                    model_name="BAAI/bge-m3",
-                    device="cpu",
+                    model_name=EMBEDDING_MODEL,
+                    device=EMBEDDING_DEVICE,
                     normalize_embeddings=True
                 )
                 
-                if self.chroma_dir.exists():
-                    self._client = chromadb.PersistentClient(
-                        path=str(self.chroma_dir))
-                    self._collection = self._client.get_or_create_collection(
-                        "edk2_docs",
-                        embedding_function=embedding_func
-                    )
+                self._client = chromadb.PersistentClient(
+                    path=str(self.chroma_dir))
+                self._collection = self._client.get_or_create_collection(
+                    "edk2_docs",
+                    embedding_function=embedding_func
+                )
             except ImportError:
                 self._load_documents_index()
+            except Exception as e:
+                # If the embedding model fails to load, degrade gracefully to
+                # the document-file fallback instead of blocking startup.
+                self._load_documents_index()
+                self._load_error = f"ChromaDB unavailable ({e}); using file search"
             self._ready = True
 
     def is_ready(self) -> bool:
@@ -192,11 +220,15 @@ class SearchEngine:
         try:
             from sentence_transformers import CrossEncoder
             
-            # Load reranker model (lazy, only when needed)
+            # Load reranker model (lazy, only when needed). local_files_only
+            # prevents any network download here: a missing or incomplete
+            # cached model raises immediately and we fall back to the raw
+            # candidates instead of blocking the request.
             if not hasattr(self, '_reranker'):
                 self._reranker = CrossEncoder(
-                    'BAAI/bge-reranker-base',
-                    max_length=512
+                    RERANKER_MODEL,
+                    max_length=512,
+                    local_files_only=True,
                 )
             
             # Prepare query-document pairs

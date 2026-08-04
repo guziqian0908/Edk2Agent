@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.8] - 2026-08-04
+
+### Critical Bug Fix
+
+**Fixed Daemon Startup Failure (failed to start within 20s)**
+
+The daemon crashed/blocked on startup because the MCP server constructed the
+`BAAI/bge-m3` embedding model synchronously inside the `/health` request path.
+That model (~2.2GB) never finished downloading on many machines (0-byte
+`model.safetensors`), so every `/health` probe blocked on the download and the
+Node CLI reported `failed to start within 20s`.
+
+#### Root Cause
+- `SearchEngine.status()` -> `load()` created `SentenceTransformerEmbeddingFunction("BAAI/bge-m3")`
+  on the request thread; a corrupt/incomplete model download hung the request.
+
+#### Fix
+- Default embedding model switched to `sentence-transformers/all-MiniLM-L6-v2`
+  (~74MB, already cached, loads in seconds).
+- `load()` now only builds the embedding function when a `chroma_db` index
+  actually exists; otherwise it uses the document-file fallback immediately.
+- Search reranker switched from `BAAI/bge-reranker-base` (~1.1GB, also found
+  corrupt/incomplete on user machines) to `cross-encoder/ms-marco-MiniLM-L-6-v2`
+  and loaded with `local_files_only=True` so a missing/corrupt model falls back
+  to raw candidates instantly instead of blocking the `/search` request.
+- Model/device configurable via `EDK2_EMBEDDING_MODEL` / `EDK2_EMBEDDING_DEVICE`
+  env vars (e.g. `cuda` to use a GPU); reranker via `EDK2_RERANKER_MODEL`.
+- `build_chroma_index()` uses the same configurable model so index and query
+  always agree.
+
+### Changed
+- `search_engine.py`: Lazy/guarded model load, graceful fallback, env config
+- `init_kb.py`: Configurable embedding model + device
+- `mcp_server.py`: Version bump
+
 ## [6.0.7] - 2026-08-04
 
 ### Critical Bug Fix
