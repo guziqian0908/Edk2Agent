@@ -1,0 +1,226 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [6.0.2] - 2026-08-03
+
+### Major RAG Accuracy Improvements
+
+**Core Enhancement: Better Retrieval Quality**
+
+Significantly improved search accuracy through five key changes:
+
+| Improvement | Before | After |
+|------------|--------|-------|
+| **Embedding Model** | all-MiniLM-L6-v2 (384d) | BAAI/bge-m3 (1024d, multilingual) |
+| **Document Chunking** | Whole documents | 500-char chunks with 50-char overlap |
+| **Text Extraction** | Raw HTML text | Structured extraction with noise removal |
+| **Query Rewriting** | None | EDK2 term expansion (PCD→Platform Configuration Database) |
+| **Reranking** | None | BGE-reranker-base cross-encoder |
+
+### Added
+- `chunk_text()` function for intelligent document chunking (sentence-boundary aware)
+- `extract_html_content()` for clean HTML extraction (removes nav/footer/script)
+- `rewrite_query()` for EDK2 technical term expansion (16 key terms)
+- `_rerank_results()` for cross-encoder reranking (recalls 4x candidates, returns top-k)
+- BGE-M3 embedding model (~2.2GB, multilingual, technical document optimized)
+
+### Changed
+- `build_chroma_index()`: Uses BGE-M3, deletes old collection, smaller batch size (50)
+- `process_documents()`: Now chunks documents with position metadata
+- `SearchEngine.load()`: Uses matching embedding function
+- `SearchEngine.search()`: Applies query rewriting + reranking
+
+### Expected Impact
+- Search scores: from negative/low (-0.3~0.02) to high (0.5~0.8)
+- Chinese queries: significantly improved understanding
+- Long documents: precise chunk-level retrieval
+- Technical terms: semantic gap bridged by expansion
+
+## [6.0.1] - 2026-08-03
+
+### Added
+- **Full tianocore-docs repository sync**: The knowledge base now clones and
+  indexes **all 33 tianocore-docs repositories** (EDK II specifications,
+  coding standards, training guides, security advisories, etc.), not just the
+  primary `Docs` repo.
+  - `edk2-kb/fetchers/init_kb.py` gains a `TIANOCORE_DOCS_REPOS` list and a
+    `repos/` layout under `data/tianocore-docs/`.
+  - Fresh `--init-edk2-wiki` clones every repository; incremental `--update`
+    refreshes all existing repositories.
+  - Docs metadata records per-repo commit (`commits`) and per-file repo name.
+  - Index build now ingests ~1300 markdown files across all repos (was 29).
+
+## [6.0.0] - 2026-08-02
+
+### Major Updates
+
+**Architecture Refactor: Embedded → Server-side MCP Daemon**
+
+The knowledge base now runs as a shared, long-lived HTTP MCP daemon that
+serves OpenCode (and any MCP client) over the Model Context Protocol.
+This redesign keeps all six known problems of the legacy v3.x HTTP MCP
+server from recurring:
+
+| Legacy problem (v3.x) | v6.0.0 solution |
+|----------------------|-----------------|
+| Fixed port 9876 conflicts | **Dynamic port** (bind 0) + singleton watchdog + endpoint persisted in `daemon.json`. No two daemons can ever collide. |
+| Request timeouts over HTTP RPC chains | ChromaDB index is **loaded once and kept in memory** (background pre-warm); searches never re-load the model; fewer hops. |
+| Python process crash = search down | **Watchdog supervisor** (`daemon_runner.py`) auto-respawns the server with exponential backoff; Node CLI self-heals by restarting a dead daemon on demand. |
+| Slow cold start | Server binds the port and serves `/health` **before** the index loads; index loads lazily in the background. |
+| Complex cross-process RPC | Official **FastMCP (MCP SDK)** replaces the hand-rolled HTTP server; one protocol contract + a thin `/health` + `/search` convenience endpoint. |
+| WeKnora instability | **ChromaDB only**; WeKnora removed entirely. |
+
+### Added
+- `edk2-kb/mcp_server.py` — FastMCP HTTP daemon
+  - MCP tools: `search_kb`, `get_kb_status` (Streamable HTTP at `/mcp`)
+  - `/health` (liveness + readiness) and `/search` (CLI convenience)
+  - Dynamic OS-assigned port; writes state to `daemon.json`
+- `edk2-kb/daemon_runner.py` — singleton supervisor with crash auto-restart
+- `edk2-kb/search_engine.py` — reusable, thread-safe, lazy-loading engine
+- `lib/daemon.js` — Node daemon manager (ensure/start/stop/status/search)
+- New CLI commands: `daemon start|stop|restart|status|logs`
+- `opencode.json` now registers the `edk2-kb` remote MCP server automatically
+  with the current dynamic endpoint (`oauth: false`, raised tool-fetch timeout)
+
+### Changed
+- `--search` and `--status` route through the daemon
+- `embedded_search.py` is now a thin CLI wrapper around `search_engine.py`
+- `requirements.txt`: added `fastmcp`, removed WeKnora/faiss/fastapi
+
+### Removed
+- `lib/embedded-search.js` (unused embedded bridge)
+
+## [5.1.1] - 2026-07-31
+
+### Changed
+- **Direct HTTP Token Validation**: Replaced GitHub CLI (`gh auth login --with-token`) dependency with direct HTTPS validation against `https://api.github.com/user`
+  - No longer requires `gh` CLI to be installed
+  - No longer requires `read:org` scope - only `repo` scope needed
+  - Login now verifies the token actually belongs to the provided username (mismatch rejected)
+  - `logout` no longer invokes `gh auth logout`, only clears local credentials
+
+### Fixed
+- **TLS fallback**: If certificate verification fails (corporate proxy/antivirus with custom CA), retries with verification disabled and warns the user. Fixes "unable to verify the first certificate" on machines where Node.js cannot see the system CA store.
+
+## [5.1.0] - 2026-07-31
+
+### Added
+- **GitHub Authentication**: Login required before using the tool
+  - `login <username> <token>` - Login with GitHub credentials
+  - `logout` - Logout and clear credentials
+  - Authentication status shown in `--status` command
+  - All operations require login except `--help`, `--version`, `login`, `logout`
+
+### Security
+- GitHub token stored locally in `~/.edk2-opencode/auth.json`
+- Token validated with GitHub CLI (`gh auth`)
+- Unauthorized access blocked
+
+## [5.0.0] - 2026-07-31
+
+### Major Updates
+
+**Dual Data Source Support**
+- **TianoCore Wiki**: Full site crawling with incremental update support
+- **tianocore-docs**: Git repository clone with automatic updates
+- Search results now display source: "TianoCore Wiki (官网)" or "tianocore-docs (仓库)"
+
+**New Initialization Modes**
+- `--init-edk2-wiki`: Full initialization (download all pages, clone docs, build complete index)
+- `--init-edk2-wiki --update`: Incremental update (sync changes, update index incrementally)
+
+**Enhanced Crawler**
+- Full site recursive traversal (not limited to 519 pages)
+- Content hash-based change detection
+- Metadata tracking for incremental updates
+- Parallel downloading with configurable workers
+
+**Offline Mode**
+- All documents stored locally
+- No network access during runtime
+- Pure offline search capability
+
+### Added
+- `--update` flag for incremental knowledge base updates
+- Source attribution in search results
+- Metadata files for tracking document changes
+
+### Improved
+- Better error handling in crawler
+- Progress tracking with tqdm
+- Document processing pipeline
+
+## [4.0.2] - 2026-07-31
+
+### Fixed
+- **Skills Path Validation**: CLI now checks if skills path actually exists
+  - Fixes issue where config pointed to deleted npx cache directory
+  - Auto-updates config if skills path is invalid or missing
+  - Ensures skills are always loaded correctly
+
+## [4.0.1] - 2026-07-31
+
+### Fixed
+- **Skills Loading Issue**: Fixed skills not being loaded correctly
+  - `opencode.json` now uses absolute paths for skills
+  - CLI auto-updates config to include correct skills path
+  - Ensures `edk2-pr-workflow` and `ovmf-build` are properly loaded
+
+## [4.0.0] - 2026-07-31
+
+### Breaking Changes
+- **Architecture Refactor**: Migrated from multi-process MCP architecture to embedded single-process architecture
+  - Removed standalone Python MCP HTTP server
+  - Removed port 9876 HTTP service
+  - Removed `/health`, `/status`, `/search` HTTP endpoints
+  - Eliminated cross-process HTTP RPC communication
+
+### Added
+- **Embedded Search Module**: Direct Python bridge for vector search
+  - `lib/embedded-search.js`: Node.js module for embedded search
+  - `edk2-kb/embedded_search.py`: Python script for direct-call search
+  - Memory-inlined vector search without HTTP overhead
+  - New CLI command: `--search <query>` for direct search
+
+### Removed
+- Standalone Python MCP server (`mcp_server/server.py`)
+- HTTP server code (port 9876)
+- MCP configuration in `opencode.json`
+- `--start-mcp` command
+
+### Improved
+- **Startup Speed**: No need to wait for MCP server startup
+- **Reliability**: Eliminated port conflicts, process crashes, timeout issues
+- **Simplicity**: Single-process architecture, no background services
+- **Portability**: Fully embedded, no external service dependencies
+
+### Fixed
+- Port occupation issues
+- Request timeout problems
+- Python process crash handling
+- WeKnora component auto-disable
+
+## [3.0.6] - 2026-07-31
+
+### Fixed
+- Knowledge base persistence in user directory (`~/.edk2-opencode/kb`)
+
+## [3.0.5] - 2026-07-31
+
+### Added
+- CHANGELOG.md for version tracking
+- README updates for Skills documentation
+
+## [3.0.4] - 2026-07-31
+
+### Added
+- edk2-pr-workflow Skill
+- ovmf-build Skill
+
+## [3.0.0] - 2026-07-30
+
+### Added
+- WeKnora vector search integration
+- Fixed MCP port (9876)
+- Offline knowledge base

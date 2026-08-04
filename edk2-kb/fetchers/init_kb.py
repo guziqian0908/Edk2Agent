@@ -1,0 +1,747 @@
+#!/usr/bin/env python3
+"""
+EDK2 Knowledge Base Initializer - Enhanced Version
+Full site crawling with incremental update support
+"""
+
+import os
+import sys
+import json
+import time
+import shutil
+import subprocess
+import hashlib
+import argparse
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from typing import Dict, List, Set, Tuple, Optional
+
+import requests
+from bs4 import BeautifulSoup
+from tqdm import tqdm
+
+BASE_DIR = Path(__file__).parent.parent
+DATA_DIR = BASE_DIR / "data"
+WIKI_DIR = DATA_DIR / "tianocore-wiki"
+DOCS_DIR = DATA_DIR / "tianocore-docs"
+CHROMA_DIR = DATA_DIR / "chroma_db"
+PROCESSED_DIR = DATA_DIR / "processed"
+
+WIKI_BASE_URL = "https://www.tianocore.org/tianocore-wiki.github.io/"
+DOCS_REPO_URL = "https://github.com/tianocore-docs/Docs.git"
+
+TIANOCORE_DOCS_REPOS = [
+    "ATBB-Memory_Protection_in_UEFI_BIOS",
+    "ATBB-Mitigate_Buffer_Overflow_in_UEFI",
+    "Docs",
+    "EDK_II_Secure_Code_Review_Guide",
+    "EDK_II_Secure_Coding_Guide",
+    "EDKIIHttpBootGettingStartedGuide",
+    "EDKIIHttpsBootGettingStartedGuide",
+    "SecurityAdvisory",
+    "ThirdPartySecurityAdvisories",
+    "Training",
+    "UEFI_Driver_HII_Linux_Lab_Guide",
+    "UEFI_Driver_HII_Win_Lab_Guide",
+    "Understanding_UEFI_Secure_Boot_Chain",
+    "edk2-BuildSpecification",
+    "edk2-CCodingStandardsSpecification",
+    "edk2-DecSpecification",
+    "edk2-DscSpecification",
+    "edk2-FdfSpecification",
+    "edk2-GettingStartedGuideforStandaloneMMonX86Systems",
+    "edk2-IdfSpecification",
+    "edk2-InfSpecification",
+    "edk2-MetaDataExpressionSyntaxSpecification",
+    "edk2-MinimumPlatformSpecification",
+    "edk2-ModuleWriteGuide",
+    "edk2-PcdSpecification",
+    "edk2-PythonDevelopmentProcessSpecification",
+    "edk2-TemplateSpecification",
+    "edk2-TrustedBootChain",
+    "edk2-UefiDriverWritersGuide",
+    "edk2-UniSpecification",
+    "edk2-VfrSpecification",
+    "publish-gitbook-docs",
+    "tianocore-docs.github.io",
+]
+
+META_FILE = WIKI_DIR / "metadata.json"
+DOCS_META_FILE = DOCS_DIR / "metadata.json"
+
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+})
+
+def log(msg: str, level: str = "INFO"):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] [{level}] {msg}")
+
+def load_metadata() -> Dict:
+    """Load existing metadata for incremental update"""
+    if META_FILE.exists():
+        with open(META_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {
+        'pages': {},
+        'last_update': None,
+        'total_pages': 0
+    }
+
+def save_metadata(meta: Dict):
+    """Save metadata"""
+    META_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(META_FILE, 'w', encoding='utf-8') as f:
+        json.dump(meta, f, indent=2, ensure_ascii=False)
+
+def get_page_hash(content: str) -> str:
+    """Calculate page content hash"""
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
+def fetch_page(url: str) -> Tuple[Optional[str], Optional[Dict], List[str]]:
+    """Fetch a single wiki page"""
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'lxml')
+        
+        relative_path = urlparse(url).path.lstrip('/')
+        if not relative_path:
+            relative_path = 'index.html'
+        elif not relative_path.endswith('.html'):
+            relative_path += '.html'
+        
+        links = []
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            
+            if href.startswith(('http://', 'https://')):
+                if not href.startswith(WIKI_BASE_URL):
+                    continue
+                full_url = href
+            elif href.startswith(('#', 'mailto:', '.')):
+                continue
+            else:
+                full_url = urljoin(url, href)
+            
+            if full_url.startswith(WIKI_BASE_URL):
+                anchor_pos = full_url.find('#')
+                if anchor_pos > 0:
+                    full_url = full_url[:anchor_pos]
+                links.append(full_url)
+        
+        for tag in soup.find_all(['link', 'script', 'img']):
+            src = tag.get('href') or tag.get('src')
+            if src and not src.startswith(('http://', 'https://', 'data:')):
+                asset_url = urljoin(url, src)
+                asset_path = WIKI_DIR / src.lstrip('/')
+                try:
+                    asset_resp = session.get(asset_url, timeout=10)
+                    if asset_resp.status_code == 200:
+                        asset_path.parent.mkdir(parents=True, exist_ok=True)
+                        asset_path.write_bytes(asset_resp.content)
+                except:
+                    pass
+        
+        return response.text, {
+            'url': url,
+            'path': relative_path,
+            'title': soup.title.string if soup.title else url,
+            'hash': get_page_hash(response.text),
+            'fetched_at': datetime.now().isoformat()
+        }, links
+        
+    except Exception as e:
+        log(f"Failed to fetch {url}: {e}", "ERROR")
+        return None, None, []
+
+def crawl_wiki_full(max_workers: int = 10) -> Dict:
+    """Full site crawl"""
+    log("Starting full wiki crawl...")
+    
+    WIKI_DIR.mkdir(parents=True, exist_ok=True)
+    
+    meta = {'pages': {}, 'last_update': None, 'total_pages': 0}
+    
+    visited: Set[str] = set()
+    to_visit: List[str] = [WIKI_BASE_URL]
+    pages_data = []
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        pbar = tqdm(desc="Crawling pages", unit="pages")
+        
+        while to_visit:
+            batch = to_visit[:50]
+            to_visit = to_visit[50:]
+            
+            batch_to_visit = []
+            for url in batch:
+                if url not in visited:
+                    batch_to_visit.append(url)
+                    visited.add(url)
+            
+            if not batch_to_visit:
+                continue
+            
+            futures = {executor.submit(fetch_page, url): url for url in batch_to_visit}
+            
+            for future in as_completed(futures):
+                content, page_info, links = future.result()
+                
+                if content and page_info:
+                    page_file = WIKI_DIR / page_info['path']
+                    page_file.parent.mkdir(parents=True, exist_ok=True)
+                    page_file.write_text(content, encoding='utf-8')
+                    
+                    pages_data.append(page_info)
+                    meta['pages'][page_info['url']] = {
+                        'path': page_info['path'],
+                        'title': page_info['title'],
+                        'hash': page_info['hash'],
+                        'fetched_at': page_info['fetched_at']
+                    }
+                    
+                    for link in links:
+                        if link not in visited:
+                            to_visit.append(link)
+                    
+                    pbar.update(1)
+        
+        pbar.close()
+    
+    meta['last_update'] = datetime.now().isoformat()
+    meta['total_pages'] = len(pages_data)
+    save_metadata(meta)
+    
+    log(f"Full crawl complete: {len(pages_data)} pages")
+    return meta
+
+def crawl_wiki_incremental(max_workers: int = 10) -> Dict:
+    """Incremental update - only fetch changed/new pages"""
+    log("Starting incremental wiki update...")
+    
+    WIKI_DIR.mkdir(parents=True, exist_ok=True)
+    
+    old_meta = load_metadata()
+    new_meta = {'pages': {}, 'last_update': None, 'total_pages': 0}
+    
+    visited: Set[str] = set()
+    to_visit: List[str] = [WIKI_BASE_URL]
+    
+    updated_count = 0
+    new_count = 0
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        pbar = tqdm(desc="Checking pages", unit="pages")
+        
+        while to_visit:
+            batch = to_visit[:50]
+            to_visit = to_visit[50:]
+            
+            batch_to_visit = []
+            for url in batch:
+                if url not in visited:
+                    batch_to_visit.append(url)
+                    visited.add(url)
+            
+            if not batch_to_visit:
+                continue
+            
+            futures = {executor.submit(fetch_page, url): url for url in batch_to_visit}
+            
+            for future in as_completed(futures):
+                content, page_info, links = future.result()
+                
+                if content and page_info:
+                    old_page = old_meta.get('pages', {}).get(page_info['url'])
+                    
+                    needs_update = False
+                    if old_page is None:
+                        needs_update = True
+                        new_count += 1
+                    elif old_page.get('hash') != page_info['hash']:
+                        needs_update = True
+                        updated_count += 1
+                    
+                    if needs_update:
+                        page_file = WIKI_DIR / page_info['path']
+                        page_file.parent.mkdir(parents=True, exist_ok=True)
+                        page_file.write_text(content, encoding='utf-8')
+                    
+                    new_meta['pages'][page_info['url']] = {
+                        'path': page_info['path'],
+                        'title': page_info['title'],
+                        'hash': page_info['hash'],
+                        'fetched_at': page_info['fetched_at']
+                    }
+                    
+                    for link in links:
+                        if link not in visited:
+                            to_visit.append(link)
+                    
+                    pbar.update(1)
+        
+        pbar.close()
+    
+    for url, page_info in old_meta.get('pages', {}).items():
+        if url not in new_meta['pages']:
+            new_meta['pages'][url] = page_info
+    
+    new_meta['last_update'] = datetime.now().isoformat()
+    new_meta['total_pages'] = len(new_meta['pages'])
+    save_metadata(new_meta)
+    
+    log(f"Incremental update complete: {new_count} new, {updated_count} updated")
+    return new_meta
+
+def clone_tianocore_docs() -> Dict:
+    """Clone or update all tianocore-docs repositories"""
+    log("Cloning/updating tianocore-docs repositories...")
+    
+    DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    REPOS_DIR = DOCS_DIR / "repos"
+    REPOS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    meta = {'commits': {}, 'files': [], 'last_update': None}
+    
+    repo_dirs = sorted([d for d in REPOS_DIR.iterdir() if d.is_dir()])
+    if not repo_dirs:
+        log("No repos found under repos/, cloning all tianocore-docs repos...")
+        for repo_name in TIANOCORE_DOCS_REPOS:
+            repo_dir = REPOS_DIR / repo_name
+            log(f"Cloning {repo_name}...")
+            try:
+                subprocess.run(
+                    ['git', 'clone', '--depth', '1', '--single-branch',
+                     f"https://github.com/tianocore-docs/{repo_name}.git",
+                     str(repo_dir)],
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                result = subprocess.run(
+                    ['git', 'rev-parse', 'HEAD'],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                meta['commits'][repo_name] = result.stdout.strip()
+            except Exception as e:
+                log(f"Git clone failed for {repo_name}: {e}", "ERROR")
+        repo_dirs = sorted([d for d in REPOS_DIR.iterdir() if d.is_dir()])
+    
+    for repo_dir in repo_dirs:
+        repo_name = repo_dir.name
+        if (repo_dir / ".git").exists():
+            log(f"Updating {repo_name}...")
+            try:
+                subprocess.run(
+                    ['git', 'fetch', '--depth=1'],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                subprocess.run(
+                    ['git', 'reset', '--hard', 'origin/main'],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                result = subprocess.run(
+                    ['git', 'rev-parse', 'HEAD'],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                meta['commits'][repo_name] = result.stdout.strip()
+            except Exception as e:
+                log(f"Git update failed for {repo_name}: {e}", "WARNING")
+        else:
+            log(f"Cloning {repo_name}...")
+            try:
+                subprocess.run(
+                    ['git', 'clone', '--depth', '1', '--single-branch',
+                     f"https://github.com/tianocore-docs/{repo_name}.git",
+                     str(repo_dir)],
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                result = subprocess.run(
+                    ['git', 'rev-parse', 'HEAD'],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                meta['commits'][repo_name] = result.stdout.strip()
+            except Exception as e:
+                log(f"Git clone failed for {repo_name}: {e}", "ERROR")
+    
+    md_files = sorted(REPOS_DIR.glob('**/*.md'))
+    log(f"Found {len(md_files)} markdown files across {len(repo_dirs)} repos")
+    
+    meta['files'] = [str(f.relative_to(REPOS_DIR)) for f in md_files]
+    meta['last_update'] = datetime.now().isoformat()
+    
+    with open(DOCS_META_FILE, 'w', encoding='utf-8') as f:
+        json.dump(meta, f, indent=2, ensure_ascii=False)
+    
+    return meta
+
+def extract_html_content(html_path: Path) -> str:
+    """Extract clean text from HTML, removing navigation and noise.
+    
+    Args:
+        html_path: Path to HTML file
+    
+    Returns:
+        Clean text content with structure preserved
+    """
+    try:
+        with open(html_path, 'r', encoding='utf-8', errors='ignore') as f:
+            soup = BeautifulSoup(f.read(), 'html.parser')
+        
+        # Remove noise elements
+        for tag in soup(['nav', 'footer', 'aside', 'script', 'style', 
+                         'header', 'iframe', 'noscript', 'form']):
+            tag.decompose()
+        
+        # Try to find main content area
+        main_content = (soup.find('main') or 
+                        soup.find('article') or 
+                        soup.find('div', class_='content') or
+                        soup.find('div', class_='documentation') or
+                        soup.body)
+        
+        if not main_content:
+            return ""
+        
+        # Extract structured content
+        content_parts = []
+        
+        # Extract headings and their associated content
+        for heading in main_content.find_all(['h1', 'h2', 'h3', 'h4']):
+            heading_text = heading.get_text(strip=True)
+            if heading_text:
+                level = int(heading.name[1])
+                prefix = "#" * level
+                content_parts.append(f"\n{prefix} {heading_text}")
+                
+                # Get paragraphs under this heading
+                for sibling in heading.find_next_siblings(['p', 'pre', 'ul', 'ol', 'table']):
+                    if sibling.name in ['h1', 'h2', 'h3', 'h4']:
+                        break
+                    
+                    text = sibling.get_text(separator='\n', strip=True)
+                    if text and len(text) > 10:
+                        content_parts.append(text)
+        
+        # If no structure found, fall back to plain text
+        if not content_parts:
+            content_parts = [main_content.get_text(separator='\n', strip=True)]
+        
+        return '\n'.join(content_parts)
+    
+    except Exception as e:
+        return ""
+
+
+def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[Dict]:
+    """Split text into overlapping chunks for better retrieval.
+    
+    Args:
+        text: Full text to chunk
+        chunk_size: Target size of each chunk in characters
+        overlap: Number of characters to overlap between chunks
+    
+    Returns:
+        List of dicts with 'text' and 'position' keys
+    """
+    if len(text) <= chunk_size:
+        return [{'text': text, 'position': f"0-{len(text)}"}]
+    
+    chunks = []
+    start = 0
+    min_chunk_size = 200  # Minimum chunk size
+    
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        
+        # Try to break at sentence boundary (look back 150 chars)
+        if end < len(text):
+            search_start = max(start, end - 150)
+            last_period = text.rfind('.', search_start, end)
+            last_newline = text.rfind('\n', search_start, end)
+            break_point = max(last_period, last_newline)
+            
+            if break_point > start + min_chunk_size:
+                end = break_point + 1
+        
+        chunk_content = text[start:end].strip()
+        
+        # Only add chunks that are meaningful size
+        if len(chunk_content) >= min_chunk_size:
+            chunks.append({
+                'text': chunk_content,
+                'position': f"{start}-{end}"
+            })
+        
+        # Move start with overlap, but ensure progress
+        next_start = end - overlap
+        if next_start <= start:
+            next_start = start + chunk_size
+        start = next_start
+    
+    return chunks if chunks else [{'text': text, 'position': f"0-{len(text)}"}]
+
+
+def process_documents() -> int:
+    """Process all documents for indexing"""
+    log("Processing documents...")
+    
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    
+    documents = []
+    
+    wiki_meta = load_metadata()
+    log(f"Processing {len(wiki_meta.get('pages', {}))} wiki pages...")
+    
+    for url, info in tqdm(wiki_meta.get('pages', {}).items(), desc="Processing wiki"):
+        page_path = WIKI_DIR / info.get('path', '')
+        if not page_path.exists():
+            continue
+        
+        try:
+            # Use improved HTML extraction
+            content = extract_html_content(page_path)
+            
+            if len(content) > 100:
+                # Chunk the document for better retrieval
+                chunks = chunk_text(content, chunk_size=800, overlap=100)
+                
+                for chunk_idx, chunk in enumerate(chunks):
+                    doc_file = PROCESSED_DIR / f"wiki_{len(documents)}.txt"
+                    with open(doc_file, 'w', encoding='utf-8') as f:
+                        f.write(f"Title: {info.get('title', 'Unknown')}\n")
+                        f.write(f"URL: {url}\n")
+                        f.write(f"Source: tianocore-wiki\n")
+                        f.write(f"Chunk: {chunk_idx+1}/{len(chunks)}\n")
+                        f.write(f"Position: {chunk['position']}\n\n")
+                        f.write(chunk['text'])
+                    
+                    documents.append({
+                        'path': str(doc_file),
+                        'source': 'tianocore-wiki',
+                        'title': info.get('title', 'Unknown'),
+                        'url': url,
+                        'chunk_idx': chunk_idx,
+                        'total_chunks': len(chunks)
+                    })
+        except Exception as e:
+            continue
+    
+    docs_meta_file = DOCS_DIR / "metadata.json"
+    if docs_meta_file.exists():
+        with open(docs_meta_file, 'r', encoding='utf-8') as f:
+            docs_meta = json.load(f)
+        
+        repos_dir = DOCS_DIR / "repos"
+        log(f"Processing {len(docs_meta.get('files', []))} docs files...")
+        
+        for rel_path in tqdm(docs_meta.get('files', []), desc="Processing docs"):
+            md_file = repos_dir / rel_path
+            if not md_file.exists():
+                continue
+            
+            try:
+                with open(md_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                if len(content) > 100:
+                    repo_name = rel_path.split(os.sep)[0] if os.sep in rel_path else "docs"
+                    
+                    # Chunk the document for better retrieval
+                    chunks = chunk_text(content, chunk_size=500, overlap=50)
+                    
+                    for chunk_idx, chunk in enumerate(chunks):
+                        doc_file = PROCESSED_DIR / f"docs_{len(documents)}.txt"
+                        with open(doc_file, 'w', encoding='utf-8') as f:
+                            f.write(f"File: {rel_path}\n")
+                            f.write(f"Repo: {repo_name}\n")
+                            f.write(f"Source: tianocore-docs\n")
+                            f.write(f"Chunk: {chunk_idx+1}/{len(chunks)}\n")
+                            f.write(f"Position: {chunk['position']}\n\n")
+                            f.write(chunk['text'])
+                        
+                        documents.append({
+                            'path': str(doc_file),
+                            'source': 'tianocore-docs',
+                            'repo': repo_name,
+                            'file': rel_path,
+                            'chunk_idx': chunk_idx,
+                            'total_chunks': len(chunks)
+                        })
+            except Exception:
+                continue
+    
+    doc_index = PROCESSED_DIR / 'documents.json'
+    with open(doc_index, 'w', encoding='utf-8') as f:
+        json.dump(documents, f, indent=2, ensure_ascii=False)
+    
+    log(f"Processed {len(documents)} total documents")
+    return len(documents)
+
+def build_chroma_index() -> int:
+    """Build ChromaDB vector index with BGE-M3 embedding"""
+    log("Building ChromaDB vector index with BGE-M3...")
+    
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        import chromadb
+        from chromadb.utils import embedding_functions
+    except ImportError:
+        log("ChromaDB not available, skipping index build", "ERROR")
+        return 0
+    
+    # Use BGE-M3 for better multilingual and technical document understanding
+    log("Loading BGE-M3 embedding model (first run will download ~2.2GB)...")
+    try:
+        embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="BAAI/bge-m3",
+            device="cpu",
+            normalize_embeddings=True
+        )
+    except Exception as e:
+        log(f"Failed to load BGE-M3, using default: {e}", "WARNING")
+        embedding_func = None
+    
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    
+    # Delete existing collection if exists (to use new embedding)
+    try:
+        client.delete_collection("edk2_docs")
+        log("Deleted old collection for fresh start")
+    except:
+        pass
+    
+    collection = client.get_or_create_collection(
+        "edk2_docs",
+        embedding_function=embedding_func,
+        metadata={"hnsw:space": "cosine"}
+    )
+    
+    doc_index = PROCESSED_DIR / 'documents.json'
+    if not doc_index.exists():
+        log("No processed documents found", "ERROR")
+        return 0
+    
+    with open(doc_index, 'r', encoding='utf-8') as f:
+        documents = json.load(f)
+    
+    log(f"Indexing {len(documents)} documents...")
+    
+    batch_size = 50  # Smaller batch for better embedding quality
+    indexed = 0
+    
+    for i in tqdm(range(0, len(documents), batch_size), desc="Building index"):
+        batch = documents[i:i+batch_size]
+        
+        ids = []
+        texts = []
+        metadatas = []
+        
+        for j, doc in enumerate(batch):
+            try:
+                with open(doc['path'], 'r', encoding='utf-8') as f:
+                    texts.append(f.read())
+                ids.append(f"doc_{i+j}")
+                metadatas.append({
+                    'source': doc.get('source', 'unknown'),
+                    'title': doc.get('title', ''),
+                    'url': doc.get('url', ''),
+                    'file': doc.get('file', ''),
+                    'repo': doc.get('repo', ''),
+                    'chunk_idx': doc.get('chunk_idx', 0),
+                    'total_chunks': doc.get('total_chunks', 1)
+                })
+            except Exception:
+                continue
+        
+        if texts:
+            collection.upsert(
+                ids=ids,
+                documents=texts,
+                metadatas=metadatas
+            )
+            indexed += len(texts)
+    
+    log(f"Indexed {indexed} documents into ChromaDB")
+    return indexed
+
+def main():
+    parser = argparse.ArgumentParser(description='EDK2 Knowledge Base Initializer')
+    parser.add_argument('--update', action='store_true', help='Incremental update mode')
+    parser.add_argument('--workers', type=int, default=10, help='Number of parallel workers')
+    parser.add_argument('--skip-wiki', action='store_true', help='Skip wiki crawling')
+    parser.add_argument('--skip-docs', action='store_true', help='Skip docs cloning')
+    parser.add_argument('--skip-index', action='store_true', help='Skip index building')
+    args = parser.parse_args()
+    
+    log("=" * 60)
+    log("EDK2 Knowledge Base Initialization")
+    log("=" * 60)
+    log(f"Mode: {'Incremental Update' if args.update else 'Full Initialization'}")
+    log("")
+    
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    
+    if not args.skip_wiki:
+        log("")
+        log("=" * 60)
+        log("Step 1: Crawling TianoCore Wiki")
+        log("=" * 60)
+        if args.update:
+            crawl_wiki_incremental(args.workers)
+        else:
+            crawl_wiki_full(args.workers)
+    
+    if not args.skip_docs:
+        log("")
+        log("=" * 60)
+        log("Step 2: Cloning tianocore-docs")
+        log("=" * 60)
+        clone_tianocore_docs()
+    
+    log("")
+    log("=" * 60)
+    log("Step 3: Processing Documents")
+    log("=" * 60)
+    process_documents()
+    
+    if not args.skip_index:
+        log("")
+        log("=" * 60)
+        log("Step 4: Building Vector Index")
+        log("=" * 60)
+        build_chroma_index()
+    
+    log("")
+    log("=" * 60)
+    log("SUCCESS: Knowledge base initialized!")
+    log("=" * 60)
+    log("")
+    log("Data directory: " + str(DATA_DIR))
+    log("Run: npx edk2-opencode")
+
+if __name__ == "__main__":
+    main()

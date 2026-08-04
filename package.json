@@ -1,0 +1,54 @@
+{
+  "name": "edk2-opencode",
+  "version": "6.0.3",
+  "description": "EDK2 Knowledge Base MCP Daemon - shared offline EDK2 retrieval served over MCP with auto-recovery",
+  "keywords": [
+    "edk2",
+    "uefi",
+    "opencode",
+    "mcp",
+    "fastmcp",
+    "chromadb",
+    "rag",
+    "knowledge-base",
+    "daemon"
+  ],
+  "author": "Gu Ziqian <guziqian0908@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guziqian0908/Edk2Agent.git"
+  },
+  "bin": {
+    "edk2-opencode": "bin/edk2-opencode.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "scripts/",
+    ".opencode/",
+    "edk2-kb/",
+    "!edk2-kb/__pycache__",
+    "!edk2-kb/**/__pycache__",
+    "opencode.json",
+    "AGENTS.md",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "win32",
+    "linux",
+    "darwin"
+  ],
+  "opencode": {
+    "skills": [
+      "edk2-pr-workflow",
+      "ovmf-build"
+    ]
+  }
+}

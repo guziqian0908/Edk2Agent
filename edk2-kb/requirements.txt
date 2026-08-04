@@ -1,0 +1,25 @@
+# Document Processing
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+lxml>=4.9.0
+html2text>=2020.1.16
+
+# Vector Store (WeKnora alternative)
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+
+# Better Embedding Model
+# BGE-M3: multilingual, good for technical docs
+# Will be downloaded automatically on first use (~2.2GB)
+
+# MCP Protocol
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# Utilities
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+tqdm>=4.65.0
+colorama>=0.4.6
+numpy>=1.24.0

@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""
+EDK2 Knowledge Base MCP Server (HTTP daemon)
+
+Serves the EDK2 knowledge base over the Model Context Protocol so that
+OpenCode (or any MCP client) can query it as a remote server.
+
+Design goals (fixes for the legacy v3.x problems):
+  * No fixed port          -> binds to an OS-assigned port (port 0); the real
+                              endpoint is written to daemon.json so multiple
+                              daemons can never collide.
+  * Low latency            -> the ChromaDB index is loaded once (background
+                              pre-warm) and kept in memory; searches never
+                              re-load the model.
+  * Fast startup           -> the port is bound and /health responds before
+                              the index is loaded; index loads lazily.
+  * Crash recovery         -> daemon_runner.py supervises this process and
+                              respawns it if it dies unexpectedly.
+  * Stable retrieval       -> ChromaDB only, no WeKnora.
+
+Endpoints:
+  /mcp                     MCP protocol endpoint (Streamable HTTP)
+  /health                  liveness + readiness + index stats
+  /search                  convenience JSON endpoint used by the CLI --search
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import socket
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List
+
+from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+from search_engine import SearchEngine
+
+HERE = Path(__file__).resolve().parent
+DEFAULT_STATE_FILE = HERE / "daemon.json"
+
+PKG_VERSION = "6.0.3"
+
+
+def build_fastmcp(engine: SearchEngine) -> FastMCP:
+    mcp = FastMCP("edk2-kb")
+
+    @mcp.tool()
+    def search_kb(query: str, top_k: int = 5,
+                  source: str = "all") -> List[Dict[str, Any]]:
+        """Search the EDK2 knowledge base.
+
+        Args:
+            query: The search query text.
+            top_k: Maximum number of results (1-20).
+            source: Restrict results to a data source: "all" (default),
+                "tianocore-wiki" or "tianocore-docs".
+        """
+        top_k = max(1, min(int(top_k), 20))
+        src = None if source in ("", "all", "both") else source
+        return engine.search(query, top_k, src)
+
+    @mcp.tool()
+    def get_kb_status() -> Dict[str, Any]:
+        """Get the knowledge base status: readiness, index size and the
+        availability of each data source."""
+        return engine.status()
+
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health(request: Request) -> JSONResponse:
+        status = engine.status()
+        return JSONResponse({
+            "status": "ok",
+            "service": "edk2-kb",
+            "ready": status["ready"],
+            "load_error": engine.load_error,
+            "indexed_documents": status["indexed_documents"],
+            "data_sources": status["data_sources"],
+        })
+
+    @mcp.custom_route("/search", methods=["GET", "POST"])
+    async def search(request: Request) -> JSONResponse:
+        if request.method == "POST":
+            try:
+                body = await request.json()
+            except Exception:
+                body = {}
+            query = body.get("query", "")
+            top_k = body.get("top_k", 5)
+            source = body.get("source", "all")
+        else:
+            query = request.query_params.get("query", "")
+            try:
+                top_k = int(request.query_params.get("top_k", 5))
+            except (TypeError, ValueError):
+                top_k = 5
+            source = request.query_params.get("source", "all")
+
+        if not query or not query.strip():
+            return JSONResponse({"error": "Missing query parameter"}, 400)
+        try:
+            top_k = max(1, min(int(top_k), 20))
+        except (TypeError, ValueError):
+            top_k = 5
+
+        src = None if source in ("", "all", "both") else source
+        results = engine.search(query.strip(), top_k, src)
+        return JSONResponse({"results": results})
+
+    return mcp
+
+
+class _StateWriter:
+    """Thread-safe state file writer so the server and its background
+    readiness thread never clobber each other."""
+
+    def __init__(self, state_file: Path):
+        self.state_file = Path(state_file)
+        self._lock = threading.Lock()
+        self._data: Dict[str, Any] = {}
+
+    def update(self, **kwargs) -> None:
+        with self._lock:
+            self._data.update(kwargs)
+            self._write()
+
+    def _write(self) -> None:
+        try:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.state_file.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps(self._data, indent=2, ensure_ascii=False),
+                encoding="utf-8")
+            os.replace(tmp, self.state_file)
+        except Exception:
+            pass
+
+
+def _watch_ready(engine: SearchEngine, writer: _StateWriter) -> None:
+    """Background thread: mark the daemon ready once the index is loaded."""
+    try:
+        engine.ensure_ready(timeout=1800)
+        status = engine.status()
+        writer.update(
+            ready=True,
+            indexed_documents=status["indexed_documents"],
+            chroma_available=status["chroma_available"],
+        )
+    except Exception as e:
+        writer.update(ready=False, load_error=str(e))
+
+
+def _state_file_for(args) -> Path:
+    if args.state_file:
+        return Path(args.state_file)
+    if args.data_dir:
+        return Path(args.data_dir) / "daemon.json"
+    return DEFAULT_STATE_FILE
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="EDK2 Knowledge Base MCP Server")
+    parser.add_argument("--data-dir", type=str, default=None,
+                        help="Knowledge base root directory (contains data/)")
+    parser.add_argument("--state-file", type=str, default=None,
+                        help="Path to daemon.json state file")
+    parser.add_argument("--host", type=str, default="127.0.0.1",
+                        help="Bind address (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=0,
+                        help="Port to bind (0 = OS-assigned dynamic port)")
+    args = parser.parse_args()
+
+    kb_root = Path(args.data_dir) if args.data_dir else HERE
+    state_file = _state_file_for(args)
+
+    engine = SearchEngine(data_dir=kb_root / "data", preload=True)
+    mcp = build_fastmcp(engine)
+
+    # Pre-bind an OS-assigned port so we know the real endpoint before the
+    # event loop starts -> no fixed port, no port conflicts.
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((args.host, args.port))
+    host, port = sock.getsockname()
+
+    writer = _StateWriter(state_file)
+    writer.update(
+        pid=os.getpid(),
+        watchdog_pid=int(os.environ.get("EDK2_WATCHDOG_PID", "0")),
+        port=port,
+        host=host,
+        url=f"http://{host}:{port}",
+        status="running",
+        ready=False,
+        version=PKG_VERSION,
+        kb_dir=str(kb_root),
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    threading.Thread(target=_watch_ready, args=(engine, writer),
+                     daemon=True, name="kb-ready-watcher").start()
+
+    try:
+        asyncio.run(mcp.run_http_async(
+            transport="http",
+            host=host,
+            port=port,
+            path="/mcp",
+            sockets=[sock],
+            show_banner=False,
+            log_level="warning",
+        ))
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        try:
+            state_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    main()
