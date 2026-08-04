@@ -38,6 +38,23 @@ When answering questions:
 2. Search local documentation first
 3. Provide accurate, specific answers based on EDK2 specifications
 
+## Answering EDK2 questions
+
+Every search result from `search_kb` includes a `citation` field like
+`[Title - Section](url)`. Follow these rules:
+
+1. Call `search_kb()` with concrete technical terms before answering any
+   EDK2 question (PCDs, boot flow, INF/DSC/DEC syntax, protocols, specs).
+2. Cite every factual claim inline using the result's `citation`. Never
+   invent section names or URLs.
+3. Quote the exact `section` snippet for API/PCD/syntax questions instead
+   of paraphrasing.
+4. If results don't cover the question, say "The knowledge base does not
+   cover this" and give the closest guidance found. Never make up PCDs,
+   GUIDs, protocols, or spec sections.
+
+See `get_kb_citation_guide()` for the full answering guide.
+
 ## Code Style
 
 - Follow EDK2 coding standards

@@ -741,7 +741,8 @@ def build_chroma_index() -> int:
         embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=model_name,
             device=device,
-            normalize_embeddings=True
+            normalize_embeddings=True,
+            local_files_only=True
         )
     except Exception as e:
         log(f"Failed to load {model_name}, using default: {e}", "WARNING")

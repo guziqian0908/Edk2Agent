@@ -43,7 +43,43 @@ from search_engine import SearchEngine
 HERE = Path(__file__).resolve().parent
 DEFAULT_STATE_FILE = HERE / "daemon.json"
 
-PKG_VERSION = "6.0.10"
+PKG_VERSION = "6.0.13"
+
+CITATION_GUIDE = """# EDK2 Knowledge Base Answering Guide
+
+Follow these rules whenever you answer an EDK2 question using the knowledge base.
+
+## 1. Search first
+Call `search_kb()` with a concrete technical query before answering any EDK2
+question: functions, PCDs, boot flow, INF/DSC/DEC syntax, protocols, library
+classes, build behavior, tools, or specifications.
+
+## 2. Cite every claim
+Base each factual claim on a search result and reference it inline using the
+result's `citation` field (markdown form). Example:
+
+    Per the INF specification, PCDs are declared in `[Pcds]` sections.
+    - [EDK II INF Specification - 3.8 PCD Sections](https://...)
+
+Never invent section names or URLs.
+
+## 3. Quote exact snippets
+When the question is about a specific API, PCD, or structure, quote the exact
+`section` snippet from the result instead of paraphrasing.
+
+## 4. Never fabricate
+If search results do not cover the answer, say so explicitly ("The knowledge
+base does not cover this"), give the closest guidance found, and suggest
+checking the EDK2 source or the TianoCore docs. Never make up PCD names,
+GUIDs, protocols, or spec sections.
+
+## 5. Output format
+- Concise, specification-accurate answer
+- Inline reference per claim
+- Code / PCD / protocol names in backticks
+- For PCD or INF keyword questions, give the exact INF `[Pcds]` or DSC
+  `[Pcds*]` syntax from the results
+"""
 
 
 def build_fastmcp(engine: SearchEngine) -> FastMCP:
@@ -69,6 +105,28 @@ def build_fastmcp(engine: SearchEngine) -> FastMCP:
         """Get the knowledge base status: readiness, index size and the
         availability of each data source."""
         return engine.status()
+
+    @mcp.tool()
+    def get_kb_citation_guide() -> str:
+        """Get the rules for answering EDK2 questions from the knowledge
+        base: when to call search_kb, how to cite results inline, and the
+        expected answer format. Read this before answering EDK2 questions."""
+        return CITATION_GUIDE
+
+    @mcp.prompt()
+    def edk2_answer_prompt(question: str) -> str:
+        """Template for answering an EDK2 question from the knowledge base:
+        search first, cite every claim with result citations."""
+        return f"""Answer the following EDK2 question using the edk2-kb knowledge base.
+
+Follow the answering guide (call get_kb_citation_guide for the full rules):
+1. Call search_kb() with the concrete technical terms from the question.
+2. Base every claim on a result and cite it inline with its `citation` field.
+3. Quote exact spec snippets for PCD / protocol / INF syntax questions.
+4. If results don't cover the question, say so instead of guessing.
+
+Question: {question}
+"""
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> JSONResponse:

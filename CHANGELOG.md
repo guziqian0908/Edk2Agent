@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.13] - 2026-08-04
+
+### RAG: Generation-side citations + EDK2 answering rules
+
+- Every `search_kb` result now carries a `citation` field in markdown form
+  `[Title - Section](url)` (url omitted when unknown) that an LLM can paste
+  verbatim to back each factual claim.
+- New MCP tool `get_kb_citation_guide()` returns the rules for answering
+  EDK2 questions: search first, cite every claim inline, quote exact spec
+  snippets, never fabricate PCDs/GUIDs/protocols/spec sections.
+- New MCP prompt `edk2_answer_prompt(question)` - template that wires the
+  answering rules into a question before generation.
+- `AGENTS.md` gained an "Answering EDK2 questions" section describing the
+  same citation rules for the coding agent.
+- Embedder now loads with `local_files_only=True` (like the reranker), so
+  the daemon is fully offline even at cold start - a missing cached model
+  degrades to file search instead of blocking on a network download.
+
 ## [6.0.12] - 2026-08-04
 
 ### RAG: Reranker + Multi-Query Retrieval

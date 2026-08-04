@@ -130,6 +130,26 @@ def _fts_tokens(query: str) -> List[str]:
     return tokens
 
 
+def _add_citation(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Attach a ready-to-cite markdown reference to each result.
+
+    Format: ``[Title - Section](url)`` (url omitted when unknown). The LLM
+    can paste this verbatim to back every factual claim.
+    """
+    for r in results:
+        parts = [p for p in (r.get('title') or r.get('file') or '',
+                             r.get('section') or '') if p]
+        cite = ' - '.join(parts)
+        url = r.get('url')
+        if url and cite:
+            r['citation'] = f"[{cite}]({url})"
+        elif cite:
+            r['citation'] = cite
+        else:
+            r['citation'] = url or ''
+    return results
+
+
 class SearchEngine:
     """Thread-safe EDK2 knowledge base search engine.
 
@@ -190,11 +210,15 @@ class SearchEngine:
                 import chromadb
                 from chromadb.utils import embedding_functions
                 
-                # Use the same embedding model used during indexing
+                # Use the same embedding model used during indexing.
+                # local_files_only keeps the daemon fully offline: a missing
+                # cached model raises immediately and we fall back to file
+                # search instead of blocking on a network download.
                 embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
                     model_name=EMBEDDING_MODEL,
                     device=EMBEDDING_DEVICE,
-                    normalize_embeddings=True
+                    normalize_embeddings=True,
+                    local_files_only=True
                 )
                 
                 self._client = chromadb.PersistentClient(
@@ -270,9 +294,11 @@ class SearchEngine:
 
             # Rerank if we have enough candidates
             if len(candidates) > top_k:
-                return self._rerank_results(query, candidates, top_k)
-            return candidates[:top_k]
-        return self._search_files(expanded_query, top_k, source_filter)
+                return _add_citation(
+                    self._rerank_results(query, candidates, top_k))
+            return _add_citation(candidates[:top_k])
+        return _add_citation(
+            self._search_files(expanded_query, top_k, source_filter))
     
     def _rerank_results(self, query: str, candidates: List[Dict], 
                         top_k: int) -> List[Dict]:
