@@ -262,7 +262,8 @@ class SearchEngine:
     # ------------------------------------------------------------------ #
 
     def search(self, query: str, top_k: int = 5,
-               source_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+               source_filter: Optional[str] = None,
+               rerank: bool = True) -> List[Dict[str, Any]]:
         """Search the knowledge base with hybrid retrieval.
 
         Dense vector search (ChromaDB) and keyword BM25 search (SQLite FTS5)
@@ -276,6 +277,8 @@ class SearchEngine:
             top_k: Maximum number of results to return.
             source_filter: Optional source restriction, one of
                 'tianocore-wiki', 'tianocore-docs', or None for all.
+            rerank: When True (default), reorder candidates with the
+                cross-encoder reranker. Set False to compare baselines.
         """
         # Rewrite query to expand technical terms
         expanded_query = rewrite_query(query)
@@ -292,8 +295,8 @@ class SearchEngine:
                 groups.append(self._search_bm25(q, top_k * 3, source_filter))
             candidates = self._merge_rrf(groups, top_k * 6)
 
-            # Rerank if we have enough candidates
-            if len(candidates) > top_k:
+            # Rerank if we have enough candidates (unless disabled for eval)
+            if rerank and len(candidates) > top_k:
                 return _add_citation(
                     self._rerank_results(query, candidates, top_k))
             return _add_citation(candidates[:top_k])

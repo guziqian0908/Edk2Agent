@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.14] - 2026-08-04
+
+### Retrieval evaluation harness (reproducible accuracy baseline)
+
+First quantifiable measurement of answer accuracy. `edk2-kb/eval/` now ships:
+
+- `build_eval_set.py` - generates `edk2_eval_set.json` (220 queries):
+  200 auto document-title queries + 20 hand-labeled real EDK2 questions
+  mapped to the spec section / wiki page that answers them.
+- `run_eval.py` - runs the set against 4 baselines and computes hit@5 and
+  MRR@10, writing `RESULTS.md`. Rerun after any retrieval change to see
+  whether accuracy moved.
+- `search()` gained a `rerank=` switch (default True) so baselines can be
+  compared without the reranker. MCP `search_kb` behaviour is unchanged.
+
+Baseline results (2026-08-04, 220 queries, top_k=10):
+
+| baseline | hit@5 | MRR@10 |
+|---|---|---|
+| vector | 49.5% | 0.468 |
+| bm25 | 28.6% | 0.249 |
+| hybrid | 56.8% | 0.502 |
+| **hybrid+rerank** | **57.3%** | **0.527** |
+
+- Hybrid retrieval is a large step over either single index (+7pp hit@5 over
+  vector, +28pp over bm25).
+- The reranker adds a smaller but real gain: MRR@10 +5% overall (0.502 ->
+  0.527) and hit@5 +9% on the hand-labeled real questions (55% -> 60%).
+- Caveat: on the 20-question manual set MRR dipped slightly (0.459 -> 0.439)
+  - small-sample noise; rerank mostly moves the top answer into range rather
+  than always ranking it first.
+
 ## [6.0.13] - 2026-08-04
 
 ### RAG: Generation-side citations + EDK2 answering rules
