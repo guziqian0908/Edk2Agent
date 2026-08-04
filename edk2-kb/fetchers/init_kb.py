@@ -508,6 +508,11 @@ def process_documents() -> int:
     """Process all documents for indexing"""
     log("Processing documents...")
     
+    # 清理旧的已处理文件，避免累积
+    if PROCESSED_DIR.exists():
+        log("Cleaning old processed files...")
+        import shutil
+        shutil.rmtree(PROCESSED_DIR)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     
     documents = []
@@ -570,7 +575,7 @@ def process_documents() -> int:
                     repo_name = rel_path.split(os.sep)[0] if os.sep in rel_path else "docs"
                     
                     # Chunk the document for better retrieval
-                    chunks = chunk_text(content, chunk_size=500, overlap=50)
+                    chunks = chunk_text(content, chunk_size=800, overlap=100)
                     
                     for chunk_idx, chunk in enumerate(chunks):
                         doc_file = PROCESSED_DIR / f"docs_{len(documents)}.txt"

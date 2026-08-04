@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.5] - 2026-08-04
+
+### Critical Bug Fixes
+
+**Fixed Performance and Disk Space Issues**
+
+Two critical bugs fixed that caused severe slowdown and disk space leak:
+
+#### Bug 1: Processed Files Not Cleaned
+- **Problem**: Each run added new files without cleaning old ones
+- **Impact**: Processed directory accumulated millions of files
+- **Symptom**: C: drive space decreased, processing became slower each time
+- **Fix**: Now clears `processed/` directory before each run
+
+#### Bug 2: Inconsistent Chunking Parameters
+- **Problem**: Wiki used 800/100, Docs used 500/50
+- **Impact**: Inconsistent chunk sizes, potential processing errors
+- **Fix**: Unified to 800 chars with 100 overlap
+
+### Changed
+- `process_documents()`: Clears old files before processing
+- `chunk_text()`: Unified parameters across all sources
+- Significantly improved processing speed
+- Prevents disk space leak
+
+## [6.0.4] - 2026-08-04
+
+### Server Deployment Updates
+
+**Deployment Ready for Shared Server**
+
+Updated for deployment on Alibaba Cloud shared server:
+- Added user/password authentication middleware
+- Configured for production deployment
+- Ready for Nginx reverse proxy with HTTPS
+
+### Changed
+- Version bump to 6.0.4
+- Prepared for shared server architecture
+- Documentation updates for deployment
+
+## [6.0.3] - 2026-08-03
+
+### Bug Fixes
+
+**Fixed Document Chunking**
+
+Corrected overly aggressive chunking that created too many small files:
+- Increased minimum chunk size from 50 to 200 characters
+- Improved chunk boundary detection (sentence/paragraph aware)
+- Reduced total chunks from ~800k to ~8k
+
+### Changed
+- `chunk_text()`: Better parameters (800 chars, 100 overlap, min 200)
+- Ensures progress in chunk iteration to prevent infinite loops
+
 ## [6.0.2] - 2026-08-03
 
 ### Major RAG Accuracy Improvements

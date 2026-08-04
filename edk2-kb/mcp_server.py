@@ -43,7 +43,7 @@ from search_engine import SearchEngine
 HERE = Path(__file__).resolve().parent
 DEFAULT_STATE_FILE = HERE / "daemon.json"
 
-PKG_VERSION = "6.0.3"
+PKG_VERSION = "6.0.5"
 
 
 def build_fastmcp(engine: SearchEngine) -> FastMCP:
