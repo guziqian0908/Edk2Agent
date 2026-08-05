@@ -561,7 +561,9 @@ function generateConfig(daemonState) {
     "permission": {
       "edit": "ask",
       "bash": { "git *": "allow", "*": "ask" },
-      "external_directory": { ".": "allow", "*": "ask" }
+      "external_directory": { ".": "allow", "*": "ask" },
+      "webfetch": "deny",
+      "websearch": "deny"
     },
     "instructions": [path.join(PACKAGE_ROOT, "AGENTS.md")]
   };

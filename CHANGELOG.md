@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.18] - 2026-08-05
+
+### Web tools disabled in generated opencode.json
+
+The generated `opencode.json` now sets `permission.webfetch = "deny"` and
+`permission.websearch = "deny"`. EDK2 questions are therefore answered only
+from the local knowledge base MCP server — the agent can no longer reach out
+to the web while answering. To re-enable web access later, change either line
+to `"ask"` (prompt each time) or remove it.
+
 ## [6.0.17] - 2026-08-04
 
 ### `npx edk2-opencode eval-query "<query>"` - runnable from any directory
