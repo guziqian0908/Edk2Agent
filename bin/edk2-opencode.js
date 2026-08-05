@@ -38,6 +38,7 @@ function showWelcome() {
   console.log('  --init-edk2-wiki --update Update knowledge base (incremental)');
   console.log('  --status                  Show status (auth + knowledge base daemon)');
   console.log('  --search <query>          Search EDK2 knowledge base');
+  console.log('  eval-query <query>        Compare old vs current retrieval for a query');
   console.log('  daemon start|stop|status|restart|logs   Manage the KB MCP daemon');
   console.log('  --help                    Show this help');
   console.log('  --version                 Show version');
@@ -343,7 +344,7 @@ async function handleSearch(query) {
 
 async function handleDaemon(command) {
   const kbDir = daemon.getKbDir();
-  
+
   switch (command) {
     case 'start': {
       log('Starting knowledge base daemon...');
@@ -409,6 +410,63 @@ async function handleDaemon(command) {
       error('Usage: npx edk2-opencode daemon <start|stop|restart|status|logs>');
       process.exit(1);
   }
+}
+
+async function handleEvalQuery(args) {
+  const queries = [];
+  let dataDir = null;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--data-dir') {
+      dataDir = args[++i];
+    } else if (t === '--query') {
+      queries.push(args[++i]);
+    } else if (!t.startsWith('-')) {
+      queries.push(t);
+    }
+  }
+
+  if (queries.length === 0) {
+    error('Usage: npx edk2-opencode eval-query "<query>" [--data-dir <kb data dir>]');
+    process.exit(2);
+  }
+
+  const resolvedDataDir = dataDir || path.join(KB_DIR, 'data');
+  if (!fs.existsSync(resolvedDataDir)) {
+    error(`Knowledge base data not found at: ${resolvedDataDir}`);
+    error('Run: npx edk2-opencode --init-edk2-wiki');
+    process.exit(1);
+  }
+
+  const compareScript = path.join(PACKAGE_ROOT, 'edk2-kb', 'eval', 'compare_query.py');
+  if (!fs.existsSync(compareScript)) {
+    error('compare_query.py not found:', compareScript);
+    process.exit(1);
+  }
+
+  const python = getVenvPython() || getPythonCommand();
+  if (!python) {
+    error('Python not found. Install Python 3.8+ or set EDK2_KB_PYTHON.');
+    process.exit(1);
+  }
+
+  const scriptArgs = [compareScript, '--data-dir', resolvedDataDir];
+  for (const q of queries) {
+    scriptArgs.push('--query', q);
+  }
+
+  log(`Python   : ${python}`);
+  log(`Data dir : ${resolvedDataDir}`);
+  log('');
+
+  return new Promise((resolve) => {
+    const child = spawn(python, scriptArgs, { stdio: 'inherit' });
+    child.on('error', (err) => {
+      error(`Failed to run comparison: ${err.message}`);
+      resolve(1);
+    });
+    child.on('exit', (code) => resolve(code == null ? 1 : code));
+  });
 }
 
 async function startOpencode() {
@@ -573,6 +631,10 @@ async function main() {
     }
     await handleDaemon(args[1]);
     process.exit(0);
+  }
+
+  if (args[0] === 'eval-query') {
+    process.exit(await handleEvalQuery(args.slice(1)));
   }
   
   const searchIndex = args.indexOf('--search');

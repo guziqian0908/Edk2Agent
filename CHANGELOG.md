@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.17] - 2026-08-04
+
+### `npx edk2-opencode eval-query "<query>"` - runnable from any directory
+
+`eval-query` is now a first-class CLI subcommand, so you no longer need to be
+inside the repo (or pass a python path) to see the old-vs-current answer diff:
+
+```
+npx edk2-opencode eval-query "SetVariable Attributes NV"
+npx edk2-opencode eval-query "UEFI boot flow PEI DXE" --query "PcdDebugPrintErrorLevel"
+npx edk2-opencode eval-query "query" --data-dir <path to kb/data>
+```
+
+It locates the KB (user dir, else packaged), the data dir and the venv
+python automatically. Also fixes the CLI exiting before the comparison
+finished (the python child is awaited before the process exits).
+
 ## [6.0.16] - 2026-08-04
 
 ### `npm run eval-query` - single-answer old vs current diff
