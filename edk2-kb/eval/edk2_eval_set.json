@@ -6,7 +6,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MinimumPlatformSpecification\\appendix_b_global_configuration\\b1_stage_configuration.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "3151 connecting pci root bridges",
@@ -15,7 +16,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\3_foundation\\315_platform_initialization\\3151_connecting_pci_root_bridges.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "2242 setattributes implementation",
@@ -24,7 +26,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\22_text_console_driver_design_guidelines\\224_serial_io_protocol_implementations\\2242_setattributes_implementation.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "23 boot sequence",
@@ -33,7 +36,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-BuildSpecification\\2_design_discussion\\23_boot_sequence.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "25 [skuids] section processing",
@@ -42,7 +46,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\25_[skuids]_section_processing.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "43 modules",
@@ -51,7 +56,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MinimumPlatformSpecification\\4_stage_2_memory_functional\\43_modules.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "2322 multiple output graphics adapters",
@@ -60,7 +66,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\23_graphics_driver_design_guidelines\\232_graphics_output_protocol_implementation\\2322_multiple_output_graphics_adapters.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "5311 getmemorymap",
@@ -69,7 +76,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\53_services_that_uefi_drivers_should_not_use\\5311_getmemorymap.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "11 overview",
@@ -78,7 +86,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-InfSpecification\\1_introduction\\11_overview.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "buffer overflow in variable reclaim",
@@ -87,7 +96,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\buffer_overflow_in_variable_reclaim.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "boot failure related to tpm measurements",
@@ -96,1069 +106,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\boot_failure_related_to_tpm_measurements.md"
       }
-    ]
-  },
-  {
-    "query": "How to Develop with Containers",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "How to Develop with Containers - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "711 runtime drivers",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\7_driver_entry_point\\711_runtime_drivers.md"
-      }
-    ]
-  },
-  {
-    "query": "microsoft windows 10 visual studio command prompt",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "UEFI_Driver_HII_Win_Lab_Guide\\microsoft_windows_10__visual_studio_command_prompt.md"
-      }
-    ]
-  },
-  {
-    "query": "a53 library class file template",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a5_edk_ii_package_extension_templates\\a53_library_class_file_template.md"
-      }
-    ]
-  },
-  {
-    "query": "632 optional hybrid driver features",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\6_uefi_driver_categories\\63_hybrid_drivers\\632_optional_hybrid_driver_features.md"
-      }
-    ]
-  },
-  {
-    "query": "123 using custom build tools",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-BuildSpecification\\12_build_changes_and_customizations\\123_using_custom_build_tools.md"
-      }
-    ]
-  },
-  {
-    "query": "UDK2010 Releases",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "UDK2010 Releases - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "431 assignment and comparison operators",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\43_maximize_cpu_compatibility\\431_assignment_and_comparison_operators.md"
-      }
-    ]
-  },
-  {
-    "query": "Https Boot",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Https Boot - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "125 platform specific asl tools",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-BuildSpecification\\12_build_changes_and_customizations\\125_platform_specific_asl_tools.md"
-      }
-    ]
-  },
-  {
-    "query": "538 getnextvariablename",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\53_services_that_uefi_drivers_should_not_use\\538_getnextvariablename.md"
-      }
-    ]
-  },
-  {
-    "query": "android verified boot",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "Understanding_UEFI_Secure_Boot_Chain\\additional_secure_boot_chain_implementations\\android_verified_boot.md"
-      }
-    ]
-  },
-  {
-    "query": "1211 hii database and package lists",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\121_hii_overview\\1211_hii_database_and_package_lists.md"
-      }
-    ]
-  },
-  {
-    "query": "86 dependency expressions",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-ModuleWriteGuide\\8_dxe_drivers_non-uefi_drivers\\86_dependency_expressions.md"
-      }
-    ]
-  },
-  {
-    "query": "Whiskey Lake MinPlatform",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Whiskey Lake MinPlatform - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "Python Tools",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Python Tools - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "2032 driver binding protocol start and stop",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\203_scsi_device_driver\\2032_driver_binding_protocol_start_and_stop.md"
-      }
-    ]
-  },
-  {
-    "query": "71 introduction",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-ModuleWriteGuide\\7_pre-efi_initialization_modules\\71_introduction.md"
-      }
-    ]
-  },
-  {
-    "query": "asset boot flow",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "EDK_II_Secure_Coding_Guide\\appendix_threat_model_for_edk_ii\\asset_boot_flow.md"
-      }
-    ]
-  },
-  {
-    "query": "24 [buildoptions] section",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\24_[buildoptions]_section.md"
-      }
-    ]
-  },
-  {
-    "query": "CVE 2021 3712",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "ThirdPartySecurityAdvisories\\CVE-2021-3712.md"
-      }
-    ]
-  },
-  {
-    "query": "21 development environments",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-BuildSpecification\\2_design_discussion\\21_development_environments.md"
-      }
-    ]
-  },
-  {
-    "query": "31 general rules",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\31_general_rules.md"
-      }
-    ]
-  },
-  {
-    "query": "1852 weakly ordered memory transactions",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\18_pci_driver_design_guidelines\\185_pci_dma\\1852_weakly_ordered_memory_transactions.md"
-      }
-    ]
-  },
-  {
-    "query": "protection of physicalpresence variable",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "SecurityAdvisory\\protection_of_physicalpresence_variable.md"
-      }
-    ]
-  },
-  {
-    "query": "2011 single channel scsi adapters",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\201_scsi_host_controller_driver\\2011_single-channel_scsi_adapters.md"
-      }
-    ]
-  },
-  {
-    "query": "1244 making configuration data available to other",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\124_hii_functionality\\1244_making_configuration_data_available_to_other_.md"
-      }
-    ]
-  },
-  {
-    "query": "44 communicating with a uefi driver",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-ModuleWriteGuide\\4_uefi_applications\\44_communicating_with_a_uefi_driver.md"
-      }
-    ]
-  },
-  {
-    "query": "411 stage enabling checklist",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-MinimumPlatformSpecification\\4_stage_2_memory_functional\\411_stage_enabling_checklist.md"
-      }
-    ]
-  },
-  {
-    "query": "292 no c++ support",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\29_efi_byte_code_porting_considerations\\292_no_c++_support.md"
-      }
-    ]
-  },
-  {
-    "query": "34 handle database",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\3_foundation\\34_handle_database.md"
-      }
-    ]
-  },
-  {
-    "query": "5 font support",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UniSpecification\\5_font_support.md"
-      }
-    ]
-  },
-  {
-    "query": "pcdprotocol get32",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_get32.md"
-      }
-    ]
-  },
-  {
-    "query": "34 required functions",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-MinimumPlatformSpecification\\3_stage_1_minimum_debug\\34_required_functions.md"
-      }
-    ]
-  },
-  {
-    "query": "5211 getnextmonotoniccount",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\52_services_that_uefi_drivers_rarely_use\\5211_getnextmonotoniccount.md"
-      }
-    ]
-  },
-  {
-    "query": "312 [ppis] sections",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\312_[ppis]_sections.md"
-      }
-    ]
-  },
-  {
-    "query": "2018 scsi device path",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\201_scsi_host_controller_driver\\2018_scsi_device_path.md"
-      }
-    ]
-  },
-  {
-    "query": "131 driver diagnostics protocol implementations",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\13_uefi_driver_diagnostics\\131_driver_diagnostics_protocol_implementations.md"
-      }
-    ]
-  },
-  {
-    "query": "1422 bus drivers and hybrid drivers",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\14_driver_health_protocol\\142_gethealthstatus_implementations\\1422_bus_drivers_and_hybrid_drivers.md"
-      }
-    ]
-  },
-  {
-    "query": "EDK II FAQ",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "EDK II FAQ - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "11 overview",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-DscSpecification\\1_introduction\\11_overview.md"
-      }
-    ]
-  },
-  {
-    "query": "pcdppi set16ex",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_set16ex.md"
-      }
-    ]
-  },
-  {
-    "query": "72 firmware volumes",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-MinimumPlatformSpecification\\7_stage_5_security_enable\\72_firmware_volumes.md"
-      }
-    ]
-  },
-  {
-    "query": "Events Outreach",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Events Outreach - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "appendix b toolsdef txt",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-BuildSpecification\\appendix_b_toolsdef_txt.md"
-      }
-    ]
-  },
-  {
-    "query": "615 device drivers with multiple driver binding pr",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\6_uefi_driver_categories\\61_device_drivers\\615_device_drivers_with_multiple_driver_binding_pr.md"
-      }
-    ]
-  },
-  {
-    "query": "28 [includes] section",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-InfSpecification\\2_inf_overview\\28_[includes]_section.md"
-      }
-    ]
-  },
-  {
-    "query": "1264 perform usability testing",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\126_hii_implementation_recommendations\\1264_perform_usability_testing.md"
-      }
-    ]
-  },
-  {
-    "query": "81 containing record macro",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\8_private_context_data_structures\\81_containing_record_macro.md"
-      }
-    ]
-  },
-  {
-    "query": "2351 getedid implementation",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\23_graphics_driver_design_guidelines\\235_edid_override_protocol_implementation\\2351_getedid_implementation.md"
-      }
-    ]
-  },
-  {
-    "query": "15 conventions used in this document",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-InfSpecification\\1_introduction\\15_conventions_used_in_this_document.md"
-      }
-    ]
-  },
-  {
-    "query": "pcdprotocol setsku",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_setsku.md"
-      }
-    ]
-  },
-  {
-    "query": "133 testing driver diagnostics protocols",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\13_uefi_driver_diagnostics\\133_testing_driver_diagnostics_protocols.md"
-      }
-    ]
-  },
-  {
-    "query": "21 processing overview",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\21_processing_overview.md"
-      }
-    ]
-  },
-  {
-    "query": "overwrite from performance data variable",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "SecurityAdvisory\\overwrite_from_performance_data_variable.md"
-      }
-    ]
-  },
-  {
-    "query": "a51 protocol file template",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a5_edk_ii_package_extension_templates\\a51_protocol_file_template.md"
-      }
-    ]
-  },
-  {
-    "query": "2012 multi channel scsi adapters",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\201_scsi_host_controller_driver\\2012_multi-channel_scsi_adapters.md"
-      }
-    ]
-  },
-  {
-    "query": "a23 hiiconfigaccessc file",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a2_uefi_driver_optional_protocol_templates\\a23_hiiconfigaccessc_file.md"
-      }
-    ]
-  },
-  {
-    "query": "Tasks MinPlatform Board Port",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Tasks MinPlatform Board Port - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "62 build scope",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-BuildSpecification\\6_quick_start\\62_build_scope.md"
-      }
-    ]
-  },
-  {
-    "query": "4217 limit use of console services",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\42_maximize_platform_compatibility\\4217_limit_use_of_console_services.md"
-      }
-    ]
-  },
-  {
-    "query": "ECC Tool",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "ECC Tool - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "i2 vpd tool map file format",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-BuildSpecification\\appendix_i_vpd_tool\\i2_vpd_tool_map_file_format.md"
-      }
-    ]
-  },
-  {
-    "query": "EDK II Packages",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "EDK II Packages - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "EDK II Debugging",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "EDK II Debugging - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "414 compiler optimizations",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\41_common_coding_practices\\414_compiler_optimizations.md"
-      }
-    ]
-  },
-  {
-    "query": "42 firmware volumes",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-MinimumPlatformSpecification\\4_stage_2_memory_functional\\42_firmware_volumes.md"
-      }
-    ]
-  },
-  {
-    "query": "UDK2014 IHV Setup Guide",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "UDK2014 IHV Setup Guide - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "14 target audience",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-InfSpecification\\1_introduction\\14_target_audience.md"
-      }
-    ]
-  },
-  {
-    "query": "EDK II Platforms",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "EDK II Platforms - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "51 begin with inf file",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-ModuleWriteGuide\\5_uefi_drivers\\51_begin_with_inf_file.md"
-      }
-    ]
-  },
-  {
-    "query": "1321 device drivers",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\13_uefi_driver_diagnostics\\132_rundiagnostics_implementations\\1321_device_drivers.md"
-      }
-    ]
-  },
-  {
-    "query": "410 functional exit criteria",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-MinimumPlatformSpecification\\4_stage_2_memory_functional\\410_functional_exit_criteria.md"
-      }
-    ]
-  },
-  {
-    "query": "231 assumptions",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\23_graphics_driver_design_guidelines\\231_assumptions.md"
-      }
-    ]
-  },
-  {
-    "query": "76 data flows",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-MinimumPlatformSpecification\\7_stage_5_security_enable\\76_data_flows.md"
-      }
-    ]
-  },
-  {
-    "query": "d4 usage",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-BuildSpecification\\appendix_d_buildexe_command\\d4_usage.md"
-      }
-    ]
-  },
-  {
-    "query": "pcdprotocol get8",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_get8.md"
-      }
-    ]
-  },
-  {
-    "query": "392 ipf considerations for device path data struct",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\3_foundation\\39_uefi_device_paths\\392_ipf_considerations_for_device_path_data_struct.md"
-      }
-    ]
-  },
-  {
-    "query": "251 assumptions",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\25_network_driver_design_guidelines\\251_assumptions.md"
-      }
-    ]
-  },
-  {
-    "query": "toctou issue with commbuffer",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "SecurityAdvisory\\toctou_issue_with_commbuffer.md"
-      }
-    ]
-  },
-  {
-    "query": "Component Guides",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Component Guides - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "2033 io protocol implementations",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\203_scsi_device_driver\\2033_io_protocol_implementations.md"
-      }
-    ]
-  },
-  {
-    "query": "1931 driver binding protocol supported",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\19_usb_driver_design_guidelines\\193_usb_device_driver\\1931_driver_binding_protocol_supported.md"
-      }
-    ]
-  },
-  {
-    "query": "23 execution",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-MinimumPlatformSpecification\\2_architecture\\23_execution.md"
-      }
-    ]
-  },
-  {
-    "query": "132 industry standard bus specifications",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\1_introduction\\13_related_information\\132_industry_standard_bus_specifications.md"
-      }
-    ]
-  },
-  {
-    "query": "1872 using inf file to generate pci option rom ima",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\18_pci_driver_design_guidelines\\187_pci_option_rom_images\\1872_using_inf_file_to_generate_pci_option_rom_ima.md"
-      }
-    ]
-  },
-  {
-    "query": "enable stack check in edkii",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\stack_canaries\\enable_stack_check_in_edkii.md"
-      }
-    ]
-  },
-  {
-    "query": "38 [ppis] sections",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\38_[ppis]_sections.md"
-      }
-    ]
-  },
-  {
-    "query": "Configuring PXE Boot Servers for UEFI",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Configuring PXE Boot Servers for UEFI - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "38 [libraryclasses] sections",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\38_[libraryclasses]_sections.md"
-      }
-    ]
-  },
-  {
-    "query": "pcdprotocol set16ex",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_set16ex.md"
-      }
-    ]
-  },
-  {
-    "query": "2225 registerkeynotify implementation",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\22_text_console_driver_design_guidelines\\222_simple_text_input_protocol_implementation\\2225_registerkeynotify_implementation.md"
-      }
-    ]
-  },
-  {
-    "query": "3032 reserved directory names",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\30_building_uefi_drivers\\303_create_uefi_driver_directory\\3032_reserved_directory_names.md"
-      }
-    ]
-  },
-  {
-    "query": "254 managed network protocol implementations",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\25_network_driver_design_guidelines\\254_managed_network_protocol_implementations.md"
-      }
-    ]
-  },
-  {
-    "query": "Additional Projects",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Additional Projects - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "428 supporting older efi specifications and uefi s",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\42_maximize_platform_compatibility\\428_supporting_older_efi_specifications_and_uefi_s.md"
-      }
-    ]
-  },
-  {
-    "query": "63 modules",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-MinimumPlatformSpecification\\6_stage_4_boot_to_os\\63_modules.md"
-      }
-    ]
-  },
-  {
-    "query": "appendix f module types",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-InfSpecification\\appendix_f_module_types.md"
-      }
-    ]
-  },
-  {
-    "query": "1131 device drivers",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\11_uefi_driver_and_controller_names\\113_getcontrollername_implementations\\1131_device_drivers.md"
-      }
-    ]
-  },
-  {
-    "query": "2235 setmode implementation",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\22_text_console_driver_design_guidelines\\223_simple_text_output_protocol_implementation\\2235_setmode_implementation.md"
-      }
-    ]
-  },
-  {
-    "query": "323 efi system partition",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\32_distributing_uefi_drivers\\323_efi_system_partition.md"
-      }
-    ]
-  },
-  {
-    "query": "EDK II Continuous Integration Administration",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "EDK II Continuous Integration Administration - TianoCore EDK II Documentation"
-      }
-    ]
-  },
-  {
-    "query": "secure coding guidelines general",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_general.md"
-      }
-    ]
-  },
-  {
-    "query": "pcdppi get16",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_get16.md"
-      }
-    ]
-  },
-  {
-    "query": "a52 guid file template",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a5_edk_ii_package_extension_templates\\a52_guid_file_template.md"
-      }
-    ]
-  },
-  {
-    "query": "33 platform dsc definition",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\33_platform_dsc_definition.md"
-      }
-    ]
-  },
-  {
-    "query": "21 vfr programming keywords",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-VfrSpecification\\2_vfr_description_in_bnf\\21_vfr_programming_keywords.md"
-      }
-    ]
-  },
-  {
-    "query": "3 quick reference",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-CCodingStandardsSpecification\\3_quick_reference.md"
-      }
-    ]
-  },
-  {
-    "query": "421 never assume all uefi drivers are executed",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\42_maximize_platform_compatibility\\421_never_assume_all_uefi_drivers_are_executed.md"
-      }
-    ]
-  },
-  {
-    "query": "534 locatehandle",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\53_services_that_uefi_drivers_should_not_use\\534_locatehandle.md"
-      }
-    ]
-  },
-  {
-    "query": "modify pcd setting to allow http connections",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\modify_pcd_setting_to_allow_http_connections.md"
-      }
-    ]
-  },
-  {
-    "query": "21 design and implementation of uefi drivers",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\2_uefi_driver_implementation_checklist\\21_design_and_implementation_of_uefi_drivers.md"
-      }
-    ]
-  },
-  {
-    "query": "pcdprotocol set64",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_set64.md"
-      }
-    ]
-  },
-  {
-    "query": "7 updating the menu numeric entry",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "UEFI_Driver_HII_Linux_Lab_Guide\\uefi_driver_wizard__adding_hii\\7_updating_the_menu_numeric_entry.md"
-      }
-    ]
-  },
-  {
-    "query": "appendix c targettxt",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-BuildSpecification\\appendix_c_targettxt.md"
-      }
-    ]
-  },
-  {
-    "query": "1854 bus master common buffer operations",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-UefiDriverWritersGuide\\18_pci_driver_design_guidelines\\185_pci_dma\\1854_bus_master_common_buffer_operations.md"
-      }
-    ]
-  },
-  {
-    "query": "pcdppi set64ex",
-    "expected": [
-      {
-        "source": "tianocore-docs",
-        "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_set64ex.md"
-      }
-    ]
-  },
-  {
-    "query": "Tasks MinPlatform Port to Raspberry Pi",
-    "expected": [
-      {
-        "source": "tianocore-wiki",
-        "file_or_title": "Tasks MinPlatform Port to Raspberry Pi - TianoCore EDK II Documentation"
-      }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "Build Description Files",
@@ -1167,7 +116,1188 @@
         "source": "tianocore-wiki",
         "file_or_title": "Build Description Files - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "711 runtime drivers",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\7_driver_entry_point\\711_runtime_drivers.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "microsoft windows 10 visual studio command prompt",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "UEFI_Driver_HII_Win_Lab_Guide\\microsoft_windows_10__visual_studio_command_prompt.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "a53 library class file template",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a5_edk_ii_package_extension_templates\\a53_library_class_file_template.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "632 optional hybrid driver features",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\6_uefi_driver_categories\\63_hybrid_drivers\\632_optional_hybrid_driver_features.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "123 using custom build tools",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\12_build_changes_and_customizations\\123_using_custom_build_tools.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Additional Projects",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Additional Projects - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "431 assignment and comparison operators",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\43_maximize_cpu_compatibility\\431_assignment_and_comparison_operators.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "EDK II DPC Protocol",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "EDK II DPC Protocol - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "125 platform specific asl tools",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\12_build_changes_and_customizations\\125_platform_specific_asl_tools.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "538 getnextvariablename",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\53_services_that_uefi_drivers_should_not_use\\538_getnextvariablename.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "android verified boot",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "Understanding_UEFI_Secure_Boot_Chain\\additional_secure_boot_chain_implementations\\android_verified_boot.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1211 hii database and package lists",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\121_hii_overview\\1211_hii_database_and_package_lists.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "86 dependency expressions",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\8_dxe_drivers_non-uefi_drivers\\86_dependency_expressions.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "OVMF Boot Overview",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "OVMF Boot Overview - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "ECC Tool",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "ECC Tool - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "2032 driver binding protocol start and stop",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\203_scsi_device_driver\\2032_driver_binding_protocol_start_and_stop.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "71 introduction",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\7_pre-efi_initialization_modules\\71_introduction.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "asset boot flow",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDK_II_Secure_Coding_Guide\\appendix_threat_model_for_edk_ii\\asset_boot_flow.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "24 [buildoptions] section",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\24_[buildoptions]_section.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "CVE 2021 3712",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ThirdPartySecurityAdvisories\\CVE-2021-3712.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "21 development environments",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\2_design_discussion\\21_development_environments.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "31 general rules",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\31_general_rules.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1852 weakly ordered memory transactions",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\18_pci_driver_design_guidelines\\185_pci_dma\\1852_weakly_ordered_memory_transactions.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "protection of physicalpresence variable",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\protection_of_physicalpresence_variable.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "2011 single channel scsi adapters",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\201_scsi_host_controller_driver\\2011_single-channel_scsi_adapters.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1244 making configuration data available to other",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\124_hii_functionality\\1244_making_configuration_data_available_to_other_.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "44 communicating with a uefi driver",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\4_uefi_applications\\44_communicating_with_a_uefi_driver.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "411 stage enabling checklist",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MinimumPlatformSpecification\\4_stage_2_memory_functional\\411_stage_enabling_checklist.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "292 no c++ support",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\29_efi_byte_code_porting_considerations\\292_no_c++_support.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "34 handle database",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\3_foundation\\34_handle_database.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "5 font support",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UniSpecification\\5_font_support.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "pcdprotocol get32",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_get32.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "34 required functions",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MinimumPlatformSpecification\\3_stage_1_minimum_debug\\34_required_functions.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "5211 getnextmonotoniccount",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\52_services_that_uefi_drivers_rarely_use\\5211_getnextmonotoniccount.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "312 [ppis] sections",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\312_[ppis]_sections.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "2018 scsi device path",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\201_scsi_host_controller_driver\\2018_scsi_device_path.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "131 driver diagnostics protocol implementations",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\13_uefi_driver_diagnostics\\131_driver_diagnostics_protocol_implementations.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1422 bus drivers and hybrid drivers",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\14_driver_health_protocol\\142_gethealthstatus_implementations\\1422_bus_drivers_and_hybrid_drivers.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Community Virtual Meetings",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Community Virtual Meetings - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "11 overview",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\1_introduction\\11_overview.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "pcdppi set16ex",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_set16ex.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "72 firmware volumes",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MinimumPlatformSpecification\\7_stage_5_security_enable\\72_firmware_volumes.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Complete Tasks",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Complete Tasks - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "appendix b toolsdef txt",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\appendix_b_toolsdef_txt.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "615 device drivers with multiple driver binding pr",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\6_uefi_driver_categories\\61_device_drivers\\615_device_drivers_with_multiple_driver_binding_pr.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "28 [includes] section",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\2_inf_overview\\28_[includes]_section.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1264 perform usability testing",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\126_hii_implementation_recommendations\\1264_perform_usability_testing.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "81 containing record macro",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\8_private_context_data_structures\\81_containing_record_macro.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "2351 getedid implementation",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\23_graphics_driver_design_guidelines\\235_edid_override_protocol_implementation\\2351_getedid_implementation.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "15 conventions used in this document",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\1_introduction\\15_conventions_used_in_this_document.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "pcdprotocol setsku",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_setsku.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "133 testing driver diagnostics protocols",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\13_uefi_driver_diagnostics\\133_testing_driver_diagnostics_protocols.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "21 processing overview",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\21_processing_overview.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "overwrite from performance data variable",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\overwrite_from_performance_data_variable.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "a51 protocol file template",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a5_edk_ii_package_extension_templates\\a51_protocol_file_template.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "2012 multi channel scsi adapters",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\201_scsi_host_controller_driver\\2012_multi-channel_scsi_adapters.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "a23 hiiconfigaccessc file",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a2_uefi_driver_optional_protocol_templates\\a23_hiiconfigaccessc_file.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Tasks Add Rust Support to EDK II",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Tasks Add Rust Support to EDK II - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "62 build scope",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\6_quick_start\\62_build_scope.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "4217 limit use of console services",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\42_maximize_platform_compatibility\\4217_limit_use_of_console_services.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Python Tools",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Python Tools - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "i2 vpd tool map file format",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\appendix_i_vpd_tool\\i2_vpd_tool_map_file_format.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Start Using UEFI",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Start Using UEFI - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Intel Atom Processor E3900",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Intel Atom Processor E3900 - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "414 compiler optimizations",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\41_common_coding_practices\\414_compiler_optimizations.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "42 firmware volumes",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MinimumPlatformSpecification\\4_stage_2_memory_functional\\42_firmware_volumes.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Capsule Based System Firmware Update Verify Generated Keys",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Capsule Based System Firmware Update Verify Generated Keys - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "14 target audience",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\1_introduction\\14_target_audience.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Inclusive Language Guidelines",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Inclusive Language Guidelines - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "51 begin with inf file",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\5_uefi_drivers\\51_begin_with_inf_file.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1321 device drivers",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\13_uefi_driver_diagnostics\\132_rundiagnostics_implementations\\1321_device_drivers.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "410 functional exit criteria",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MinimumPlatformSpecification\\4_stage_2_memory_functional\\410_functional_exit_criteria.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "231 assumptions",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\23_graphics_driver_design_guidelines\\231_assumptions.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "76 data flows",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MinimumPlatformSpecification\\7_stage_5_security_enable\\76_data_flows.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "d4 usage",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\appendix_d_buildexe_command\\d4_usage.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "pcdprotocol get8",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_get8.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "392 ipf considerations for device path data struct",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\3_foundation\\39_uefi_device_paths\\392_ipf_considerations_for_device_path_data_struct.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "251 assumptions",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\25_network_driver_design_guidelines\\251_assumptions.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "toctou issue with commbuffer",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\toctou_issue_with_commbuffer.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Tooling Utilities",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Tooling Utilities - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "2033 io protocol implementations",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\203_scsi_device_driver\\2033_io_protocol_implementations.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1931 driver binding protocol supported",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\19_usb_driver_design_guidelines\\193_usb_device_driver\\1931_driver_binding_protocol_supported.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "23 execution",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MinimumPlatformSpecification\\2_architecture\\23_execution.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "132 industry standard bus specifications",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\1_introduction\\13_related_information\\132_industry_standard_bus_specifications.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1872 using inf file to generate pci option rom ima",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\18_pci_driver_design_guidelines\\187_pci_option_rom_images\\1872_using_inf_file_to_generate_pci_option_rom_ima.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "enable stack check in edkii",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\stack_canaries\\enable_stack_check_in_edkii.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "38 [ppis] sections",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\38_[ppis]_sections.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Enable UEFI PXE Boot in EDK II",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Enable UEFI PXE Boot in EDK II - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "38 [libraryclasses] sections",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\38_[libraryclasses]_sections.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "pcdprotocol set16ex",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_set16ex.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "2225 registerkeynotify implementation",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\22_text_console_driver_design_guidelines\\222_simple_text_input_protocol_implementation\\2225_registerkeynotify_implementation.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "3032 reserved directory names",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\30_building_uefi_drivers\\303_create_uefi_driver_directory\\3032_reserved_directory_names.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "254 managed network protocol implementations",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\25_network_driver_design_guidelines\\254_managed_network_protocol_implementations.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Framework SCT",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Framework SCT - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "428 supporting older efi specifications and uefi s",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\42_maximize_platform_compatibility\\428_supporting_older_efi_specifications_and_uefi_s.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "63 modules",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MinimumPlatformSpecification\\6_stage_4_boot_to_os\\63_modules.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "appendix f module types",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\appendix_f_module_types.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1131 device drivers",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\11_uefi_driver_and_controller_names\\113_getcontrollername_implementations\\1131_device_drivers.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "2235 setmode implementation",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\22_text_console_driver_design_guidelines\\223_simple_text_output_protocol_implementation\\2235_setmode_implementation.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "323 efi system partition",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\32_distributing_uefi_drivers\\323_efi_system_partition.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "EDK II Continuous Integration Administration",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "EDK II Continuous Integration Administration - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "secure coding guidelines general",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_general.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "pcdppi get16",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_get16.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "a52 guid file template",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a5_edk_ii_package_extension_templates\\a52_guid_file_template.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "33 platform dsc definition",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\33_platform_dsc_definition.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "21 vfr programming keywords",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-VfrSpecification\\2_vfr_description_in_bnf\\21_vfr_programming_keywords.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "3 quick reference",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-CCodingStandardsSpecification\\3_quick_reference.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "421 never assume all uefi drivers are executed",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\42_maximize_platform_compatibility\\421_never_assume_all_uefi_drivers_are_executed.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "534 locatehandle",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\53_services_that_uefi_drivers_should_not_use\\534_locatehandle.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "modify pcd setting to allow http connections",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\modify_pcd_setting_to_allow_http_connections.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "21 design and implementation of uefi drivers",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\2_uefi_driver_implementation_checklist\\21_design_and_implementation_of_uefi_drivers.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "pcdprotocol set64",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_set64.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "7 updating the menu numeric entry",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "UEFI_Driver_HII_Linux_Lab_Guide\\uefi_driver_wizard__adding_hii\\7_updating_the_menu_numeric_entry.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "appendix c targettxt",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\appendix_c_targettxt.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "1854 bus master common buffer operations",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\18_pci_driver_design_guidelines\\185_pci_dma\\1854_bus_master_common_buffer_operations.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "pcdppi set64ex",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_set64ex.md"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "Beagle Board Wiki",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Beagle Board Wiki - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
+  },
+  {
+    "query": "NT32 Pkg",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "NT32 Pkg - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "auto"
   },
   {
     "query": "425 never directly access hardware resources",
@@ -1176,7 +1306,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\42_maximize_platform_compatibility\\425_never_directly_access_hardware_resources.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "pcdppi setboolean",
@@ -1185,7 +1316,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_setboolean.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "25 [includes] usage",
@@ -1194,7 +1326,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-DecSpecification\\2_dec_file_overview\\25_[includes]_usage.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "secure configuration",
@@ -1203,7 +1336,8 @@
         "source": "tianocore-docs",
         "file_or_title": "EDK_II_Secure_Code_Review_Guide\\code_review_guidelines_for_boot_firmware\\secure_configuration.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "6210 bus drivers that produce children with multip",
@@ -1212,7 +1346,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\6_uefi_driver_categories\\62_bus_drivers\\6210_bus_drivers_that_produce_children_with_multip.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "426 memory ordering",
@@ -1221,7 +1356,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\4_general_driver_design_guidelines\\42_maximize_platform_compatibility\\426_memory_ordering.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "532 uninstallprotocolinterface",
@@ -1230,7 +1366,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\53_services_that_uefi_drivers_should_not_use\\532_uninstallprotocolinterface.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "152 getversion implementation",
@@ -1239,7 +1376,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\15_driver_family_override_protocol\\152_getversion_implementation.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "hardware input",
@@ -1248,7 +1386,8 @@
         "source": "tianocore-docs",
         "file_or_title": "EDK_II_Secure_Code_Review_Guide\\code_review_guidelines_for_boot_firmware\\hardware_input.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "3141 configuring debuglib with edk ii",
@@ -1257,7 +1396,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\31_testing_and_debugging_uefi_drivers\\314_debugging_code_statements\\3141_configuring_debuglib_with_edk_ii.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "54 communication between uefi drivers",
@@ -1266,7 +1406,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-ModuleWriteGuide\\5_uefi_drivers\\54_communication_between_uefi_drivers.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "pcdppi get64ex",
@@ -1275,7 +1416,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_get64ex.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "google titan",
@@ -1284,7 +1426,8 @@
         "source": "tianocore-docs",
         "file_or_title": "Understanding_UEFI_Secure_Boot_Chain\\looking_forward__platform_firmware_resiliency\\google_titan.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "1832 start and stop",
@@ -1293,7 +1436,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\18_pci_driver_design_guidelines\\183_pci_drivers\\1832_start_and_stop.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "opal driver has pp issue on blocksid",
@@ -1302,7 +1446,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\opal_driver_has_pp_issue_on_blocksid.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "372 drivers",
@@ -1311,7 +1456,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\3_foundation\\37_uefi_images\\372_drivers.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "283 casting pointers",
@@ -1320,7 +1466,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\28_ipf_platform_porting_considerations\\283_casting_pointers.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "UEFI EDK II Learning Dev",
@@ -1329,7 +1476,8 @@
         "source": "tianocore-wiki",
         "file_or_title": "UEFI EDK II Learning Dev - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "181 pci root bridge io protocol drivers",
@@ -1338,16 +1486,18 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\18_pci_driver_design_guidelines\\181_pci_root_bridge_io_protocol_drivers.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
-    "query": "Tasks Text Editor",
+    "query": "Tasks Build a C Compiler for Ebc",
     "expected": [
       {
         "source": "tianocore-wiki",
-        "file_or_title": "Tasks Text Editor - TianoCore EDK II Documentation"
+        "file_or_title": "Tasks Build a C Compiler for Ebc - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "36 data flows",
@@ -1356,7 +1506,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MinimumPlatformSpecification\\3_stage_1_minimum_debug\\36_data_flows.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "2423 writeblocks and writeblockex implementation",
@@ -1365,7 +1516,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\24_mass_storage_driver_design_guidelines\\242_block_io_protocol_implementations\\2423_writeblocks_and_writeblockex_implementation.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "22 declaration file format",
@@ -1374,7 +1526,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-DecSpecification\\2_dec_file_overview\\22_declaration_file_format.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "85 communication with peims",
@@ -1383,7 +1536,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-ModuleWriteGuide\\8_dxe_drivers_non-uefi_drivers\\85_communication_with_peims.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "2222 readkeystroke and readkeystrokeex implementat",
@@ -1392,7 +1546,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\22_text_console_driver_design_guidelines\\222_simple_text_input_protocol_implementation\\2222_readkeystroke_and_readkeystrokeex_implementat.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "33 additional steps for library instances",
@@ -1401,7 +1556,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-ModuleWriteGuide\\3_module_development\\33_additional_steps_for_library_instances.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "appendix e sample binary inf files",
@@ -1410,7 +1566,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-InfSpecification\\appendix_e_sample_binary_inf_files.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "5314 querycapsulecapabilities",
@@ -1419,7 +1576,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\5_uefi_services\\53_services_that_uefi_drivers_should_not_use\\5314_querycapsulecapabilities.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "202 scsi bus driver",
@@ -1428,7 +1586,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\20_scsi_driver_design_guidelines\\202_scsi_bus_driver.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "211 [userextensions] section",
@@ -1437,7 +1596,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\211_[userextensions]_section.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "74 get pei services",
@@ -1446,7 +1606,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-ModuleWriteGuide\\7_pre-efi_initialization_modules\\74_get_pei_services.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "89 dxe sal driver",
@@ -1455,7 +1616,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-ModuleWriteGuide\\8_dxe_drivers_non-uefi_drivers\\89_dxe_sal_driver.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "configure http server",
@@ -1464,7 +1626,8 @@
         "source": "tianocore-docs",
         "file_or_title": "EDKIIHttpBootGettingStartedGuide\\quick_start_guide\\configure_http_server.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "3143 disconnectcontroller",
@@ -1473,7 +1636,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\3_foundation\\314_uefi_driver_model_connection_process\\3143_disconnectcontroller.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "intel boot guard",
@@ -1482,7 +1646,8 @@
         "source": "tianocore-docs",
         "file_or_title": "Understanding_UEFI_Secure_Boot_Chain\\secure_boot_chain_in_uefi\\intel_boot_guard.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "2 create project configuration file for flake8",
@@ -1491,7 +1656,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-PythonDevelopmentProcessSpecification\\environment_setup_and_example\\2_create_project_configuration_file_for_flake8.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "44 identifiers",
@@ -1500,7 +1666,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-CCodingStandardsSpecification\\4_naming_conventions\\44_identifiers.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "call for action",
@@ -1509,16 +1676,18 @@
         "source": "tianocore-docs",
         "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\call_for_action.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
-    "query": "Release Archives",
+    "query": "EDK Apps",
     "expected": [
       {
         "source": "tianocore-wiki",
-        "file_or_title": "Release Archives - TianoCore EDK II Documentation"
+        "file_or_title": "EDK Apps - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "210 pcd usage",
@@ -1527,7 +1696,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-DecSpecification\\2_dec_file_overview\\210_pcd_usage.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "stack overflow on corrupted bmp",
@@ -1536,7 +1706,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\stack-overflow-on-corrupted-bmp.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "Commit Signature Format",
@@ -1545,7 +1716,8 @@
         "source": "tianocore-wiki",
         "file_or_title": "Commit Signature Format - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "13 terms",
@@ -1554,16 +1726,18 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MetaDataExpressionSyntaxSpecification\\1_introduction\\13_terms.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
-    "query": "EDK II Buildtools",
+    "query": "Component Guides",
     "expected": [
       {
         "source": "tianocore-wiki",
-        "file_or_title": "EDK II Buildtools - TianoCore EDK II Documentation"
+        "file_or_title": "Component Guides - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "35 configuration",
@@ -1572,7 +1746,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MinimumPlatformSpecification\\3_stage_1_minimum_debug\\35_configuration.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "pcdppi setptrex",
@@ -1581,7 +1756,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-PcdSpecification\\3_pcd_ppi_definitions\\pcdppi_setptrex.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "611 stage enabling checklist",
@@ -1590,7 +1766,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MinimumPlatformSpecification\\6_stage_4_boot_to_os\\611_stage_enabling_checklist.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "285 uefi device paths",
@@ -1599,7 +1776,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\28_ipf_platform_porting_considerations\\285_uefi_device_paths.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "configure dnsv4 server",
@@ -1608,7 +1786,8 @@
         "source": "tianocore-docs",
         "file_or_title": "EDKIIHttpBootGettingStartedGuide\\quick_start_guide\\configure_dnsv4_server.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "111 component name protocol implementations",
@@ -1617,7 +1796,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\11_uefi_driver_and_controller_names\\111_component_name_protocol_implementations.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "authvariable timestamp zeroing on append write",
@@ -1626,7 +1806,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\authvariable-timestamp-zeroing-on-append_write.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "1233 hii config access protocol",
@@ -1635,7 +1816,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\123_hii_protocols\\1233_hii_config_access_protocol.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "pcdprotocol get32ex",
@@ -1644,16 +1826,18 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-PcdSpecification\\2_pcd_protocol_definitions\\pcdprotocol_get32ex.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
-    "query": "UDK2017 Key Features",
+    "query": "UDK2018 How to Build",
     "expected": [
       {
         "source": "tianocore-wiki",
-        "file_or_title": "UDK2017 Key Features - TianoCore EDK II Documentation"
+        "file_or_title": "UDK2018 How to Build - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "sw smi confused deputy smramsavestate c",
@@ -1662,7 +1846,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\sw-smi-confused-deputy-smramsavestate_c.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "a1 edk ii intelframeworkpkg example",
@@ -1671,16 +1856,18 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-DecSpecification\\appendix_a_dec_examples\\a1_edk_ii_intelframeworkpkg_example.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
-    "query": "Code Contributions",
+    "query": "Tasks MinPlatform Port to Raspberry Pi",
     "expected": [
       {
         "source": "tianocore-wiki",
-        "file_or_title": "Code Contributions - TianoCore EDK II Documentation"
+        "file_or_title": "Tasks MinPlatform Port to Raspberry Pi - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "22 manage package",
@@ -1689,7 +1876,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-ModuleWriteGuide\\2_an_edk_ii_package\\22_manage_package.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "2243 setcontrol and getcontrol implementation",
@@ -1698,7 +1886,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\22_text_console_driver_design_guidelines\\224_serial_io_protocol_implementations\\2243_setcontrol_and_getcontrol_implementation.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "66 introducing doxygen",
@@ -1707,7 +1896,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-CCodingStandardsSpecification\\6_documenting_software\\66_introducing_doxygen.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "3101 device driver",
@@ -1716,7 +1906,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\3_foundation\\310_uefi_driver_model\\3101_device_driver.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "39 [libraryclasses] sections",
@@ -1725,16 +1916,18 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\39_[libraryclasses]_sections.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
-    "query": "Windows Systems Toolchain Matrix",
+    "query": "Commit Partitioning",
     "expected": [
       {
         "source": "tianocore-wiki",
-        "file_or_title": "Windows Systems Toolchain Matrix - TianoCore EDK II Documentation"
+        "file_or_title": "Commit Partitioning - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "3 updating your driver to initialize data from the",
@@ -1743,7 +1936,8 @@
         "source": "tianocore-docs",
         "file_or_title": "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\3_updating_your_driver_to_initialize_data_from_the.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "79 test point results",
@@ -1752,7 +1946,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MinimumPlatformSpecification\\7_stage_5_security_enable\\79_test_point_results.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "2112 implementing ata pass thru protocol",
@@ -1761,7 +1956,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\21_ata_driver_design_guidelines\\211_ata_host_controller_driver\\2112_implementing_ata_pass_thru_protocol.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "66 data flows",
@@ -1770,7 +1966,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MinimumPlatformSpecification\\6_stage_4_boot_to_os\\66_data_flows.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "84 auto generated pcd database file",
@@ -1779,7 +1976,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-BuildSpecification\\8_pre-build_autogen_stage\\84_auto-generated_pcd_database_file.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "42 directory names",
@@ -1788,7 +1986,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-CCodingStandardsSpecification\\4_naming_conventions\\42_directory_names.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "44 required functions",
@@ -1797,7 +1996,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-MinimumPlatformSpecification\\4_stage_2_memory_functional\\44_required_functions.md"
       }
-    ]
+    ],
+    "kind": "auto"
   },
   {
     "query": "How do I configure DebugLib to control debug message output level",
@@ -1806,7 +2006,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\31_testing_and_debugging_uefi_drivers\\314_debugging_code_statements\\3141_configuring_debuglib_with_edk_ii.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "PcdDebugPrintErrorLevel controls which debug messages are printed",
@@ -1815,7 +2016,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-UefiDriverWritersGuide\\31_testing_and_debugging_uefi_drivers\\314_debugging_code_statements\\3141_configuring_debuglib_with_edk_ii.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "SetVariable with NV attributes must not trust pointers from flash",
@@ -1824,7 +2026,8 @@
         "source": "tianocore-docs",
         "file_or_title": "EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_general.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "What is the control flow from power-on to OS boot in UEFI",
@@ -1833,7 +2036,8 @@
         "source": "tianocore-wiki",
         "file_or_title": "UEFI Pi FAQ - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "INF file [Pcds] section syntax and entry formats",
@@ -1842,7 +2046,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\38_pcd_sections.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "DSC file [Components] section module types and processing",
@@ -1851,7 +2056,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\310_[components]_sections.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "edk2 build command line options -a -p -b and usage",
@@ -1860,7 +2066,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-BuildSpecification\\appendix_d_buildexe_command\\d4_usage.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "FDF file [FD] section flash device layout",
@@ -1869,7 +2076,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\35_[fd]_sections.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "SMM communication buffer checking TOCTOU issue",
@@ -1878,7 +2086,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\smmcore_comm_buffer_check_has_toctou_issue.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "How to enable stack canary stack check in EDK2",
@@ -1887,7 +2096,8 @@
         "source": "tianocore-docs",
         "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\stack_canaries\\enable_stack_check_in_edkii.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "Capsule update image generation during the build",
@@ -1896,7 +2106,8 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-BuildSpecification\\11_post-build_imagegen_stage_-_other\\113_capsules.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "Boot failure related to TPM measurements",
@@ -1905,7 +2116,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\boot_failure_related_to_tpm_measurements.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "Buffer overflow in variable reclaim during SetVariable",
@@ -1914,7 +2126,8 @@
         "source": "tianocore-docs",
         "file_or_title": "SecurityAdvisory\\buffer_overflow_in_variable_reclaim.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "Adding strings and forms to a driver HII page",
@@ -1923,7 +2136,8 @@
         "source": "tianocore-docs",
         "file_or_title": "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\1_adding_strings_and_forms_to_setup_hii_for_user_c.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "How to build OVMF firmware",
@@ -1932,7 +2146,8 @@
         "source": "tianocore-wiki",
         "file_or_title": "How to Build OVMF - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "How to debug OVMF with QEMU using gdb",
@@ -1941,7 +2156,8 @@
         "source": "tianocore-wiki",
         "file_or_title": "How to Debug OVMF with QEMU Using Gdb - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "Serial output for EDK2 debug messages and PCDs to configure DebugLib",
@@ -1950,7 +2166,8 @@
         "source": "tianocore-wiki",
         "file_or_title": "EDK II Debugging - TianoCore EDK II Documentation"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "Modify PCD setting to allow HTTP connections for boot",
@@ -1959,7 +2176,8 @@
         "source": "tianocore-docs",
         "file_or_title": "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\modify_pcd_setting_to_allow_http_connections.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "Introduction to the UEFI secure boot chain",
@@ -1968,7 +2186,8 @@
         "source": "tianocore-docs",
         "file_or_title": "Understanding_UEFI_Secure_Boot_Chain\\introduction-to-the-secure-boot-chain.md"
       }
-    ]
+    ],
+    "kind": "manual"
   },
   {
     "query": "EDK2 C coding standards identifier naming conventions",
@@ -1977,6 +2196,1107 @@
         "source": "tianocore-docs",
         "file_or_title": "edk2-CCodingStandardsSpecification\\4_naming_conventions\\44_identifiers.md"
       }
-    ]
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DEC file [Defines] section content and usage",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\34_[defines]_section.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DEC [Includes] section and public include paths",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\35_[includes]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DEC file [Guids] section entries",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\36_[guids]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DEC file [Protocols] section declarations",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\37_[protocols]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DEC file [Ppis] section entries",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\38_[ppis]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DEC file [LibraryClasses] section entries",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\39_[libraryclasses]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "PCD usage declared in DEC file PCD sections",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\310_pcd_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK II module types listed in the DEC spec appendix",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DecSpecification\\appendix_b_edk_ii_module_types.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DSC [Components] section processing order",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\210_[components]_section_processing.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DSC [LibraryClasses] section processing",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\26_[libraryclasses]_section_processing.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DSC PCD section processing and PCD database generation",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\29_pcd_database.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DSC [BuildOptions] section overriding tool flags",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\2_dsc_overview\\24_[buildoptions]_section.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DSC [SkuIds] section for SKU support",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\37_[skuids]_section.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DSC [DefaultStores] section for platform defaults",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\312_[defaultstores]_section.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Building a platform for multiple architectures in DSC",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\31_building_multiple_architectures.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF [Defines] section and MODULE_TYPE usage",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\34_[defines]_section.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF [Sources] section listing source files",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\39_[sources]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF [LibraryClasses] section declaring library dependencies",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\36_[libraryclasses]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF [Packages] section and package dependencies",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\37_[packages]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF [Protocols] section protocol dependencies",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\311_[protocols]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF [Depex] section and dependency expressions",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\314_[depex]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF PCD sections and PCD access modes",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\38_pcd_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF [Binaries] section for prebuilt modules",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\315_[binaries]_section.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "FDF [FD] section defining flash device layout",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\35_[fd]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "FDF [FV] section defining firmware volumes",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\36_[fv]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "FDF [Rule] sections and build rules",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\39_[rule]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "FDF [Capsule] sections for capsule images",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\37_[capsule]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "FDF [OptionROM] section for PCI option ROM images",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\310_pci_optionrom_section.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "FDF design discussion of [FD] and [FV] sections",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-FdfSpecification\\2_fdf_design_discussion\\24_[fd]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "FMP payload sections in FDF files",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\38_[fmppayload]_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "How the build tool creates FD image files",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\10_post-build_imagegen_stage_-_flash\\105_create_the_fd_image_files.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "How the build tool creates FV image files",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\10_post-build_imagegen_stage_-_flash\\104_create_the_fv_image_files.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Generation of EFI PCI option ROM images during build",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\11_post-build_imagegen_stage_-_other\\111_efi_pci_option_rom_images.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Building for debug in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\12_build_changes_and_customizations\\121_building_for_debug.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "tools_def.txt contents and tool configuration",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\5_meta-data_file_specifications\\52_tools_def_txt.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK2 build report generation options and output",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\13_build_reports\\131_build_report_generation_options.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Build report module section contents",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\13_build_reports\\138_module_section.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK2 build boot sequence overview",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\2_design_discussion\\23_boot_sequence.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK II build system overview",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\4_edk_ii_build_process_overview\\41_edk_ii_build_system.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "How the build system parses the FDF metadata file",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\10_post-build_imagegen_stage_-_flash\\102_parsing_fdf_meta-data_file.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK2 coding standards for function definitions",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-CCodingStandardsSpecification\\5_source_files\\57_c_programming.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK2 C coding standards indentation rules",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-CCodingStandardsSpecification\\5_source_files\\52_spacing.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Steps to create a new EDK II module",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Additional steps needed for library instances",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\3_module_development\\33_additional_steps_for_library_instances.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "How to build an EDK II module",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\3_module_development\\37_building_the_module.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "How to debug an EDK II module",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\3_module_development\\38_debugging_a_module.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Writing a UEFI application entry point",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\4_uefi_applications\\42_write_uefi_application_entry_point.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "How a UEFI application communicates with a UEFI driver",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-ModuleWriteGuide\\4_uefi_applications\\44_communicating_with_a_uefi_driver.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Implementing the EFI Service Binding Protocol",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\10_uefi_service_binding_protocol\\101_service_binding_protocol_implementations.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Implementing the Component Name protocol in a UEFI driver",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\11_uefi_driver_and_controller_names\\111_component_name_protocol_implementations.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "HII database and package lists overview",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\121_hii_overview\\1211_hii_database_and_package_lists.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Forms and VFR files in UEFI driver configuration",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\125_forms_and_vfr_files.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Implementing the UEFI Driver Health protocol",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\14_driver_health_protocol\\141_driver_health_protocol_implementation.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "SMM communication buffer overwrite exposure advisory",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\commbuffer_smm_overwriteexposure.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Heap overflow in UpdateVariable vulnerability",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\heap_overflow_in_updatevariable.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Buffer overflows in capsule update security issue",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\buffer_overflows_in_capsule_update.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Authenticated variable timestamp zeroing on append write",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\authvariable-timestamp-zeroing-on-append_write.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Counter based authenticated variable issue in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\counter_based_authenticated_variable_issue.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK II authenticated variable bypass advisory",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\edk-ii-authenticated-variable-bypass.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DHCP packet boundary check vulnerability",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\dhcp_misses_boundary_check_for_network_packet.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DNS pack size check security issue",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\dns-pack-size-check.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Insecure default secure boot policy for option ROM",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\insecure_default_secure_boot_policy_for_option_rom.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Integer buffer overflow in TpmDxe driver advisory",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\integerbuffer_overflow_in_tpmdxe_driver.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "BIOS password vulnerability in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\bios_password.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Honoring memory only reset control and MOR security",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\honoring_memory_only_reset_control_and_correct_mor.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "How to enable ASLR for UEFI firmware in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\address_space_layout_randomization\\enable_aslr_for_uefi_in_edkii.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "How to enable ASLR for SMM in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\address_space_layout_randomization\\enable_aslr_for_smm_in_edkii.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Enabling DEP (data execution protection) in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\data_execution_protection\\enable_dep_in_edkii.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Stack overflow detection in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\stack_overflow_detection.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Heap overflow detection for pool allocations in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\heap_overflow_detection_for_pool.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Null pointer protection in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\null_pointer_protection_in_edkii.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Memory protection implementation in SMM",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Memory_Protection_in_UEFI_BIOS\\memory-protection-in-SMM.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Memory protection implementation in UEFI",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Memory_Protection_in_UEFI_BIOS\\memory-protection-in-uefi.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Secure coding guidelines for SMM on Intel platforms",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_intel_platforms\\smm.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Secure code review checklist for boot firmware cryptography",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDK_II_Secure_Code_Review_Guide\\code_review_guidelines_for_boot_firmware\\cryptography.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Updating HII to save data settings from setup form",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\2_updating_hii_to_save_data_settings.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Adding an additional form page in UEFI driver HII",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\10_adding_an_additional_form_page.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Adding interactive callbacks to a HII driver",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\8_updating_your_driver_for_interactive_call_backs.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "HII image packs and the IDF file format",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-IdfSpecification\\2_hii_image_packs.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Enable HTTP boot over an IPv4 stack on a platform",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\enable_http_boot_over_an_ipv4_stack_on_a_platform_.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Configure a DHCP server for HTTP boot",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDKIIHttpBootGettingStartedGuide\\quick_start_guide\\configure_dhcpv4_server.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Run HTTP boot on the target platform",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDKIIHttpBootGettingStartedGuide\\quick_start_guide\\run_http_boot.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "HTTPS boot TLS authentication modes",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDKIIHttpsBootGettingStartedGuide\\https_authentication\\tls_authentication_modes.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Self-generated certificate for HTTPS boot",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDKIIHttpsBootGettingStartedGuide\\https_authentication\\self-generated_certificate.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Introduction to Standalone MM on x86 systems",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-GettingStartedGuideforStandaloneMMonX86Systems\\1_mm_introduction.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "SMM to MM porting guide for Standalone MM",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-GettingStartedGuideforStandaloneMMonX86Systems\\2_smm_to_mm_porting_guide.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "TCG trusted boot chain implementation in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-TrustedBootChain\\3_TCG_Trusted_Boot_Chain_in_EDKII.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Checklist for platform developers for trusted boot",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-TrustedBootChain\\6_Checklist_for_Platform_Developers.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Meta-data expression syntax format used in INF/DSC",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-MetaDataExpressionSyntaxSpecification\\3_expression_format.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Configuring PXE boot servers for UEFI",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Configuring PXE Boot Servers for UEFI - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Capsule based system firmware update overview",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Capsule Based System Firmware Update - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Capsule based system firmware update DSC and FDF changes",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Capsule Based System Firmware Update Dsc Fdf - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "DEC FAQ about EDK II DEC files",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "DEC FAQ - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Debug FAQ for EDK2 debugging",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Debug FAQ - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Depex FAQ about dependency expressions",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Depex FAQ - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "ECC tool for EDK2 code checking",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "ECC Tool - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK II build tools overview",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "EDK II Buildtools - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Creating a UEFI shell application",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Creating a Shell Application - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "CET (Control-flow Enforcement Technology) in SMM",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "CET in SMM - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK2 build instructions",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Build Instructions - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "Compatibility support module in EDK2",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "Compatibility Support Module - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "EDK II code scanning tooling",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "EDK II Code Scanning - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "如何配置 PcdDebugPrintErrorLevel 控制 DebugLib 调试输出级别",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-UefiDriverWritersGuide\\31_testing_and_debugging_uefi_drivers\\314_debugging_code_statements\\3141_configuring_debuglib_with_edk_ii.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "如何开启 EDK2 的 stack canary 堆栈保护",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\stack_canaries\\enable_stack_check_in_edkii.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "UEFI 从上电到启动操作系统的控制流",
+    "expected": [
+      {
+        "source": "tianocore-wiki",
+        "file_or_title": "UEFI Pi FAQ - TianoCore EDK II Documentation"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "INF 文件 [Pcds] 段的语法和写法",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-InfSpecification\\3_edk_ii_inf_file_format\\38_pcd_sections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "如何启用 HTTP boot 以及要改哪个 PCD",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\modify_pcd_setting_to_allow_http_connections.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "SMM comm buffer 校验的 TOCTOU 安全问题",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "SecurityAdvisory\\smmcore_comm_buffer_check_has_toctou_issue.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "SetVariable 的 NV 属性使用时要注意什么",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_general.md"
+      }
+    ],
+    "kind": "manual"
+  },
+  {
+    "query": "capsule update 固件镜像在构建时如何生成",
+    "expected": [
+      {
+        "source": "tianocore-docs",
+        "file_or_title": "edk2-BuildSpecification\\11_post-build_imagegen_stage_-_other\\113_capsules.md"
+      }
+    ],
+    "kind": "manual"
   }
 ]

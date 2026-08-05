@@ -123,22 +123,24 @@ def main() -> None:
     results = [run_entry(engine, e, args.top_k) for e in entries]
 
     all_m = summarize(results, args.top_k)
-    auto_m = summarize(results[:len(results) - 20], args.top_k)
-    manual_m = summarize(results[-20:], args.top_k)
+    auto_m = summarize([r for r, e in zip(results, entries)
+                        if e.get("kind") == "auto"], args.top_k)
+    manual_m = summarize([r for r, e in zip(results, entries)
+                          if e.get("kind") == "manual"], args.top_k)
 
     print()
     print("=" * 58)
-    print("ALL 220 queries")
+    print(f"ALL {len(entries)} queries")
     print("=" * 58)
     for b in BASELINES:
         print(f"  {b:<14} hit@5 {fmt(all_m, b)}")
     print()
-    print("MANUAL 20 labeled questions")
+    print(f"MANUAL {len([e for e in entries if e.get('kind') == 'manual'])} labeled questions")
     print("=" * 58)
     for b in BASELINES:
         print(f"  {b:<14} hit@5 {fmt(manual_m, b)}")
     print()
-    print("AUTO 200 title questions")
+    print(f"AUTO {len([e for e in entries if e.get('kind') == 'auto'])} title questions")
     print("=" * 58)
     for b in BASELINES:
         print(f"  {b:<14} hit@5 {fmt(auto_m, b)}")
@@ -154,6 +156,13 @@ def main() -> None:
         "\n\n## Auto title questions\n\n" + markdown_table(auto_m) +
         "\n"
     )
+    # Preserve hand-maintained sections below the auto-generated tables so a
+    # re-run never wipes them. Kept in sync by eval/compare_rerankers.py.
+    marker = "## Reranker comparison"
+    if REPORT_FILE.exists():
+        old = REPORT_FILE.read_text(encoding="utf-8")
+        if marker in old:
+            report += "\n" + old[old.index(marker):]
     REPORT_FILE.write_text(report, encoding="utf-8")
     print()
     print("report written to", REPORT_FILE)

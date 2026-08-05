@@ -2,6 +2,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.19] - 2026-08-05
+
+### P0 accuracy improvements
+
+**1. Reranker: default switched to `BAAI/bge-reranker-v2-m3`** (multilingual
+XLM-R large, ~2.2GB) replacing `ms-marco-MiniLM-L-6-v2` (English-only).
+The old model was trained on generic English text and is blind to EDK2 terms
+and to non-English queries. bge-v2-m3 is preferred when a local copy exists
+at `~/.edk2-opencode/models/bge-reranker-v2-m3/`, else the HF model id is
+used. Switch back / to any cached model via `EDK2_RERANKER_MODEL`;
+`EDK2_RERANKER_MAX_LENGTH` (default 1024) tunes truncation.
+
+Confidence thresholds are now model-family aware: bge rerankers emit a
+sigmoid relevance in [0,1] (high >0.5 / medium >0.2 / low >0.05), while
+ms-marco keeps the old logit thresholds (4.0/2.0/0.0). The LLM therefore
+gets trustworthy confidence for Chinese queries too (measured: a correct
+doc scores `high` under bge-v2-m3 but only `low` under ms-marco).
+
+**2. Hand-labeled eval set grown 20 → 130** (`eval/manual_extended.py`):
++102 real-style questions across DEC/DSC/INF/FDF/Build/coding-standards/
+security/HII/boot specs plus wiki pages, and 8 Chinese user-facing queries.
+Every label was verified against the index metadata (0 missing).
+
+**3. Answer-level evaluation** (`eval/judge_eval.py`): LLM-as-judge grades
+(query, retrieved context, answer) triples on factual accuracy (1-5, plus
+hallucinated-claims list), i.e. it measures the answer the user actually
+reads instead of retrieval ranking. Backends are pluggable: `--provider
+mock` (deterministic, key-free) and `--provider openai` (any OpenAI-
+compatible endpoint; provide `--api-key --base-url --model`). Writes
+`judge_results.json` + `JUDGE_REPORT.md`.
+
+Eval entries now carry a `kind` field (`auto`/`manual`) so all scripts group
+by kind instead of by the old fixed 20-row slice.
+`eval/compare_rerankers.py` regenerates the reranker-comparison section in
+RESULTS.md (run_eval.py now preserves that section across re-runs instead of
+overwriting it).
+
+### Measured impact (manual 130, top-10 pool)
+
+| reranker | hit@5 | MRR@10 |
+|---|---|---|
+| (no rerank) | 52.3% | 0.395 |
+| ms-marco-MiniLM-L-6-v2 | 56.2% | 0.494 |
+| **bge-reranker-v2-m3** | **56.9%** | 0.484 |
+
+On the 8 Chinese queries both rerankers stay at 12.5% hit@5 — recall there is
+capped by retrieval, not reranking — but bge-v2-m3 labels the correct doc
+`high` confidence vs `low` for ms-marco, which is what the LLM relies on to
+decide how firmly to assert.
+
+**Caveat / next step:** Chinese recall is still low overall — the bottleneck
+is *retrieval* (English-only all-MiniLM embedder + weak Chinese BM25), not
+reranking. Candidates for the correct doc often never enter the rerank pool.
+P1: switch the embedder to the already-cached `BAAI/bge-m3` and re-run.
+
 ## [6.0.18] - 2026-08-05
 
 ### Web tools disabled in generated opencode.json

@@ -27,6 +27,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from search_engine import SearchEngine  # noqa: E402
 
+from manual_extended import EXTENDED_MANUAL  # noqa: E402
+
 WIKI_SUFFIX_RE = re.compile(r"\s*-\s*TianoCore\s+EDK\s+II\s+Documentation\s*$")
 NOISE_RE = re.compile(r"(README|SUMMARY|FIGURES|glossary|references)", re.I)
 
@@ -96,6 +98,9 @@ MANUAL = [
                    "file_or_title": r"edk2-CCodingStandardsSpecification\4_naming_conventions\44_identifiers.md"}]},
 ]
 
+# Hand-labeled set = the original 20 + the extended set (see manual_extended.py).
+MANUAL = MANUAL + EXTENDED_MANUAL
+
 
 def title_query(title: str) -> str:
     s = WIKI_SUFFIX_RE.sub("", title).strip()
@@ -136,6 +141,13 @@ def build(data_dir, auto_n: int) -> list:
     rng = random.Random(42)
     rng.shuffle(auto)
     auto = auto[:auto_n]
+
+    # Tag every entry with its subset so downstream scripts can group by
+    # kind instead of by position (manual grew past the old fixed 20).
+    for x in auto:
+        x["kind"] = "auto"
+    for x in MANUAL:
+        x.setdefault("kind", "manual")
 
     # ---- validate manual labels exist --------------------------------- #
     known = set(docs)

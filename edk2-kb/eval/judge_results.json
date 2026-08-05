@@ -1,0 +1,1832 @@
+[
+  {
+    "query": "How do I configure DebugLib to control debug message output level",
+    "expected": [
+      "edk2-UefiDriverWritersGuide\\31_testing_and_debugging_uefi_drivers\\314_debugging_code_statements\\3141_configuring_debuglib_with_edk_ii.md"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\31_testing_and_debugging_uefi_drivers\\314_debugging_code_statements\\3141_configuring_debuglib_with_edk_ii.md",
+    "top_confidence": "low",
+    "context_chars": 2985,
+    "answer": "Based on the knowledge base: [1] edk2-UefiDriverWritersGuide\\31_testing_and_debugging_uefi_drivers\\314_debugging_code_statements\\3141_configuring_debuglib_with_edk_ii.md (confidence: low)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "PcdDebugPrintErrorLevel controls which debug messages are printed",
+    "expected": [
+      "edk2-UefiDriverWritersGuide\\31_testing_and_debugging_uefi_drivers\\314_debugging_code_statements\\3141_configuring_debuglib_with_edk_ii.md"
+    ],
+    "top_doc": "EDK II Debugging - TianoCore EDK II Documentation",
+    "top_confidence": "poor",
+    "context_chars": 2918,
+    "answer": "Based on the knowledge base: [1] EDK II Debugging - TianoCore EDK II Documentation (confidence: poor)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "SetVariable with NV attributes must not trust pointers from flash",
+    "expected": [
+      "EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_general.md"
+    ],
+    "top_doc": "edk2-FdfSpecification\\2_fdf_design_discussion\\25_[fv]_sections.md",
+    "top_confidence": "poor",
+    "context_chars": 589,
+    "answer": "Based on the knowledge base: [1] edk2-FdfSpecification\\2_fdf_design_discussion\\25_[fv]_sections.md (confidence: poor)",
+    "judge": {
+      "score": 3,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "What is the control flow from power-on to OS boot in UEFI",
+    "expected": [
+      "UEFI Pi FAQ - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "UEFI Pi FAQ - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2860,
+    "answer": "Based on the knowledge base: [1] UEFI Pi FAQ - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF file [Pcds] section syntax and entry formats",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\38_pcd_sections.md"
+    ],
+    "top_doc": "edk2-InfSpecification\\2_inf_overview\\214_pcd_sections.md",
+    "top_confidence": "high",
+    "context_chars": 1391,
+    "answer": "Based on the knowledge base: [1] edk2-InfSpecification\\2_inf_overview\\214_pcd_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DSC file [Components] section module types and processing",
+    "expected": [
+      "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\310_[components]_sections.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\8_pre-build_autogen_stage\\82_auto-generation_process.md",
+    "top_confidence": "high",
+    "context_chars": 2041,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\8_pre-build_autogen_stage\\82_auto-generation_process.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "edk2 build command line options -a -p -b and usage",
+    "expected": [
+      "edk2-BuildSpecification\\appendix_d_buildexe_command\\d4_usage.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\6_quick_start\\62_build_scope.md",
+    "top_confidence": "medium",
+    "context_chars": 2874,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\6_quick_start\\62_build_scope.md (confidence: medium)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "FDF file [FD] section flash device layout",
+    "expected": [
+      "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\35_[fd]_sections.md"
+    ],
+    "top_doc": "edk2-FdfSpecification\\2_fdf_design_discussion\\24_[fd]_sections.md",
+    "top_confidence": "high",
+    "context_chars": 1897,
+    "answer": "Based on the knowledge base: [1] edk2-FdfSpecification\\2_fdf_design_discussion\\24_[fd]_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "SMM communication buffer checking TOCTOU issue",
+    "expected": [
+      "SecurityAdvisory\\smmcore_comm_buffer_check_has_toctou_issue.md"
+    ],
+    "top_doc": "SecurityAdvisory\\smmcore_comm_buffer_check_has_toctou_issue.md",
+    "top_confidence": "high",
+    "context_chars": 1172,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\smmcore_comm_buffer_check_has_toctou_issue.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How to enable stack canary stack check in EDK2",
+    "expected": [
+      "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\stack_canaries\\enable_stack_check_in_edkii.md"
+    ],
+    "top_doc": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\stack_canaries\\enable_stack_check_in_edkii.md",
+    "top_confidence": "high",
+    "context_chars": 2835,
+    "answer": "Based on the knowledge base: [1] ATBB-Mitigate_Buffer_Overflow_in_UEFI\\stack_canaries\\enable_stack_check_in_edkii.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Capsule update image generation during the build",
+    "expected": [
+      "edk2-BuildSpecification\\11_post-build_imagegen_stage_-_other\\113_capsules.md"
+    ],
+    "top_doc": "Capsule Based System Firmware Update Dsc Fdf - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2537,
+    "answer": "Based on the knowledge base: [1] Capsule Based System Firmware Update Dsc Fdf - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Boot failure related to TPM measurements",
+    "expected": [
+      "SecurityAdvisory\\boot_failure_related_to_tpm_measurements.md"
+    ],
+    "top_doc": "SecurityAdvisory\\boot_failure_related_to_tpm_measurements.md",
+    "top_confidence": "high",
+    "context_chars": 1594,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\boot_failure_related_to_tpm_measurements.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Buffer overflow in variable reclaim during SetVariable",
+    "expected": [
+      "SecurityAdvisory\\buffer_overflow_in_variable_reclaim.md"
+    ],
+    "top_doc": "SecurityAdvisory\\buffer_overflow_in_variable_reclaim.md",
+    "top_confidence": "high",
+    "context_chars": 579,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\buffer_overflow_in_variable_reclaim.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Adding strings and forms to a driver HII page",
+    "expected": [
+      "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\1_adding_strings_and_forms_to_setup_hii_for_user_c.md"
+    ],
+    "top_doc": "UEFI_Driver_HII_Linux_Lab_Guide\\uefi_driver_wizard__adding_hii\\1_adding_strings_and_forms_to_setup_hii_for_user_c.md",
+    "top_confidence": "high",
+    "context_chars": 1783,
+    "answer": "Based on the knowledge base: [1] UEFI_Driver_HII_Linux_Lab_Guide\\uefi_driver_wizard__adding_hii\\1_adding_strings_and_forms_to_setup_hii_for_user_c.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How to build OVMF firmware",
+    "expected": [
+      "How to Build OVMF - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "How to Run OVMF - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2574,
+    "answer": "Based on the knowledge base: [1] How to Run OVMF - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How to debug OVMF with QEMU using gdb",
+    "expected": [
+      "How to Debug OVMF with QEMU Using Gdb - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "How to Debug OVMF with QEMU Using Gdb - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2546,
+    "answer": "Based on the knowledge base: [1] How to Debug OVMF with QEMU Using Gdb - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Serial output for EDK2 debug messages and PCDs to configure DebugLib",
+    "expected": [
+      "EDK II Debugging - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "EDK II Debugging - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2383,
+    "answer": "Based on the knowledge base: [1] EDK II Debugging - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Modify PCD setting to allow HTTP connections for boot",
+    "expected": [
+      "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\modify_pcd_setting_to_allow_http_connections.md"
+    ],
+    "top_doc": "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\modify_pcd_setting_to_allow_http_connections.md",
+    "top_confidence": "high",
+    "context_chars": 2613,
+    "answer": "Based on the knowledge base: [1] EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\modify_pcd_setting_to_allow_http_connections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Introduction to the UEFI secure boot chain",
+    "expected": [
+      "Understanding_UEFI_Secure_Boot_Chain\\introduction-to-the-secure-boot-chain.md"
+    ],
+    "top_doc": "Understanding_UEFI_Secure_Boot_Chain\\SUMMARY.md",
+    "top_confidence": "high",
+    "context_chars": 2025,
+    "answer": "Based on the knowledge base: [1] Understanding_UEFI_Secure_Boot_Chain\\SUMMARY.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK2 C coding standards identifier naming conventions",
+    "expected": [
+      "edk2-CCodingStandardsSpecification\\4_naming_conventions\\44_identifiers.md"
+    ],
+    "top_doc": "edk2-DecSpecification\\2_dec_file_overview\\22_declaration_file_format.md",
+    "top_confidence": "high",
+    "context_chars": 2715,
+    "answer": "Based on the knowledge base: [1] edk2-DecSpecification\\2_dec_file_overview\\22_declaration_file_format.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DEC file [Defines] section content and usage",
+    "expected": [
+      "edk2-DecSpecification\\3_edk_ii_dec_file_format\\34_[defines]_section.md"
+    ],
+    "top_doc": "edk2-DecSpecification\\2_dec_file_overview\\24_[defines]_usage.md",
+    "top_confidence": "high",
+    "context_chars": 2304,
+    "answer": "Based on the knowledge base: [1] edk2-DecSpecification\\2_dec_file_overview\\24_[defines]_usage.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DEC [Includes] section and public include paths",
+    "expected": [
+      "edk2-DecSpecification\\3_edk_ii_dec_file_format\\35_[includes]_sections.md"
+    ],
+    "top_doc": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\35_[includes]_sections.md",
+    "top_confidence": "high",
+    "context_chars": 2615,
+    "answer": "Based on the knowledge base: [1] edk2-DecSpecification\\3_edk_ii_dec_file_format\\35_[includes]_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DEC file [Guids] section entries",
+    "expected": [
+      "edk2-DecSpecification\\3_edk_ii_dec_file_format\\36_[guids]_sections.md"
+    ],
+    "top_doc": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\36_[guids]_sections.md",
+    "top_confidence": "high",
+    "context_chars": 1940,
+    "answer": "Based on the knowledge base: [1] edk2-DecSpecification\\3_edk_ii_dec_file_format\\36_[guids]_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DEC file [Protocols] section declarations",
+    "expected": [
+      "edk2-DecSpecification\\3_edk_ii_dec_file_format\\37_[protocols]_sections.md"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a5_edk_ii_package_extension_templates\\a51_protocol_file_template.md",
+    "top_confidence": "high",
+    "context_chars": 1617,
+    "answer": "Based on the knowledge base: [1] edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a5_edk_ii_package_extension_templates\\a51_protocol_file_template.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DEC file [Ppis] section entries",
+    "expected": [
+      "edk2-DecSpecification\\3_edk_ii_dec_file_format\\38_[ppis]_sections.md"
+    ],
+    "top_doc": "edk2-DecSpecification\\2_dec_file_overview\\28_[ppis]_usage.md",
+    "top_confidence": "high",
+    "context_chars": 1821,
+    "answer": "Based on the knowledge base: [1] edk2-DecSpecification\\2_dec_file_overview\\28_[ppis]_usage.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DEC file [LibraryClasses] section entries",
+    "expected": [
+      "edk2-DecSpecification\\3_edk_ii_dec_file_format\\39_[libraryclasses]_sections.md"
+    ],
+    "top_doc": "edk2-DecSpecification\\3_edk_ii_dec_file_format\\39_[libraryclasses]_sections.md",
+    "top_confidence": "high",
+    "context_chars": 1972,
+    "answer": "Based on the knowledge base: [1] edk2-DecSpecification\\3_edk_ii_dec_file_format\\39_[libraryclasses]_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "PCD usage declared in DEC file PCD sections",
+    "expected": [
+      "edk2-DecSpecification\\3_edk_ii_dec_file_format\\310_pcd_sections.md"
+    ],
+    "top_doc": "edk2-DecSpecification\\2_dec_file_overview\\210_pcd_usage.md",
+    "top_confidence": "high",
+    "context_chars": 2191,
+    "answer": "Based on the knowledge base: [1] edk2-DecSpecification\\2_dec_file_overview\\210_pcd_usage.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK II module types listed in the DEC spec appendix",
+    "expected": [
+      "edk2-DecSpecification\\appendix_b_edk_ii_module_types.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\31_what_is_an_edk_ii_module.md",
+    "top_confidence": "high",
+    "context_chars": 1731,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\3_module_development\\31_what_is_an_edk_ii_module.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DSC [Components] section processing order",
+    "expected": [
+      "edk2-DscSpecification\\2_dsc_overview\\210_[components]_section_processing.md"
+    ],
+    "top_doc": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\README.md",
+    "top_confidence": "high",
+    "context_chars": 1587,
+    "answer": "Based on the knowledge base: [1] edk2-DscSpecification\\3_edk_ii_dsc_file_format\\README.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DSC [LibraryClasses] section processing",
+    "expected": [
+      "edk2-DscSpecification\\2_dsc_overview\\26_[libraryclasses]_section_processing.md"
+    ],
+    "top_doc": "edk2-DscSpecification\\2_dsc_overview\\26_[libraryclasses]_section_processing.md",
+    "top_confidence": "high",
+    "context_chars": 1726,
+    "answer": "Based on the knowledge base: [1] edk2-DscSpecification\\2_dsc_overview\\26_[libraryclasses]_section_processing.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DSC PCD section processing and PCD database generation",
+    "expected": [
+      "edk2-DscSpecification\\2_dsc_overview\\29_pcd_database.md"
+    ],
+    "top_doc": "edk2-DscSpecification\\2_dsc_overview\\29_pcd_database.md",
+    "top_confidence": "high",
+    "context_chars": 1814,
+    "answer": "Based on the knowledge base: [1] edk2-DscSpecification\\2_dsc_overview\\29_pcd_database.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DSC [BuildOptions] section overriding tool flags",
+    "expected": [
+      "edk2-DscSpecification\\2_dsc_overview\\24_[buildoptions]_section.md"
+    ],
+    "top_doc": "edk2-DscSpecification\\2_dsc_overview\\210_[components]_section_processing.md",
+    "top_confidence": "high",
+    "context_chars": 1952,
+    "answer": "Based on the knowledge base: [1] edk2-DscSpecification\\2_dsc_overview\\210_[components]_section_processing.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DSC [SkuIds] section for SKU support",
+    "expected": [
+      "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\37_[skuids]_section.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\2_design_discussion\\27_sku_support.md",
+    "top_confidence": "high",
+    "context_chars": 1040,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\2_design_discussion\\27_sku_support.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DSC [DefaultStores] section for platform defaults",
+    "expected": [
+      "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\312_[defaultstores]_section.md"
+    ],
+    "top_doc": "edk2-DscSpecification\\2_dsc_overview\\212_[defaultstores]_section_processing.md",
+    "top_confidence": "high",
+    "context_chars": 2044,
+    "answer": "Based on the knowledge base: [1] edk2-DscSpecification\\2_dsc_overview\\212_[defaultstores]_section_processing.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Building a platform for multiple architectures in DSC",
+    "expected": [
+      "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\31_building_multiple_architectures.md"
+    ],
+    "top_doc": "edk2-DscSpecification\\3_edk_ii_dsc_file_format\\31_building_multiple_architectures.md",
+    "top_confidence": "high",
+    "context_chars": 2625,
+    "answer": "Based on the knowledge base: [1] edk2-DscSpecification\\3_edk_ii_dsc_file_format\\31_building_multiple_architectures.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF [Defines] section and MODULE_TYPE usage",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\34_[defines]_section.md"
+    ],
+    "top_doc": "edk2-DecSpecification\\2_dec_file_overview\\210_pcd_usage.md",
+    "top_confidence": "high",
+    "context_chars": 1308,
+    "answer": "Based on the knowledge base: [1] edk2-DecSpecification\\2_dec_file_overview\\210_pcd_usage.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF [Sources] section listing source files",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\39_[sources]_sections.md"
+    ],
+    "top_doc": "edk2-InfSpecification\\2_inf_overview\\25_[sources]_section.md",
+    "top_confidence": "high",
+    "context_chars": 1585,
+    "answer": "Based on the knowledge base: [1] edk2-InfSpecification\\2_inf_overview\\25_[sources]_section.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF [LibraryClasses] section declaring library dependencies",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\36_[libraryclasses]_sections.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md",
+    "top_confidence": "high",
+    "context_chars": 1934,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF [Packages] section and package dependencies",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\37_[packages]_sections.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md",
+    "top_confidence": "high",
+    "context_chars": 1578,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF [Protocols] section protocol dependencies",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\311_[protocols]_sections.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md",
+    "top_confidence": "high",
+    "context_chars": 1662,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF [Depex] section and dependency expressions",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\314_[depex]_sections.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md",
+    "top_confidence": "high",
+    "context_chars": 1896,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF PCD sections and PCD access modes",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\38_pcd_sections.md"
+    ],
+    "top_doc": "edk2-InfSpecification\\2_inf_overview\\214_pcd_sections.md",
+    "top_confidence": "high",
+    "context_chars": 989,
+    "answer": "Based on the knowledge base: [1] edk2-InfSpecification\\2_inf_overview\\214_pcd_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "INF [Binaries] section for prebuilt modules",
+    "expected": [
+      "edk2-InfSpecification\\3_edk_ii_inf_file_format\\315_[binaries]_section.md"
+    ],
+    "top_doc": "edk2-InfSpecification\\2_inf_overview\\27_[binaries]_section.md",
+    "top_confidence": "medium",
+    "context_chars": 1760,
+    "answer": "Based on the knowledge base: [1] edk2-InfSpecification\\2_inf_overview\\27_[binaries]_section.md (confidence: medium)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "FDF [FD] section defining flash device layout",
+    "expected": [
+      "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\35_[fd]_sections.md"
+    ],
+    "top_doc": "edk2-FdfSpecification\\2_fdf_design_discussion\\24_[fd]_sections.md",
+    "top_confidence": "high",
+    "context_chars": 1504,
+    "answer": "Based on the knowledge base: [1] edk2-FdfSpecification\\2_fdf_design_discussion\\24_[fd]_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "FDF [FV] section defining firmware volumes",
+    "expected": [
+      "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\36_[fv]_sections.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\2_design_discussion\\26_creating_efi_images.md",
+    "top_confidence": "high",
+    "context_chars": 1958,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\2_design_discussion\\26_creating_efi_images.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "FDF [Rule] sections and build rules",
+    "expected": [
+      "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\39_[rule]_sections.md"
+    ],
+    "top_doc": "edk2-FdfSpecification\\2_fdf_design_discussion\\27_[rule]_sections.md",
+    "top_confidence": "high",
+    "context_chars": 1593,
+    "answer": "Based on the knowledge base: [1] edk2-FdfSpecification\\2_fdf_design_discussion\\27_[rule]_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "FDF [Capsule] sections for capsule images",
+    "expected": [
+      "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\37_[capsule]_sections.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\11_post-build_imagegen_stage_-_other\\113_capsules.md",
+    "top_confidence": "high",
+    "context_chars": 1622,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\11_post-build_imagegen_stage_-_other\\113_capsules.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "FDF [OptionROM] section for PCI option ROM images",
+    "expected": [
+      "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\310_pci_optionrom_section.md"
+    ],
+    "top_doc": "edk2-FdfSpecification\\2_fdf_design_discussion\\28_[optionrom]_sections.md",
+    "top_confidence": "high",
+    "context_chars": 1624,
+    "answer": "Based on the knowledge base: [1] edk2-FdfSpecification\\2_fdf_design_discussion\\28_[optionrom]_sections.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "FDF design discussion of [FD] and [FV] sections",
+    "expected": [
+      "edk2-FdfSpecification\\2_fdf_design_discussion\\24_[fd]_sections.md"
+    ],
+    "top_doc": "edk2-FdfSpecification\\2_fdf_design_discussion\\README.md",
+    "top_confidence": "high",
+    "context_chars": 2550,
+    "answer": "Based on the knowledge base: [1] edk2-FdfSpecification\\2_fdf_design_discussion\\README.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "FMP payload sections in FDF files",
+    "expected": [
+      "edk2-FdfSpecification\\3_edk_ii_fdf_file_format\\38_[fmppayload]_sections.md"
+    ],
+    "top_doc": "edk2-FdfSpecification\\README.md",
+    "top_confidence": "high",
+    "context_chars": 1986,
+    "answer": "Based on the knowledge base: [1] edk2-FdfSpecification\\README.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How the build tool creates FD image files",
+    "expected": [
+      "edk2-BuildSpecification\\10_post-build_imagegen_stage_-_flash\\105_create_the_fd_image_files.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\2_design_discussion\\26_creating_efi_images.md",
+    "top_confidence": "high",
+    "context_chars": 881,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\2_design_discussion\\26_creating_efi_images.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How the build tool creates FV image files",
+    "expected": [
+      "edk2-BuildSpecification\\10_post-build_imagegen_stage_-_flash\\104_create_the_fv_image_files.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\2_design_discussion\\26_creating_efi_images.md",
+    "top_confidence": "high",
+    "context_chars": 1157,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\2_design_discussion\\26_creating_efi_images.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Generation of EFI PCI option ROM images during build",
+    "expected": [
+      "edk2-BuildSpecification\\11_post-build_imagegen_stage_-_other\\111_efi_pci_option_rom_images.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\4_edk_ii_build_process_overview\\45_post-build_stage.md",
+    "top_confidence": "high",
+    "context_chars": 1710,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\4_edk_ii_build_process_overview\\45_post-build_stage.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Building for debug in EDK2",
+    "expected": [
+      "edk2-BuildSpecification\\12_build_changes_and_customizations\\121_building_for_debug.md"
+    ],
+    "top_doc": "EDK II Source Level Debug - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2568,
+    "answer": "Based on the knowledge base: [1] EDK II Source Level Debug - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "tools_def.txt contents and tool configuration",
+    "expected": [
+      "edk2-BuildSpecification\\5_meta-data_file_specifications\\52_tools_def_txt.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\5_meta-data_file_specifications\\52_tools_def_txt.md",
+    "top_confidence": "high",
+    "context_chars": 599,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\5_meta-data_file_specifications\\52_tools_def_txt.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK2 build report generation options and output",
+    "expected": [
+      "edk2-BuildSpecification\\13_build_reports\\131_build_report_generation_options.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\appendix_d_buildexe_command\\d4_usage.md",
+    "top_confidence": "medium",
+    "context_chars": 2746,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\appendix_d_buildexe_command\\d4_usage.md (confidence: medium)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Build report module section contents",
+    "expected": [
+      "edk2-BuildSpecification\\13_build_reports\\138_module_section.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\13_build_reports\\138_module_section.md",
+    "top_confidence": "high",
+    "context_chars": 2082,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\13_build_reports\\138_module_section.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK2 build boot sequence overview",
+    "expected": [
+      "edk2-BuildSpecification\\2_design_discussion\\23_boot_sequence.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\1_introduction\\README.md",
+    "top_confidence": "high",
+    "context_chars": 2881,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\1_introduction\\README.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK II build system overview",
+    "expected": [
+      "edk2-BuildSpecification\\4_edk_ii_build_process_overview\\41_edk_ii_build_system.md"
+    ],
+    "top_doc": "EDK II Overview - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 1846,
+    "answer": "Based on the knowledge base: [1] EDK II Overview - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How the build system parses the FDF metadata file",
+    "expected": [
+      "edk2-BuildSpecification\\10_post-build_imagegen_stage_-_flash\\102_parsing_fdf_meta-data_file.md"
+    ],
+    "top_doc": "edk2-BuildSpecification\\10_post-build_imagegen_stage_-_flash\\102_parsing_fdf_meta-data_file.md",
+    "top_confidence": "high",
+    "context_chars": 1199,
+    "answer": "Based on the knowledge base: [1] edk2-BuildSpecification\\10_post-build_imagegen_stage_-_flash\\102_parsing_fdf_meta-data_file.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK2 coding standards for function definitions",
+    "expected": [
+      "edk2-CCodingStandardsSpecification\\4_naming_conventions\\44_identifiers.md"
+    ],
+    "top_doc": "Coding Standards - TianoCore EDK II Documentation",
+    "top_confidence": "low",
+    "context_chars": 2888,
+    "answer": "Based on the knowledge base: [1] Coding Standards - TianoCore EDK II Documentation (confidence: low)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK2 C coding standards indentation rules",
+    "expected": [
+      "edk2-CCodingStandardsSpecification\\4_naming_conventions\\44_identifiers.md"
+    ],
+    "top_doc": "Coding Standards - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2637,
+    "answer": "Based on the knowledge base: [1] Coding Standards - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Steps to create a new EDK II module",
+    "expected": [
+      "edk2-ModuleWriteGuide\\3_module_development\\32_creating_a_module.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\1_the_basics_of_edk_ii\\README.md",
+    "top_confidence": "medium",
+    "context_chars": 2713,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\1_the_basics_of_edk_ii\\README.md (confidence: medium)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Additional steps needed for library instances",
+    "expected": [
+      "edk2-ModuleWriteGuide\\3_module_development\\33_additional_steps_for_library_instances.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\33_additional_steps_for_library_instances.md",
+    "top_confidence": "high",
+    "context_chars": 2152,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\3_module_development\\33_additional_steps_for_library_instances.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How to build an EDK II module",
+    "expected": [
+      "edk2-ModuleWriteGuide\\3_module_development\\37_building_the_module.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\1_the_basics_of_edk_ii\\README.md",
+    "top_confidence": "high",
+    "context_chars": 1838,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\1_the_basics_of_edk_ii\\README.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How to debug an EDK II module",
+    "expected": [
+      "edk2-ModuleWriteGuide\\3_module_development\\38_debugging_a_module.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\38_debugging_a_module.md",
+    "top_confidence": "high",
+    "context_chars": 2394,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\3_module_development\\38_debugging_a_module.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Writing a UEFI application entry point",
+    "expected": [
+      "edk2-ModuleWriteGuide\\4_uefi_applications\\42_write_uefi_application_entry_point.md"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\4_uefi_applications\\42_write_uefi_application_entry_point.md",
+    "top_confidence": "high",
+    "context_chars": 2018,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\4_uefi_applications\\42_write_uefi_application_entry_point.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How a UEFI application communicates with a UEFI driver",
+    "expected": [
+      "edk2-ModuleWriteGuide\\4_uefi_applications\\44_communicating_with_a_uefi_driver.md"
+    ],
+    "top_doc": "UEFI Pi FAQ - TianoCore EDK II Documentation",
+    "top_confidence": "medium",
+    "context_chars": 2875,
+    "answer": "Based on the knowledge base: [1] UEFI Pi FAQ - TianoCore EDK II Documentation (confidence: medium)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Implementing the EFI Service Binding Protocol",
+    "expected": [
+      "edk2-UefiDriverWritersGuide\\10_uefi_service_binding_protocol\\101_service_binding_protocol_implementations.md"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\19_usb_driver_design_guidelines\\191_usb_host_controller_driver\\1911_driver_binding_protocol_supported.md",
+    "top_confidence": "high",
+    "context_chars": 1702,
+    "answer": "Based on the knowledge base: [1] edk2-UefiDriverWritersGuide\\19_usb_driver_design_guidelines\\191_usb_host_controller_driver\\1911_driver_binding_protocol_supported.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Implementing the Component Name protocol in a UEFI driver",
+    "expected": [
+      "edk2-UefiDriverWritersGuide\\11_uefi_driver_and_controller_names\\111_component_name_protocol_implementations.md"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a2_uefi_driver_optional_protocol_templates\\README.md",
+    "top_confidence": "high",
+    "context_chars": 2001,
+    "answer": "Based on the knowledge base: [1] edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a2_uefi_driver_optional_protocol_templates\\README.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "HII database and package lists overview",
+    "expected": [
+      "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\121_hii_overview\\1211_hii_database_and_package_lists.md"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\SUMMARY.md",
+    "top_confidence": "high",
+    "context_chars": 2034,
+    "answer": "Based on the knowledge base: [1] edk2-UefiDriverWritersGuide\\SUMMARY.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Forms and VFR files in UEFI driver configuration",
+    "expected": [
+      "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\125_forms_and_vfr_files.md"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\125_forms_and_vfr_files.md",
+    "top_confidence": "high",
+    "context_chars": 2331,
+    "answer": "Based on the knowledge base: [1] edk2-UefiDriverWritersGuide\\12_uefi_driver_configuration\\125_forms_and_vfr_files.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Implementing the UEFI Driver Health protocol",
+    "expected": [
+      "edk2-UefiDriverWritersGuide\\14_driver_health_protocol\\141_driver_health_protocol_implementation.md"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a2_uefi_driver_optional_protocol_templates\\README.md",
+    "top_confidence": "high",
+    "context_chars": 1937,
+    "answer": "Based on the knowledge base: [1] edk2-UefiDriverWritersGuide\\appendix_a_edk_ii_file_templates\\a2_uefi_driver_optional_protocol_templates\\README.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "SMM communication buffer overwrite exposure advisory",
+    "expected": [
+      "SecurityAdvisory\\commbuffer_smm_overwriteexposure.md"
+    ],
+    "top_doc": "SecurityAdvisory\\commbuffer_smm_overwriteexposure.md",
+    "top_confidence": "high",
+    "context_chars": 2861,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\commbuffer_smm_overwriteexposure.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Heap overflow in UpdateVariable vulnerability",
+    "expected": [
+      "SecurityAdvisory\\heap_overflow_in_updatevariable.md"
+    ],
+    "top_doc": "SecurityAdvisory\\heap_overflow_in_updatevariable.md",
+    "top_confidence": "high",
+    "context_chars": 1100,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\heap_overflow_in_updatevariable.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Buffer overflows in capsule update security issue",
+    "expected": [
+      "SecurityAdvisory\\buffer_overflows_in_capsule_update.md"
+    ],
+    "top_doc": "SecurityAdvisory\\buffer_overflows_in_capsule_update.md",
+    "top_confidence": "high",
+    "context_chars": 3000,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\buffer_overflows_in_capsule_update.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Authenticated variable timestamp zeroing on append write",
+    "expected": [
+      "SecurityAdvisory\\authvariable-timestamp-zeroing-on-append_write.md"
+    ],
+    "top_doc": "SecurityAdvisory\\authvariable-timestamp-zeroing-on-append_write.md",
+    "top_confidence": "high",
+    "context_chars": 1438,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\authvariable-timestamp-zeroing-on-append_write.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Counter based authenticated variable issue in EDK2",
+    "expected": [
+      "SecurityAdvisory\\counter_based_authenticated_variable_issue.md"
+    ],
+    "top_doc": "SecurityAdvisory\\counter_based_authenticated_variable_issue.md",
+    "top_confidence": "high",
+    "context_chars": 2643,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\counter_based_authenticated_variable_issue.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK II authenticated variable bypass advisory",
+    "expected": [
+      "SecurityAdvisory\\edk-ii-authenticated-variable-bypass.md"
+    ],
+    "top_doc": "SecurityAdvisory\\edk-ii-authenticated-variable-bypass.md",
+    "top_confidence": "high",
+    "context_chars": 2816,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\edk-ii-authenticated-variable-bypass.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DHCP packet boundary check vulnerability",
+    "expected": [
+      "SecurityAdvisory\\dhcp_misses_boundary_check_for_network_packet.md"
+    ],
+    "top_doc": "SecurityAdvisory\\dhcp_misses_boundary_check_for_network_packet.md",
+    "top_confidence": "high",
+    "context_chars": 1742,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\dhcp_misses_boundary_check_for_network_packet.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DNS pack size check security issue",
+    "expected": [
+      "SecurityAdvisory\\dns-pack-size-check.md"
+    ],
+    "top_doc": "SecurityAdvisory\\dns-pack-size-check.md",
+    "top_confidence": "high",
+    "context_chars": 393,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\dns-pack-size-check.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Insecure default secure boot policy for option ROM",
+    "expected": [
+      "SecurityAdvisory\\insecure_default_secure_boot_policy_for_option_rom.md"
+    ],
+    "top_doc": "SecurityAdvisory\\insecure_default_secure_boot_policy_for_option_rom.md",
+    "top_confidence": "high",
+    "context_chars": 1420,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\insecure_default_secure_boot_policy_for_option_rom.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Integer buffer overflow in TpmDxe driver advisory",
+    "expected": [
+      "SecurityAdvisory\\integerbuffer_overflow_in_tpmdxe_driver.md"
+    ],
+    "top_doc": "SecurityAdvisory\\integerbuffer_overflow_in_tpmdxe_driver.md",
+    "top_confidence": "high",
+    "context_chars": 548,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\integerbuffer_overflow_in_tpmdxe_driver.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "BIOS password vulnerability in EDK2",
+    "expected": [
+      "SecurityAdvisory\\bios_password.md"
+    ],
+    "top_doc": "SecurityAdvisory\\bios_password.md",
+    "top_confidence": "high",
+    "context_chars": 2877,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\bios_password.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Honoring memory only reset control and MOR security",
+    "expected": [
+      "SecurityAdvisory\\honoring_memory_only_reset_control_and_correct_mor.md"
+    ],
+    "top_doc": "SecurityAdvisory\\honoring_memory_only_reset_control_and_correct_mor.md",
+    "top_confidence": "high",
+    "context_chars": 1172,
+    "answer": "Based on the knowledge base: [1] SecurityAdvisory\\honoring_memory_only_reset_control_and_correct_mor.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How to enable ASLR for UEFI firmware in EDK2",
+    "expected": [
+      "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\address_space_layout_randomization\\enable_aslr_for_uefi_in_edkii.md"
+    ],
+    "top_doc": "Enable UEFI PXE Boot in EDK II - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2702,
+    "answer": "Based on the knowledge base: [1] Enable UEFI PXE Boot in EDK II - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "How to enable ASLR for SMM in EDK2",
+    "expected": [
+      "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\address_space_layout_randomization\\enable_aslr_for_smm_in_edkii.md"
+    ],
+    "top_doc": "How to Enable Security - TianoCore EDK II Documentation",
+    "top_confidence": "low",
+    "context_chars": 2913,
+    "answer": "Based on the knowledge base: [1] How to Enable Security - TianoCore EDK II Documentation (confidence: low)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Enabling DEP (data execution protection) in EDK2",
+    "expected": [
+      "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\data_execution_protection\\enable_dep_in_edkii.md"
+    ],
+    "top_doc": "EDK II White Papers - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2595,
+    "answer": "Based on the knowledge base: [1] EDK II White Papers - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Stack overflow detection in EDK2",
+    "expected": [
+      "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\stack_overflow_detection.md"
+    ],
+    "top_doc": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\stack_overflow_detection.md",
+    "top_confidence": "high",
+    "context_chars": 2356,
+    "answer": "Based on the knowledge base: [1] ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\stack_overflow_detection.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Heap overflow detection for pool allocations in EDK2",
+    "expected": [
+      "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\heap_overflow_detection_for_pool.md"
+    ],
+    "top_doc": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\heap_management_in_edkii.md",
+    "top_confidence": "high",
+    "context_chars": 2111,
+    "answer": "Based on the knowledge base: [1] ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\heap_management_in_edkii.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Null pointer protection in EDK2",
+    "expected": [
+      "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\null_pointer_protection_in_edkii.md"
+    ],
+    "top_doc": "ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\null_pointer_protection_in_edkii.md",
+    "top_confidence": "high",
+    "context_chars": 2913,
+    "answer": "Based on the knowledge base: [1] ATBB-Mitigate_Buffer_Overflow_in_UEFI\\additional_overflow_detection\\null_pointer_protection_in_edkii.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Memory protection implementation in SMM",
+    "expected": [
+      "ATBB-Memory_Protection_in_UEFI_BIOS\\memory-protection-in-SMM.md"
+    ],
+    "top_doc": "ATBB-Memory_Protection_in_UEFI_BIOS\\memory-protection-in-SMM.md",
+    "top_confidence": "high",
+    "context_chars": 1412,
+    "answer": "Based on the knowledge base: [1] ATBB-Memory_Protection_in_UEFI_BIOS\\memory-protection-in-SMM.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Memory protection implementation in UEFI",
+    "expected": [
+      "ATBB-Memory_Protection_in_UEFI_BIOS\\memory-protection-in-uefi.md"
+    ],
+    "top_doc": "ATBB-Memory_Protection_in_UEFI_BIOS\\executive-summary.md",
+    "top_confidence": "high",
+    "context_chars": 2174,
+    "answer": "Based on the knowledge base: [1] ATBB-Memory_Protection_in_UEFI_BIOS\\executive-summary.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Secure coding guidelines for SMM on Intel platforms",
+    "expected": [
+      "EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_intel_platforms\\smm.md"
+    ],
+    "top_doc": "EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_intel_platforms\\smm.md",
+    "top_confidence": "high",
+    "context_chars": 1745,
+    "answer": "Based on the knowledge base: [1] EDK_II_Secure_Coding_Guide\\secure_coding_guidelines_intel_platforms\\smm.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Secure code review checklist for boot firmware cryptography",
+    "expected": [
+      "EDK_II_Secure_Code_Review_Guide\\code_review_guidelines_for_boot_firmware\\cryptography.md"
+    ],
+    "top_doc": "EDK_II_Secure_Code_Review_Guide\\code_review_guidelines_for_boot_firmware\\README.md",
+    "top_confidence": "high",
+    "context_chars": 606,
+    "answer": "Based on the knowledge base: [1] EDK_II_Secure_Code_Review_Guide\\code_review_guidelines_for_boot_firmware\\README.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Updating HII to save data settings from setup form",
+    "expected": [
+      "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\2_updating_hii_to_save_data_settings.md"
+    ],
+    "top_doc": "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\2_updating_hii_to_save_data_settings.md",
+    "top_confidence": "high",
+    "context_chars": 1405,
+    "answer": "Based on the knowledge base: [1] UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\2_updating_hii_to_save_data_settings.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Adding an additional form page in UEFI driver HII",
+    "expected": [
+      "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\10_adding_an_additional_form_page.md"
+    ],
+    "top_doc": "UEFI_Driver_HII_Linux_Lab_Guide\\uefi_driver_wizard__adding_hii\\10_adding_an_additional_form_page.md",
+    "top_confidence": "high",
+    "context_chars": 2651,
+    "answer": "Based on the knowledge base: [1] UEFI_Driver_HII_Linux_Lab_Guide\\uefi_driver_wizard__adding_hii\\10_adding_an_additional_form_page.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Adding interactive callbacks to a HII driver",
+    "expected": [
+      "UEFI_Driver_HII_Win_Lab_Guide\\uefi_driver_wizard__adding_hii\\8_updating_your_driver_for_interactive_call_backs.md"
+    ],
+    "top_doc": "UEFI_Driver_HII_Linux_Lab_Guide\\uefi_driver_wizard__adding_hii\\9_add_code_to_your_driver_when_call_back_events_oc.md",
+    "top_confidence": "high",
+    "context_chars": 1548,
+    "answer": "Based on the knowledge base: [1] UEFI_Driver_HII_Linux_Lab_Guide\\uefi_driver_wizard__adding_hii\\9_add_code_to_your_driver_when_call_back_events_oc.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "HII image packs and the IDF file format",
+    "expected": [
+      "edk2-IdfSpecification\\2_hii_image_packs.md"
+    ],
+    "top_doc": "edk2-IdfSpecification\\1_introduction.md",
+    "top_confidence": "high",
+    "context_chars": 2761,
+    "answer": "Based on the knowledge base: [1] edk2-IdfSpecification\\1_introduction.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Enable HTTP boot over an IPv4 stack on a platform",
+    "expected": [
+      "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\enable_http_boot_over_an_ipv4_stack_on_a_platform_.md"
+    ],
+    "top_doc": "EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\enable_http_boot_over_ipv4_stack_on_a_platform_has.md",
+    "top_confidence": "high",
+    "context_chars": 2040,
+    "answer": "Based on the knowledge base: [1] EDKIIHttpBootGettingStartedGuide\\enable_http_boot_for_your_system\\enable_http_boot_over_ipv4_stack_on_a_platform_has.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Configure a DHCP server for HTTP boot",
+    "expected": [
+      "EDKIIHttpBootGettingStartedGuide\\quick_start_guide\\configure_dhcpv4_server.md"
+    ],
+    "top_doc": "EDKIIHttpsBootGettingStartedGuide\\start_guide\\configure_server_and_build_client.md",
+    "top_confidence": "high",
+    "context_chars": 1994,
+    "answer": "Based on the knowledge base: [1] EDKIIHttpsBootGettingStartedGuide\\start_guide\\configure_server_and_build_client.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Run HTTP boot on the target platform",
+    "expected": [
+      "EDKIIHttpBootGettingStartedGuide\\quick_start_guide\\run_http_boot.md"
+    ],
+    "top_doc": "EDKIIHttpBootGettingStartedGuide\\quick_start_guide\\run_http_boot.md",
+    "top_confidence": "medium",
+    "context_chars": 1730,
+    "answer": "Based on the knowledge base: [1] EDKIIHttpBootGettingStartedGuide\\quick_start_guide\\run_http_boot.md (confidence: medium)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "HTTPS boot TLS authentication modes",
+    "expected": [
+      "EDKIIHttpsBootGettingStartedGuide\\https_authentication\\tls_authentication_modes.md"
+    ],
+    "top_doc": "EDKIIHttpsBootGettingStartedGuide\\https_authentication\\tls_authentication_modes.md",
+    "top_confidence": "high",
+    "context_chars": 2294,
+    "answer": "Based on the knowledge base: [1] EDKIIHttpsBootGettingStartedGuide\\https_authentication\\tls_authentication_modes.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Self-generated certificate for HTTPS boot",
+    "expected": [
+      "EDKIIHttpsBootGettingStartedGuide\\https_authentication\\self-generated_certificate.md"
+    ],
+    "top_doc": "EDKIIHttpsBootGettingStartedGuide\\https_authentication\\self-generated_certificate.md",
+    "top_confidence": "high",
+    "context_chars": 2343,
+    "answer": "Based on the knowledge base: [1] EDKIIHttpsBootGettingStartedGuide\\https_authentication\\self-generated_certificate.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Introduction to Standalone MM on x86 systems",
+    "expected": [
+      "edk2-GettingStartedGuideforStandaloneMMonX86Systems\\1_mm_introduction.md"
+    ],
+    "top_doc": "edk2-GettingStartedGuideforStandaloneMMonX86Systems\\1_mm_introduction.md",
+    "top_confidence": "high",
+    "context_chars": 1745,
+    "answer": "Based on the knowledge base: [1] edk2-GettingStartedGuideforStandaloneMMonX86Systems\\1_mm_introduction.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "SMM to MM porting guide for Standalone MM",
+    "expected": [
+      "edk2-GettingStartedGuideforStandaloneMMonX86Systems\\2_smm_to_mm_porting_guide.md"
+    ],
+    "top_doc": "edk2-GettingStartedGuideforStandaloneMMonX86Systems\\2_smm_to_mm_porting_guide.md",
+    "top_confidence": "high",
+    "context_chars": 867,
+    "answer": "Based on the knowledge base: [1] edk2-GettingStartedGuideforStandaloneMMonX86Systems\\2_smm_to_mm_porting_guide.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "TCG trusted boot chain implementation in EDK2",
+    "expected": [
+      "edk2-TrustedBootChain\\3_TCG_Trusted_Boot_Chain_in_EDKII.md"
+    ],
+    "top_doc": "edk2-TrustedBootChain\\3_TCG_Trusted_Boot_Chain_in_EDKII.md",
+    "top_confidence": "high",
+    "context_chars": 852,
+    "answer": "Based on the knowledge base: [1] edk2-TrustedBootChain\\3_TCG_Trusted_Boot_Chain_in_EDKII.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Checklist for platform developers for trusted boot",
+    "expected": [
+      "edk2-TrustedBootChain\\6_Checklist_for_Platform_Developers.md"
+    ],
+    "top_doc": "edk2-TrustedBootChain\\SUMMARY.md",
+    "top_confidence": "high",
+    "context_chars": 2347,
+    "answer": "Based on the knowledge base: [1] edk2-TrustedBootChain\\SUMMARY.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Meta-data expression syntax format used in INF/DSC",
+    "expected": [
+      "edk2-MetaDataExpressionSyntaxSpecification\\3_expression_format.md"
+    ],
+    "top_doc": "edk2-MetaDataExpressionSyntaxSpecification\\3_expression_format.md",
+    "top_confidence": "high",
+    "context_chars": 1173,
+    "answer": "Based on the knowledge base: [1] edk2-MetaDataExpressionSyntaxSpecification\\3_expression_format.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Configuring PXE boot servers for UEFI",
+    "expected": [
+      "Configuring PXE Boot Servers for UEFI - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "Configuring PXE Boot Servers for UEFI - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2180,
+    "answer": "Based on the knowledge base: [1] Configuring PXE Boot Servers for UEFI - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Capsule based system firmware update overview",
+    "expected": [
+      "Capsule Based System Firmware Update - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "Capsule Based System Firmware Update - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2998,
+    "answer": "Based on the knowledge base: [1] Capsule Based System Firmware Update - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Capsule based system firmware update DSC and FDF changes",
+    "expected": [
+      "Capsule Based System Firmware Update Dsc Fdf - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "Capsule Based System Firmware Update Dsc Fdf - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2672,
+    "answer": "Based on the knowledge base: [1] Capsule Based System Firmware Update Dsc Fdf - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "DEC FAQ about EDK II DEC files",
+    "expected": [
+      "DEC FAQ - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "DEC FAQ - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2880,
+    "answer": "Based on the knowledge base: [1] DEC FAQ - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Debug FAQ for EDK2 debugging",
+    "expected": [
+      "Debug FAQ - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "Debug FAQ - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2889,
+    "answer": "Based on the knowledge base: [1] Debug FAQ - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Depex FAQ about dependency expressions",
+    "expected": [
+      "Depex FAQ - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "Depex FAQ - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 1925,
+    "answer": "Based on the knowledge base: [1] Depex FAQ - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "ECC tool for EDK2 code checking",
+    "expected": [
+      "ECC Tool - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "ECC Tool - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2759,
+    "answer": "Based on the knowledge base: [1] ECC Tool - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK II build tools overview",
+    "expected": [
+      "EDK II Buildtools - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\1_the_basics_of_edk_ii\\11_overview.md",
+    "top_confidence": "high",
+    "context_chars": 2203,
+    "answer": "Based on the knowledge base: [1] edk2-ModuleWriteGuide\\1_the_basics_of_edk_ii\\11_overview.md (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Creating a UEFI shell application",
+    "expected": [
+      "Creating a Shell Application - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "Creating a Shell Application - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 1629,
+    "answer": "Based on the knowledge base: [1] Creating a Shell Application - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "CET (Control-flow Enforcement Technology) in SMM",
+    "expected": [
+      "CET in SMM - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "CET in SMM - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2303,
+    "answer": "Based on the knowledge base: [1] CET in SMM - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK2 build instructions",
+    "expected": [
+      "Build Instructions - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "Build Instructions - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 1903,
+    "answer": "Based on the knowledge base: [1] Build Instructions - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Compatibility support module in EDK2",
+    "expected": [
+      "Compatibility Support Module - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "Archived Platforms & Packages - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2323,
+    "answer": "Based on the knowledge base: [1] Archived Platforms & Packages - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK II code scanning tooling",
+    "expected": [
+      "EDK II Code Scanning - TianoCore EDK II Documentation"
+    ],
+    "top_doc": "EDK II Code Scanning - TianoCore EDK II Documentation",
+    "top_confidence": "high",
+    "context_chars": 2846,
+    "answer": "Based on the knowledge base: [1] EDK II Code Scanning - TianoCore EDK II Documentation (confidence: high)",
+    "judge": {
+      "score": 5,
+      "rationale": "mock heuristic",
+      "hallucinations": []
+    }
+  }
+]

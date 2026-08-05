@@ -31,13 +31,46 @@ EMBEDDING_MODEL = os.environ.get(
     "EDK2_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 EMBEDDING_DEVICE = os.environ.get("EDK2_EMBEDDING_DEVICE", "cpu")
 
+def _default_reranker_model() -> str:
+    # Prefer a locally installed model directory under the user KB area so a
+    # downloaded bge-reranker-v2-m3 works without needing the HF cache
+    # (~/.edk2-opencode/models/bge-reranker-v2-m3/). Falls back to the HF
+    # model id for environments where the model is cached by huggingface_hub.
+    local = Path.home() / ".edk2-opencode" / "models" / "bge-reranker-v2-m3"
+    if local.exists():
+        return str(local)
+    return "BAAI/bge-reranker-v2-m3"
+
+
 # Reranker (cross-encoder) used to reorder the initial retrieval candidates.
-# small default keeps startup fast. local_files_only=True below guarantees
-# search never blocks on a model download (a missing/corrupt model simply
-# skips reranking). Override via EDK2_RERANKER_MODEL / EDK2_RERANKER_DEVICE.
+# bge-reranker-v2-m3 (multilingual, ~2.2GB) is the default: it is much more
+# sensitive to EDK2 terms and to non-English queries than the old
+# ms-marco-MiniLM-L-6-v2. Switch back with EDK2_RERANKER_MODEL=
+# cross-encoder/ms-marco-MiniLM-L-6-v2 (or any other local cached model).
+# local_files_only=True below guarantees search never blocks on a model
+# download (a missing/corrupt model simply skips reranking).
 RERANKER_MODEL = os.environ.get(
-    "EDK2_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+    "EDK2_RERANKER_MODEL") or _default_reranker_model()
 RERANKER_DEVICE = os.environ.get("EDK2_RERANKER_DEVICE", "cpu")
+# bge-reranker-v2-m3 supports long passages (up to 8192 tokens); ms-marco
+# MiniLM caps at 512. 1024 is a safe middle ground; tune via env var.
+RERANKER_MAX_LENGTH = int(os.environ.get("EDK2_RERANKER_MAX_LENGTH", "1024"))
+
+# Confidence thresholds are model-specific. bge rerankers emit a sigmoid
+# relevance in [0, 1]; ms-marco emits unbounded logits (observed: >4 strong,
+# 2-4 relevant, 0-2 weak, <0 unrelated). Thresholds are tuned to the
+# observed score distributions in eval/RESULTS.md.
+_RERANK_SCALES = {
+    "bge": {"high": 0.5, "medium": 0.2, "low": 0.05},
+    "msmarco": {"high": 4.0, "medium": 2.0, "low": 0.0},
+}
+
+
+def _rerank_scale(model: Optional[str]) -> dict:
+    m = (model or "").lower()
+    if "bge" in m:
+        return _RERANK_SCALES["bge"]
+    return _RERANK_SCALES["msmarco"]
 
 # EDK2 Technical term expansion for better retrieval
 TERM_EXPANSIONS = {
@@ -130,25 +163,28 @@ def _fts_tokens(query: str) -> List[str]:
     return tokens
 
 
-def _confidence(rerank_score: Optional[float]) -> str:
+def _confidence(rerank_score: Optional[float],
+                model: Optional[str] = None) -> str:
     """Map a reranker score to a coarse confidence label.
 
-    ms-marco-MiniLM-L-6-v2 logits are roughly: strongly relevant >4,
-    relevant 2-4, weakly related 0-2, unrelated <0 (see eval/RESULTS.md for
-    the observed distribution).
+    Thresholds depend on the reranker family (see ``_rerank_scale``): bge
+    rerankers output sigmoid relevance in [0, 1]; ms-marco outputs unbounded
+    logits.
     """
     if rerank_score is None:
         return "unrated"
-    if rerank_score > 4.0:
+    s = _rerank_scale(model)
+    if rerank_score > s["high"]:
         return "high"
-    if rerank_score > 2.0:
+    if rerank_score > s["medium"]:
         return "medium"
-    if rerank_score > 0.0:
+    if rerank_score > s["low"]:
         return "low"
     return "poor"
 
 
-def _add_citation(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _add_citation(results: List[Dict[str, Any]],
+                  model: Optional[str] = None) -> List[Dict[str, Any]]:
     """Attach a ready-to-cite markdown reference to each result.
 
     Format: ``[Title - Section](url)`` (url omitted when unknown). The LLM
@@ -166,7 +202,7 @@ def _add_citation(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             r['citation'] = cite
         else:
             r['citation'] = url or ''
-        r['confidence'] = _confidence(r.get('rerank_score'))
+        r['confidence'] = _confidence(r.get('rerank_score'), model)
     return results
 
 
@@ -320,10 +356,12 @@ class SearchEngine:
             # the knowledge base does not cover them.
             if rerank and candidates:
                 return _add_citation(
-                    self._rerank_results(query, candidates, top_k))
-            return _add_citation(candidates[:top_k])
+                    self._rerank_results(query, candidates, top_k),
+                    RERANKER_MODEL)
+            return _add_citation(candidates[:top_k], RERANKER_MODEL)
         return _add_citation(
-            self._search_files(expanded_query, top_k, source_filter))
+            self._search_files(expanded_query, top_k, source_filter),
+            RERANKER_MODEL)
     
     def _rerank_results(self, query: str, candidates: List[Dict], 
                         top_k: int) -> List[Dict]:
@@ -347,7 +385,7 @@ class SearchEngine:
             if not hasattr(self, '_reranker'):
                 self._reranker = CrossEncoder(
                     RERANKER_MODEL,
-                    max_length=512,
+                    max_length=RERANKER_MAX_LENGTH,
                     device=RERANKER_DEVICE,
                     local_files_only=True,
                 )
