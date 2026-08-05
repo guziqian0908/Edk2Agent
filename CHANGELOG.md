@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.16] - 2026-08-04
+
+### `npm run eval-query` - single-answer old vs current diff
+
+One command shows how one question is answered by the current pipeline vs the
+pre-rerank pipeline (sorted side by side, ranking changes, confidence):
+
+```
+npm run eval-query -- "SetVariable Attributes NV"
+npm run eval-query -- "UEFI boot flow PEI DXE" --query "PcdDebugPrintErrorLevel"
+```
+
+`scripts/eval-query.js` wraps `edk2-kb/eval/compare_query.py` and locates the
+python interpreter and knowledge base automatically: `$EDK2_KB_PYTHON`,
+else `<data dir>/venv`, else PATH; data dir from `--data-dir`, else
+`~/.edk2-opencode/kb/data`, else the packaged `edk2-kb/data`.
+
 ## [6.0.15] - 2026-08-04
 
 ### Answer confidence visible in real usage

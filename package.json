@@ -35,7 +35,8 @@
     "README.md"
   ],
   "scripts": {
-    "postinstall": "node scripts/postinstall.js"
+    "postinstall": "node scripts/postinstall.js",
+    "eval-query": "node scripts/eval-query.js"
   },
   "engines": {
     "node": ">=18.0.0"
