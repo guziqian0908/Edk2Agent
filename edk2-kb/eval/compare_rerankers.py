@@ -136,21 +136,21 @@ def main() -> None:
     m = rerank[MODELS[0]]
     lines += [
         "",
-        "Chinese subset ({} queries, top-10 pool): rerank hit@5 {}% for both "
-        "bge-v2-m3 and ms-marco - recall there is capped by retrieval, not "
-        "reranking. English-only subset: {}% (bge) vs {}% (ms-marco)."
-        .format(b["zh_n"], b["zh_hit5"], b["en_hit5"], m["en_hit5"]),
+        "Chinese subset ({} queries, top-10 pool): rerank hit@5 {}% "
+        "(bge-v2-m3) vs {}% (ms-marco). English-only subset: {}% (bge) vs "
+        "{}% (ms-marco)."
+        .format(b["zh_n"], b["zh_hit5"], m["zh_hit5"],
+                b["en_hit5"], m["en_hit5"]),
         "",
         "bge-v2-m3 is the default because its sigmoid scores map faithfully "
         "to confidence on non-English queries (a correct Chinese doc scores "
         "`high` under bge vs `low` under ms-marco), which is what the LLM "
         "relies on to decide how firmly to assert.",
         "",
-        "**Caveat / next step:** Chinese recall is still weak overall - the "
-        "bottleneck is *retrieval* (English-only all-MiniLM-L6-v2 embedder "
-        "plus weak Chinese BM25), so the correct doc often never enters the "
-        "rerank pool. Switch the embedder to the already-cached BAAI/bge-m3 "
-        "and re-run.",
+        "These numbers assume the bge-m3 embedder (see the Embedder "
+        "comparison section). With the old English-only all-MiniLM-L6-v2 "
+        "embedder, Chinese recall is much lower because the correct doc "
+        "often never enters the rerank pool.",
     ]
 
     section = "\n".join(lines) + "\n"

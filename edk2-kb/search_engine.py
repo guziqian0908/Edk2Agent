@@ -24,11 +24,20 @@ SOURCE_DISPLAY = {
     'tianocore-docs': 'tianocore-docs (仓库)',
 }
 
-# Embedding model used for retrieval. all-MiniLM-L6-v2 is small (~74MB) and
-# fast to load; BAAI/bge-m3 (~2.2GB) historically failed to download and
-# blocked daemon startup. Override via EDK2_EMBEDDING_MODEL / DEVICE.
+# Embedding model used for retrieval. BAAI/bge-m3 (~2.3GB) is the default:
+# it is multilingual (much better Chinese recall than the English-only
+# all-MiniLM-L6-v2) and its 1024-dim vectors align with the bge-reranker
+# scores. Prefer a locally installed copy under
+# ~/.edk2-opencode/models/bge-m3; override via EDK2_EMBEDDING_MODEL / DEVICE.
+def _default_embedding_model() -> str:
+    local = Path.home() / ".edk2-opencode" / "models" / "bge-m3"
+    if local.exists():
+        return str(local)
+    return "BAAI/bge-m3"
+
+
 EMBEDDING_MODEL = os.environ.get(
-    "EDK2_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    "EDK2_EMBEDDING_MODEL") or _default_embedding_model()
 EMBEDDING_DEVICE = os.environ.get("EDK2_EMBEDDING_DEVICE", "cpu")
 
 def _default_reranker_model() -> str:
@@ -283,6 +292,25 @@ class SearchEngine:
                     "edk2_docs",
                     embedding_function=embedding_func
                 )
+                # Detect an index/embedder dimension mismatch (e.g. the index
+                # was built with the old 384-dim all-MiniLM but the embedder
+                # now emits 1024-dim bge-m3 vectors) and degrade gracefully to
+                # file search with a clear error instead of failing every query.
+                try:
+                    probe = self._collection.peek(limit=1)
+                    embs = probe.get("embeddings") or []
+                    if embs and embs[0] is not None:
+                        idx_dim = len(embs[0])
+                        emb_dim = len(embedding_func(["x"])[0])
+                        if idx_dim != emb_dim:
+                            raise ValueError(
+                                f"index dim {idx_dim} != embedder dim "
+                                f"{emb_dim}; rebuild the index with "
+                                f"EDK2_EMBEDDING_MODEL={EMBEDDING_MODEL}")
+                except ValueError as e:
+                    raise e
+                except Exception:
+                    pass
             except ImportError:
                 self._load_documents_index()
             except Exception as e:

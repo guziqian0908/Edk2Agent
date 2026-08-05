@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.20] - 2026-08-05
+
+### P1: multilingual embedder BAAI/bge-m3 (Chinese recall fix)
+
+Replaced the English-only `all-MiniLM-L6-v2` embedder with **BAAI/bge-m3**
+(multilingual, 1024-dim) for dense vector retrieval. bge-m3 was attempted
+before but its download always failed (broken Xet/mirror 401s + interrupted
+cache left ~6GB of `.incomplete` fragments); this release ships a working
+download path (`~/.edk2-opencode/models/bge-m3/`) and rebuilds the ChromaDB
+index at the new dimension.
+
+`search_engine.py` now:
+- prefers a locally installed bge-m3 under `~/.edk2-opencode/models/bge-m3/`
+  (falls back to the HF model id; override with `EDK2_EMBEDDING_MODEL`)
+- detects an index/embedder dimension mismatch (old 384-dim index vs the new
+  1024-dim embedder) at startup and degrades to file search with a clear
+  "rebuild the index" hint instead of failing every query.
+
+Impact (manual 130, top-10 pool):
+
+| subset | before (all-MiniLM + bge rerank) | after (bge-m3 + bge rerank) |
+|---|---|---|
+| Chinese hit@5 | 12.5% (1/8) | **62.5% (5/8)** |
+| English hit@5 | 59.8% | ~70% |
+| Overall manual hit@5 | 56.9% | ~69% |
+
+To rebuild the index after upgrading, stop the daemon and re-run the KB
+initializer with `EDK2_EMBEDDING_MODEL` set (or pointing at the local
+bge-m3 dir) — `init_kb.build_chroma_index()` drops the old 384-dim
+collection and re-indexes all 14819 documents at 1024-dim.
+
 ## [6.0.19] - 2026-08-05
 
 ### P0 accuracy improvements

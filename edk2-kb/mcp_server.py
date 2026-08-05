@@ -43,7 +43,7 @@ from search_engine import SearchEngine
 HERE = Path(__file__).resolve().parent
 DEFAULT_STATE_FILE = HERE / "daemon.json"
 
-PKG_VERSION = "6.0.19"
+PKG_VERSION = "6.0.20"
 
 CITATION_GUIDE = """# EDK2 Knowledge Base Answering Guide
 
