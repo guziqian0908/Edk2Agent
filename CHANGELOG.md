@@ -49,11 +49,18 @@ sorting problems, not recall (0 queries with both chroma and BM25 missing
 the answer). Pushing higher needs a larger eval set, longer rerank snippets
 (>500 chars) or doc-level annotation, with diminishing returns.
 
-Also fixes a startup dimension-probe crash: `peek()["embeddings"] or []`
-treats a non-empty numpy array as a boolean, raising a `ValueError` that the
-probe's `except ValueError: raise` re-threw, so `/health` reported a bogus
-"ChromaDB unavailable; using file search" `load_error` on every boot (actual
-searches still worked). Probe now uses `len()` and reports a clean load.
+## [6.0.22] - 2026-08-06
+
+### Startup dimension-probe fix (clean /health)
+
+`load()`'s dimension probe did `probe.get("embeddings") or []`. ChromaDB's
+`peek()` returns a **numpy array**, so the `or` triggered numpy's "truth
+value of an array with more than one element is ambiguous" `ValueError`,
+which the probe's `except ValueError: raise` re-threw. Every boot then
+reported a bogus **"ChromaDB unavailable; using file search"** `load_error`
+on `/health` (searches still worked — the collection object had already been
+assigned). The probe now checks `len(...)` instead; `/health` reports
+`load_error: null`.
 
 ## [6.0.20] - 2026-08-05
 
