@@ -65,6 +65,31 @@ RERANKER_DEVICE = os.environ.get("EDK2_RERANKER_DEVICE", "cpu")
 # MiniLM caps at 512. 1024 is a safe middle ground; tune via env var.
 RERANKER_MAX_LENGTH = int(os.environ.get("EDK2_RERANKER_MAX_LENGTH", "1024"))
 
+# Hybrid rerank: the final ordering blends the cross-encoder score with the
+# reciprocal-rank-fusion (RRF) score from dense+BM25 retrieval. The reranker
+# alone can badly misjudge a chunk whose 500-char snippet omits the query's
+# keywords, so keeping a small RRF weight protects high-confidence retrieval
+# hits. 0.15 was tuned on the manual eval set (109 -> 116 hit@5).
+RERANK_HYBRID_BETA = float(os.environ.get("EDK2_RERANK_HYBRID_BETA", "0.15"))
+
+# RRF fallback: if a document ranks in the top-N of the pure RRF list but the
+# reranker pushed it out of the top-5, force it back in (replacing the weakest
+# top-5 entry). Rescues queries where the reranker misses but both retrieval
+# legs agree (e.g. Chinese PCD queries, rrf_rank=1 but rerank_rank=7).
+RERANK_RRF_FALLBACK_TOPK = int(
+    os.environ.get("EDK2_RERANK_RRF_FALLBACK_TOPK", "2"))
+
+
+def _minmax(values):
+    lo, hi = min(values), max(values)
+    if hi - lo < 1e-9:
+        return [0.5] * len(values)
+    return [(v - lo) / (hi - lo) for v in values]
+
+
+def _doc_key(item):
+    return (item.get('source'), item.get('file') or item.get('title'))
+
 # Confidence thresholds are model-specific. bge rerankers emit a sigmoid
 # relevance in [0, 1]; ms-marco emits unbounded logits (observed: >4 strong,
 # 2-4 relevant, 0-2 weak, <0 unrelated). Thresholds are tuned to the
@@ -377,7 +402,7 @@ class SearchEngine:
             for q in queries:
                 groups.append(self._search_chroma(q, top_k * 3, source_filter))
                 groups.append(self._search_bm25(q, top_k * 3, source_filter))
-            candidates = self._merge_rrf(groups, top_k * 6)
+            candidates = self._merge_rrf(groups, top_k * 6, keep_rrf=rerank)
 
             # Rerank any non-empty candidate list, so even out-of-scope
             # queries get a rerank_score/confidence label that tells the LLM
@@ -386,6 +411,8 @@ class SearchEngine:
                 return _add_citation(
                     self._rerank_results(query, candidates, top_k),
                     RERANKER_MODEL)
+            for c in candidates[:top_k]:
+                c.pop('rrf', None)
             return _add_citation(candidates[:top_k], RERANKER_MODEL)
         return _add_citation(
             self._search_files(expanded_query, top_k, source_filter),
@@ -394,7 +421,7 @@ class SearchEngine:
     def _rerank_results(self, query: str, candidates: List[Dict], 
                         top_k: int) -> List[Dict]:
         """Rerank search results using cross-encoder.
-        
+
         Args:
             query: Original query (not expanded)
             candidates: Initial search results
@@ -422,26 +449,69 @@ class SearchEngine:
             pairs = [(query, c['snippet']) for c in candidates]
             
             # Score with cross-encoder
-            scores = self._reranker.predict(pairs)
+            rer_scores = self._reranker.predict(pairs)
+            rer_scores = list(rer_scores)
+            rrf_vals = [float(c.get('rrf', 0.0)) for c in candidates]
 
-            # Sort by reranker score
-            scored_results = list(zip(candidates, scores))
-            scored_results.sort(key=lambda x: x[1], reverse=True)
+            # Blend the cross-encoder score with the RRF retrieval score:
+            # min-max normalize each to [0, 1] so the weights are comparable
+            # across reranker score scales (bge sigmoid vs ms-marco logits).
+            rer_n = _minmax(rer_scores)
+            rrf_n = _minmax(rrf_vals)
+            fused = [
+                (1.0 - RERANK_HYBRID_BETA) * a + RERANK_HYBRID_BETA * b
+                for a, b in zip(rer_n, rrf_n)
+            ]
+
+            # Sort by fused score, keep the raw rerank score for confidence.
+            scored = list(zip(candidates, fused, rer_scores))
+            scored.sort(key=lambda x: x[1], reverse=True)
 
             # Deduplicate by source document (a single file may have several
             # matching chunks), keeping the highest-scoring chunk per doc.
             results = []
             seen_docs = set()
-            for candidate, score in scored_results:
-                doc_key = (candidate.get('source'),
-                           candidate.get('file') or candidate.get('title'))
+            fused_by_doc = {}
+            for candidate, fscore, rscore in scored:
+                doc_key = _doc_key(candidate)
+                fused_by_doc.setdefault(doc_key, fscore)
                 if doc_key in seen_docs:
                     continue
                 seen_docs.add(doc_key)
-                candidate['rerank_score'] = float(score)
+                candidate['rerank_score'] = float(rscore)
+                candidate.pop('rrf', None)
                 results.append(candidate)
                 if len(results) >= top_k:
                     break
+
+            # RRF fallback: if a top-N RRF document was pushed out of the
+            # top-5 by the reranker, force it back in (replace the weakest
+            # top-5 entry). Both retrieval legs agreeing is a strong signal
+            # the reranker is wrong (typically a bad 500-char snippet).
+            if len(results) >= 5 and RERANK_RRF_FALLBACK_TOPK > 0:
+                rrf_order = sorted(
+                    range(len(candidates)),
+                    key=lambda i: rrf_n[i], reverse=True
+                )[:RERANK_RRF_FALLBACK_TOPK]
+                top5 = results[:5]
+                top5_keys = {_doc_key(c) for c in top5}
+                rest = results[5:]
+                for idx in rrf_order:
+                    candidate = candidates[idx]
+                    dk = _doc_key(candidate)
+                    if dk in top5_keys:
+                        continue
+                    rest = [x for x in rest if _doc_key(x) != dk]
+                    weakest = min(
+                        range(5),
+                        key=lambda i: fused_by_doc.get(_doc_key(top5[i]), 0.0),
+                    )
+                    weak_dk = _doc_key(top5[weakest])
+                    top5[weakest] = candidate
+                    candidate.pop('rrf', None)
+                    top5_keys.discard(weak_dk)
+                    top5_keys.add(dk)
+                results = top5 + rest
 
             return results
             
@@ -474,7 +544,7 @@ class SearchEngine:
                     if source_filter and source != source_filter:
                         continue
 
-                    source_key = f"{source}:{metadata.get('title', metadata.get('file', ''))}"
+                    source_key = f"{source}:{metadata.get('file') or metadata.get('title', '')}"
                     if source_key in seen_sources:
                         continue
                     seen_sources.add(source_key)
@@ -612,11 +682,14 @@ class SearchEngine:
         return results
 
     def _merge_rrf(self, ranked_groups: List[List[Dict[str, Any]]],
-                   limit: int) -> List[Dict[str, Any]]:
+                   limit: int, keep_rrf: bool = False) -> List[Dict[str, Any]]:
         """Fuse several ranked lists with reciprocal rank fusion.
 
         Each list contributes an independent rank space (k + rank), so
         results from the original vs expanded query keep their own ordering.
+
+        When keep_rrf is True the per-item RRF score is retained (under the
+        'rrf' key) so the reranker can blend it with the cross-encoder score.
         """
         k = 60
         merged: Dict[str, Dict[str, Any]] = {}
@@ -636,7 +709,8 @@ class SearchEngine:
 
         ranked = sorted(merged.values(), key=lambda x: x['rrf'], reverse=True)
         for item in ranked:
-            item.pop('rrf', None)
+            if not keep_rrf:
+                item.pop('rrf', None)
             item.pop('_pid', None)
         return ranked[:limit]
 

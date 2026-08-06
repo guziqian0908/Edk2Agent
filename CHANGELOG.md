@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.21] - 2026-08-06
+
+### Retrieval recall bug fix + hybrid rerank blending (big accuracy jump)
+
+Fixes a latent **ChromaDB candidate-collapse bug** that silently crippled
+recall and re-tunes the rerank step. Measured on the same 330-query eval set:
+
+| subset | 6.0.20 (buggy) | 6.0.21 | delta |
+|---|---|---|---|
+| ALL 330 hit@5 | 77.0% | **92.7%** | +15.7pp |
+| Manual 130 hit@5 | 69.2% | **89.2%** | +20.0pp |
+| Auto 200 hit@5 | 82.0% | **95.0%** | +13.0pp |
+| Manual MRR@10 | 0.609 | 0.664 | +0.055 |
+
+#### Bug: `_search_chroma` collapsed candidates on empty titles
+
+`_search_chroma` deduplicated chunks with
+`metadata.get('title', metadata.get('file', ''))`. ~41% of chunks (all
+tianocore-docs spec docs) have an **empty `title`**, so every chunk of every
+empty-titled document shared the same dedup key `"<source>:"` and only the
+first one survived. Chroma retrieval effectively returned **one document per
+query for the entire spec corpus**, so the correct spec section almost never
+entered the rerank pool. Fixed by keying on
+`metadata.get('file') or metadata.get('title', '')`.
+
+Impact is visible on the vector baseline alone: manual hit@5 went 63.1% →
+83.1%, ALL 72.7% → 87.9%, just from fixing the dedup key.
+
+#### Rerank now blends the cross-encoder score with the RRF retrieval score
+
+The reranker alone can badly misjudge a chunk whose 500-char snippet omits
+the query's keywords (measured: correct docs ranked 6-10 by the reranker
+while ranked 1-5 by dense+BM25 fusion). `_rerank_results` now min-max
+normalizes both scores and orders by
+`(1 - β)·rerank + β·RRF` with **β = 0.15**
+(`EDK2_RERANK_HYBRID_BETA`). On top of that, a document ranked in the
+**top-2 of pure RRF** that the reranker pushed out of the top-5 is forced
+back in (replacing the weakest top-5 entry,
+`EDK2_RERANK_RRF_FALLBACK_TOPK`). Together these rescue the
+"reranker-missed-but-both-retrieval-legs-agree" cases (e.g. Chinese
+PcdDebugPrintErrorLevel queries: RRF rank 1, rerank rank 7).
+
+**Remaining gap to ~95%+:** 14/130 manual queries still miss — all are now
+sorting problems, not recall (0 queries with both chroma and BM25 missing
+the answer). Pushing higher needs a larger eval set, longer rerank snippets
+(>500 chars) or doc-level annotation, with diminishing returns.
+
 ## [6.0.20] - 2026-08-05
 
 ### P1: multilingual embedder BAAI/bge-m3 (Chinese recall fix)

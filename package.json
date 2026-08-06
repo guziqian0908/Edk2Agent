@@ -1,6 +1,6 @@
 {
   "name": "edk2-opencode",
-  "version": "6.0.20",
+  "version": "6.0.21",
   "description": "EDK2 Knowledge Base MCP Daemon - shared offline EDK2 retrieval served over MCP with auto-recovery",
   "keywords": [
     "edk2",
