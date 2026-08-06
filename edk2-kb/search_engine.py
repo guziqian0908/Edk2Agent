@@ -323,8 +323,10 @@ class SearchEngine:
                 # file search with a clear error instead of failing every query.
                 try:
                     probe = self._collection.peek(limit=1)
-                    embs = probe.get("embeddings") or []
-                    if embs and embs[0] is not None:
+                    embs = probe.get("embeddings")
+                    if embs is None:
+                        embs = []
+                    if len(embs) and embs[0] is not None:
                         idx_dim = len(embs[0])
                         emb_dim = len(embedding_func(["x"])[0])
                         if idx_dim != emb_dim:

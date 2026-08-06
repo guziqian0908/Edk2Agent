@@ -49,6 +49,12 @@ sorting problems, not recall (0 queries with both chroma and BM25 missing
 the answer). Pushing higher needs a larger eval set, longer rerank snippets
 (>500 chars) or doc-level annotation, with diminishing returns.
 
+Also fixes a startup dimension-probe crash: `peek()["embeddings"] or []`
+treats a non-empty numpy array as a boolean, raising a `ValueError` that the
+probe's `except ValueError: raise` re-threw, so `/health` reported a bogus
+"ChromaDB unavailable; using file search" `load_error` on every boot (actual
+searches still worked). Probe now uses `len()` and reports a clean load.
+
 ## [6.0.20] - 2026-08-05
 
 ### P1: multilingual embedder BAAI/bge-m3 (Chinese recall fix)
