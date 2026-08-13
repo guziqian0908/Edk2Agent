@@ -6,3 +6,5 @@ node_modules/
 .env
 .DS_Store
 *.log
+# LLM API key test scripts (must not be committed)
+web/test_*.js

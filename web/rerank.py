@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""
+Rerank retrieved documents using BGE-reranker-v2-m3 model.
+Usage: python rerank.py <query> <json_docs>
+Input: query string + JSON array of documents
+Output: JSON array of reranked documents with rerank_score
+"""
+
+import sys
+import json
+import os
+from pathlib import Path
+
+try:
+    from sentence_transformers import CrossEncoder
+except ImportError:
+    print(json.dumps({"error": "sentence_transformers not installed"}))
+    sys.exit(1)
+
+def main():
+    if len(sys.argv) != 3:
+        print(json.dumps({"error": "Usage: python rerank.py <query> <json_docs>"}))
+        sys.exit(1)
+    
+    query = sys.argv[1]
+    try:
+        docs = json.loads(sys.argv[2])
+    except json.JSONDecodeError as e:
+        print(json.dumps({"error": f"Invalid JSON: {e}"}))
+        sys.exit(1)
+    
+    if not isinstance(docs, list) or len(docs) == 0:
+        print(json.dumps({"error": "Documents must be a non-empty array"}))
+        sys.exit(1)
+    
+    # Load model
+    model_path = Path.home() / ".edk2-opencode" / "models" / "bge-reranker-v2-m3"
+    if not model_path.exists():
+        print(json.dumps({"error": f"Model not found at {model_path}"}))
+        sys.exit(1)
+    
+    try:
+        model = CrossEncoder(str(model_path), max_length=512)
+    except Exception as e:
+        print(json.dumps({"error": f"Failed to load model: {e}"}))
+        sys.exit(1)
+    
+    # Prepare pairs for reranking
+    pairs = []
+    for doc in docs:
+        text = ""
+        if doc.get("title"):
+            text += doc["title"] + " "
+        if doc.get("section"):
+            text += doc["section"] + " "
+        if doc.get("snippet"):
+            text += doc["snippet"]
+        elif doc.get("content"):
+            text += doc["content"]
+        
+        # Truncate to avoid token limit
+        text = text[:1000]
+        pairs.append([query, text])
+    
+    # Rerank
+    try:
+        scores = model.predict(pairs)
+    except Exception as e:
+        print(json.dumps({"error": f"Reranking failed: {e}"}))
+        sys.exit(1)
+    
+    # Add rerank_score to docs
+    for i, score in enumerate(scores):
+        docs[i]["rerank_score"] = float(score)
+    
+    # Sort by rerank_score descending
+    docs.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
+    
+    # Return top results
+    print(json.dumps(docs[:10]))
+
+if __name__ == "__main__":
+    main()

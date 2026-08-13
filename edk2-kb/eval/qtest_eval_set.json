@@ -1,0 +1,227 @@
+[
+ {
+  "query": "EDK II 里的 INF / DEC / DSC / FDF 四个元数据文件各自负责什么？模块(Module)、包(Package)、平台(Platform)又是什么关系？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q0"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "MODULE_TYPE 都有哪些？我该怎么给自己的模块选？入口函数又是怎么告诉构建系统的？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q1"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "库类(Library Class)和库实例(Library Instance)到底是什么关系？为什么 DSC 里非要写一行映射？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q2"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "PCD 有几种类型？在 DEC / DSC / INF / C 代码里分别怎么写？什么时候必须用 FixedPcd？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q3"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "[Depex] 是干什么用的？为什么我 INF 里写了 TRUE，驱动还是没在我期望的时机跑起来？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q4"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "怎么只编译我自己写的那一个模块？build 命令参数怎么写？产物和 AutoGen 文件在哪？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q5"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "新手最常撞上的那几个编译/链接报错，分别是什么原因、怎么修？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q6"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "我想在代码里打印调试信息，DEBUG/ASSERT 要怎么配置才能真的输出？除了打印还有什么调试手段？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q7"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "写一个遵循 UEFI Driver Model 的驱动，Supported/Start/Stop 分别该做什么？Driver Binding 协议怎么装上去？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q8"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "拿一个 Protocol 到底该用 LocateProtocol、LocateHandleBuffer 还是 OpenProtocol？OpenProtocol 的 Attributes 怎么选？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q9"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "我想给 edk2 上游提一个补丁，完整的贡献流程是什么样的？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q10"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "commit message 到底该怎么写？签名行有什么讲究？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q11"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "一个改动该拆成几个 commit？拆分标准是什么？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q12"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "Uncrustify 是什么？怎么在本地把代码格式化成 CI 认可的样子？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q13"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "PR 提上去后 CI 会跑哪些检查？谁来 review？最后怎么合进 master？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q14"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "EDK II 的命名规范有哪些硬性要求？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q15"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "排版和空白有哪些规定？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q16"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "为什么不能用 int、char 这些标准 C 类型？该用什么？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q17"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "函数该怎么排版？文件头和函数头注释有什么格式要求？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q18"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "流程控制语句、goto 和 ASSERT 有什么规定？注释有哪些禁忌？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q19"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "Driver Binding 的 Supported()、Start()、Stop() 三者职责边界怎么划分？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q20"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "Supported() 具体该怎么写？各个返回码是什么含义？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q21"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "Start() 里应该按什么顺序做事？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q22"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "Stop() 里要做什么？NumberOfChildren 和 ChildHandleBuffer 怎么用？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q23"
+   }
+  ],
+  "kind": "qtest"
+ },
+ {
+  "query": "什么时候一个驱动需要多个 Driver Binding 实例？写完怎么验证三个服务是对的？",
+  "expected": [
+   {
+    "file_or_title": "qtest-Q24"
+   }
+  ],
+  "kind": "qtest"
+ }
+]

@@ -1,0 +1,338 @@
+[
+  {
+    "query": "EDK II 里的 INF / DEC / DSC / FDF 四个元数据文件各自负责什么？模块(Module)、包(Package)、平台(Platform)又是什么关系？",
+    "expected": [
+      "qtest-Q0"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\1_the_basics_of_edk_ii\\11_overview.md",
+    "context_chars": 13095,
+    "answer": "根据提供的上下文，EDK II 中的四个元数据文件的作用以及模块、包、平台的关系如下：\n\n### 一、 四个元数据文件各自负责什么？\n\n1. **INF (Module Definition File / 模块定义文件)**\n   * **作用**：描述模块的基本信息及其接口，例如消耗/产生的库类（Library class）、PCD、Protocol、PPI 和 Guid 等 [3]。\n   * **依赖管理**：通过 `[Packages]` 段描述该模块所依赖的所有包 [7]。\n   * **类型识别**：解析工具会扫描 INF 文件以确定组件或模块的类型 [11]。\n\n2. **DEC (Package Declaration File / 包声明文件)**\n   * **作用**：用于描述包（Package）。DEC 文件的头部包含关于该包的描述信息 [2, 6]。\n   * **组织模块**：一个包目录通过单一的 DEC 文件来组织和管理一组模块 [12]。\n\n3. **DSC (Platform Description File / 平台描述文件)**\n   * **作用**：采用 INI 样式的文本格式，用于描述组件（components）和平台（platforms）的配置 [9]。\n   * **必要性**：平台（作为一种特殊的包）必须包含一个 DSC 文件 [1]。\n\n4. **FDF (Flash Description File / 闪存描述文件)**\n   * **作用**：用于描述二进制镜像的内容和布局，这些镜像可以是启动镜像、Capsule 镜像或 PCI Option ROMs 的任意组合 [15]。\n   * **必要性**：只有在需要生成 Flash（闪存）输出时才需要使用 FDF 文件 [1]。\n\n---\n\n### 二、 模块 (Module)、包 (Package)、平台 (Platform) 的关系\n\n1. **模块 (Module)**\n   * **定义**：模块是基本的固件组件，由源文件或二进制文件以及一个 INF 文件组成 [3]。\n   * **构建产物**：典型的模块会被编译成二进制文件（如 `*.efi`），放入 FFS 文件中，最终进入 FV（固件卷）镜像 [3]。\n   * **依赖关系**：模块依赖于其自身所在的包，也可能依赖于其他包 [2]。\n\n2. **包 (Package)**\n   * **定义**：包是一个容器或目录，用于组织一组模块，并通过单一的 DEC 文件进行声明 [4, 12]。\n   * **提供资源**：包提供开发其他模块和平台所需的公共资源，包括公共头文件、库类、PCD 和模块 [10]。\n\n3. **平台 (Platform)**\n   * **定义**：平台是一种**特殊类型的包**，它带有额外的元数据文件（必须包含一个 DSC 文件，以及零个或一个 FDF 文件） [1]。\n   * **构成**：平台是由其自身包中包含的模块，以及来自其他包的模块共同组合构建而成的 [10]。\n\n**总结**：\n**模块**是构成固件的基本功能单元（由 INF 定义）；**包**是模块的集合与容器，提供公共开发依赖（由 DEC 定义）；而**平台**则是特殊的包，它整合了多个包中的模块，并通过 DSC 和 FDF 文件定义整个系统的构建规则与 Flash 镜像布局。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and every claim is directly grounded in the provided reference context. It correctly defines the roles of INF, DEC, DSC, and FDF files, and accurately explains the hierarchical relationships and dependencies between Modules, Packages, and Platforms without any hallucinations or significant omissions.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "MODULE_TYPE 都有哪些？我该怎么给自己的模块选？入口函数又是怎么告诉构建系统的？",
+    "expected": [
+      "qtest-Q1"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\34_additional_steps_for_driver.md",
+    "context_chars": 12723,
+    "answer": "根据提供的上下文，以下是关于 `MODULE_TYPE` 以及入口函数配置的详细解答：\n\n### 1. MODULE_TYPE 都有哪些？\n根据 EDK II 规范，所有的库（libraries）和组件（components）都属于以下模块类型之一：\n`BASE`、`SEC`、`PEI_CORE`、`PEIM`、`DXE_CORE`、`DXE_DRIVER`、`DXE_RUNTIME_DRIVER`、`DXE_SMM_DRIVER`、`DXE_SAL_DRIVER`、`UEFI_DRIVER` 或 `UEFI_APPLICATION` [15]。\n\n此外，EDK II 构建系统还允许使用 `USER_DEFINED` 和 `HOST_APPLICATION` 类型的模块 [14, 15]。对于库模块，其类型可以是 `BASE`、`USER_DEFINED` 等 [2]。\n\n### 2. 我该怎么给自己的模块选？\n模块类型主要用于指示不同模块的生命周期（例如 `PEIM` 在 PEI 阶段调度，而 `DXE_DRIVER` 或 `UEFI_DRIVER` 在 DXE 阶段调度）、指示二进制镜像的生成方式，以及指示 `EntryPoint()` 或 `Constructor()` 等 [5]。\n\n选择时需要根据模块的依赖关系和所处的固件阶段来决定，上下文提供了一些具体的选择规则：\n*   **基础与依赖**：如果模块仅依赖 MDE（Module Development Environment）提供的头文件和库，应选择 `BASE`；如果模块依赖通用的 DXE 组件，则选择 `DXE_DRIVER` [15]。\n*   **SEC 模块**：对于物理平台，必须设置为 `SEC`；对于仿真平台，可以设置为 `SEC` 或 `USER_DEFINED` [4]。\n*   **PEIM 模块**：所有的 PEIM 必须将 `MODULE_TYPE` 设置为 `PEIM` [9]。\n*   **UEFI 驱动**：UEFI 驱动模块的 INF 文件 `[Defines]` 节必须将 `MODULE_TYPE` 设置为 `UEFI_DRIVER` [10]。\n*   **非构建处理**：如果您选择 `USER_DEFINED` 或 `HOST_APPLICATION`，这些模块将不会被 EDK II 构建系统处理 [14]。\n\n### 3. 入口函数是怎么告诉构建系统的？\n如果您的模块不是库（非 library），您需要在 INF 文件的 `[Defines]` 节中通过 `ENTRY_POINT` 变量来定义入口函数的名称 [1, 2]。构建系统通过读取这个变量来识别模块开始执行的函数 [2]。\n\n根据模块类型的不同，`ENTRY_POINT` 的配置示例如下：\n*   **常规驱动**：`ENTRY_POINT = PcdDxeInit` [1] 或 `ENTRY_POINT = SampleDriverEntryPoint` [10]。\n*   **SEC 模块**：`ENTRY_POINT = _ModuleEntryPoint` [4]。\n*   **PEIM 模块**：`ENTRY_POINT = PeimSampleInitialize` [7, 9]。\n*   **通用示例**：`ENTRY_POINT = MainFunctionName` [2]。\n\n*(注：如果您编写的是库模块，库的初始化是通过定义库构造函数（Constructor）来完成的，而不是使用 `ENTRY_POINT` [5, 13]。)*",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate, comprehensively addressing all parts of the prompt. Every claim regarding module types, selection criteria, and entry point configuration is directly grounded in the provided context with appropriate citations, and there are no hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "库类(Library Class)和库实例(Library Instance)到底是什么关系？为什么 DSC 里非要写一行映射？",
+    "expected": [
+      "qtest-Q2"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\3_module_development\\33_additional_steps_for_library_instances.md",
+    "context_chars": 12788,
+    "answer": "在 EDK II 中，库类（Library Class）和库实例（Library Instance）本质上是**接口（API）与具体实现**的关系：\n\n### 1. 库类与库实例的关系\n* **库类（Library Class）定义接口**：库类定义了库的 C 语言接口或 API 集合（通常通过包中发布的 `.h` 头文件来声明）[4, 8, 11]。模块（消费者）在编写代码时，是直接针对库类的接口定义进行编码的[8, 11]。\n* **库实例（Library Instance）是具体实现**：库实例是库类接口的具体 C 代码实现[4, 6, 11]。对于同一个库类，可以存在多个不同的库实例。这些不同的实例通常是为了满足不同的目的而设计的，例如：适用于不同的执行阶段（如 PEI 或 DXE）、针对性能或代码镜像体积进行优化，或是针对不同的 CPU 架构等[5, 9]。\n\n### 2. 为什么 DSC 文件里非要写映射？\nDSC（平台描述文件）中的 `[LibraryClasses]` 节专门用于提供**模块使用的库类名称**与**平台集成者选择的库实例**之间的映射关系[2]。这样做的核心目的是**解耦**：\n* **模块开发的通用性**：模块在其 INF 文件的 `[LibraryClasses]` 节中只需要声明自己依赖哪些“库类”[3, 5]，而不需要关心底层的具体实现。\n* **平台集成的灵活性**：平台集成者基于对硬件和平台的先验知识，在 DSC 文件中统一决定为特定的库类绑定哪个具体的“库实例”[2, 9]。例如，平台集成者可以在 DSC 中为 `DebugLib` 库类专门指定一个适用于 `DXE_DRIVER` 的实例[9]。最终，DSC 中指定的库实例会被链接到组件中[3]。\n\n### 3. 如果不写映射会怎样？\n如果在模块的 INF 文件中只指定了依赖某个库类，构建工具会按照优先级规则去寻找匹配的“库类 | 库实例”映射[7]。如果找不到任何为该库类定义的实例，构建工具将直接报错并终止构建，抛出类似如下的错误[7]：\n> `ERROR: Library Class [$(LibClassName)] specified by the Module [$(InfFileName)] does not have a Library Class Instance Defined.`\n\n因此，DSC 中的映射是连接“抽象接口”与“具体实现”的桥梁，缺少它构建系统将无法完成代码的链接。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and directly addresses both parts of the prompt. Every claim, including the definitions of library class/instance, the purpose of the DSC mapping for decoupling, specific examples (like DebugLib for DXE_DRIVER), and the exact build error message for missing mappings, is explicitly grounded in the provided context with no hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "PCD 有几种类型？在 DEC / DSC / INF / C 代码里分别怎么写？什么时候必须用 FixedPcd？",
+    "expected": [
+      "qtest-Q3"
+    ],
+    "top_doc": "Docs\\Specifications\\DEC_Spec_1_25.pdf",
+    "context_chars": 12922,
+    "answer": "根据提供的 EDK2 规范文档，关于 PCD（Platform Configuration Database）的类型、各文件中的写法以及 `FixedPcd` 的使用场景，解答如下：\n\n### 1. PCD 有几种类型？\nEDK2 中定义了 **5 种** PCD 访问方法类型（access method types），它们归属于三大类别 [1, 4, 6, 11]：\n1. **FeatureFlag** (`PcdsFeatureFlag`)：始终具有布尔值（Boolean value） [5, 11]。\n2. **FixedAtBuild** (`PcdsFixedAtBuild`)：值为布尔、数字或指针，在构建时被定义为 `const` [5, 11]。\n3. **PatchableInModule** (`PcdsPatchableInModule`)：值为布尔、数字或指针，被定义为 `volatile` [5, 11]。\n4. **Dynamic** (`PcdsDynamic`)：动态类型，其值由一个模块赋值，并在执行期间被其他模块访问 [7, 12]。\n5. **DynamicEx** (`PcdsDynamicEx`)：动态扩展类型 [1, 6]。\n\n### 2. 在 DEC / DSC / INF / C 代码里分别怎么写？\n* **DEC 文件 (Package Declaration)**：\n  PCD 必须根据其类型声明在对应的 PCD sections 中，即 `[PcdsFeatureFlag]`, `[PcdsFixedAtBuild]`, `[PcdsPatchableInModule]`, `[PcdsDynamic]`, 和 `[PcdsDynamicEx]` [1, 6, 13]。如果一个 PCD 支持多种类型，必须在所有支持的类型 section 中声明。声明时必须指定数据类型和默认值，条目格式包含四个字段，使用 `|` 字符作为字段分隔符 [10, 13]。\n* **DSC 文件 (Platform Description)**：\n  平台通过 `[Pcds(PcdType)]` 及其架构特定变体（如 `[Pcds(PcdType).common]`, `[Pcds(PcdType).IA32]`, `[Pcds(PcdType).X64]` 等）来配置和指定 PCD 的最终值 [5]。\n* **INF 文件 (Module Information)**：\n  模块在对应的 PCD section 中引用 PCD，使用的 section 名称为 `FeaturePcd` (`FEATURE_FLAG`), `FixedPcd` (`FIXED_AT_BUILD`), `PatchPcd` (`PATCHABLE_IN_MODULE`), `Pcd` (`DYNAMIC`), 和 `PcdEx` (`DYNAMIC_EX`) [4, 7]。注意，模块只能使用单一类型访问 PCD，因此不允许在 INF 中混合使用不同的 PCD section 类型 [4]。\n* **C 代码**：\n  在 C 代码中，通过对应的宏或标识符来访问。例如，`FeaturePcd` 在代码中识别为 `FEATURE_FLAG` [4]，在编译时最终会变成 `if(0)` 或 `if(1)` [2]。对于其他类型的 PCD，使用对应的 Get 宏（如 `FixedPcdGet16()`）来获取值 [9]。\n\n### 3. 什么时候必须用 FixedPcd？\n当 PCD 的值被用作**常量（constant value）**，最典型的场景是作为**数组的长度（array's length）** 时，必须使用 `FixedPcd`（即 `FixedAtBuild` 类型） [9]。\n* **原因**：`FixedAtBuild` 类型的 PCD 在底层会被定义为 `const` 常量 [5, 11]，因此编译器可以在构建期确定其大小。\n* **代码示例** [9]：\n  ```c\n  UINT8 MySampleArray[FixedPcdGet16(PcdArrayLength)] = {0};\n  ```",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and comprehensively addresses all parts of the prompt using only the provided context. It correctly identifies the 5 PCD types and their categories, accurately details the syntax and sections used in DEC, DSC, INF, and C files based on the specifications, and correctly states the requirement for using FixedPcd with array lengths as constant values.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "[Depex] 是干什么用的？为什么我 INF 里写了 TRUE，驱动还是没在我期望的时机跑起来？",
+    "expected": [
+      "qtest-Q4"
+    ],
+    "top_doc": "edk2-ModuleWriteGuide\\8_dxe_drivers_non-uefi_drivers\\86_dependency_expressions.md",
+    "context_chars": 13367,
+    "answer": "**1. `[Depex]` 是干什么用的？**\n`[Depex]`（Dependency Expression，依赖表达式）用于指定 DXE 驱动（或 PEIM）执行其入口点（entry point）所需的条件（如需要的 Protocols、PPIs 或 GUIDs）[1][2]。\n它的核心作用是帮助决定 PEIM 和 DXE 模块的派发顺序（dispatch order）[2]。例如，对于 PEIM，只有在其依赖部分中的所有条件都满足后，模块才会被派发执行[12]。\n\n**2. 为什么在 INF 里写了 `TRUE`，驱动还是没在期望的时机跑起来？**\n这通常由以下原因导致：\n\n* **`TRUE` 的语义是“随时可被派发”**：依赖表达式为 `TRUE` 意味着该驱动可以在**任何时候（at any time）** 被派发，即它没有任何协议或事件的前置依赖限制[4]。因此，它并不能保证在你“期望的特定硬件或软件就绪时机”运行。如果你希望驱动在某个特定时机运行，你需要在 `[Depex]` 中显式指定该时机对应的 Protocol/PPI/GUID，并结合逻辑运算符（如 `AND`, `OR`, `NOT`）来编写条件[1][2]。\n* **被 Apriori 文件覆盖**：PI 规范定义了一种 a priori 文件，固件卷可以通过它来任意指定驱动的执行顺序。如果你的驱动被 a priori 文件覆盖，那么它的依赖表达式（包括你写的 `TRUE`）将被直接忽略[1]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and directly addresses both parts of the prompt. Every claim is well-grounded in the provided context, including the definition of [Depex], the specific meaning of a TRUE dependency expression, and the potential override by an Apriori file. No hallucinations are present.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "怎么只编译我自己写的那一个模块？build 命令参数怎么写？产物和 AutoGen 文件在哪？",
+    "expected": [
+      "qtest-Q5"
+    ],
+    "top_doc": "Docs\\Specifications\\Build_Spec_1_26.pdf",
+    "context_chars": 11676,
+    "answer": "根据提供的上下文，以下是针对您问题的解答：\n\n### 1. 怎么只编译单个模块及 Build 命令参数？\nEDK II 构建过程支持仅构建单个模块（single module build mode）[13]。\n* **编译机制**：在单模块构建模式下，系统不会调用顶层 Makefile，而是通过模块自身 Makefile 中的 `mbuild` 目标来构建该模块所需的库 [1, 4]。在执行构建时，只会调用该模块自己的 makefile [9]。\n* **命令参数**：**提供的上下文中没有包含具体的 `build` 命令行参数写法**（例如用于指定模块路径的具体命令行选项）。上下文仅指出，通常使用 `target.txt` 文件来限制构建范围（如指定 Platform、Architectures、Targets 等配置）[13]。因此，无法为您提供确切的命令行参数格式。\n\n### 2. 产物和 AutoGen 文件在哪？\nAutoGen 文件和构建产物会生成在构建目录下，具体位置规则如下：\n* **路径结构**：每个模块的 Makefile 和 AutoGen 文件会生成在 `$(BUILD_DIR)` 下的一个组合路径中。该路径由 `$(TARGET)_$(TOOL_CHAIN_TAG)`、`$(ARCH)`、package name、module directory、directory name 以及模块 INF 文件的 `BASE_NAME` 组合而成 [8]。例如，生成的目录路径片段类似于：`$(BUILD_DIR)\\X64\\MdePkg\\Library\\DxePcdLib\\DxePcdLib` [4]。\n* **AutoGen 文件生成规则**：\n  * 系统会生成 `AutoGen.c`、`AutoGen.h` 和 `$(BASENAME).depex` 等文件 [3, 9]。\n  * **特殊限制**：`AutoGen.c` 和 `$(BASENAME).depex` 文件**不会**为 library（库）模块生成；此外，`$(BASENAME).depex` 文件只有在模块的 INF 文件中存在 `[Depex]` 节时才会生成 [9]。\n* **其他产物**：编译器工具还会生成 `Module.map` 文件，该文件列出模块中所有函数及其相对地址，可用于在运行时定位模块函数地址 [2, 10]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately extracts all relevant details from the provided context regarding the single module build mechanism (`mbuild` target), the exact directory structure for build outputs and AutoGen files, and the specific rules for AutoGen file generation. It also correctly and honestly notes that the specific `build` command-line parameters (e.g., `-m`) are not explicitly detailed in the provided context snippets, thereby avoiding any hallucination.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "新手最常撞上的那几个编译/链接报错，分别是什么原因、怎么修？",
+    "expected": [
+      "qtest-Q6"
+    ],
+    "top_doc": "UEFI_Driver_HII_Linux_Lab_Guide\\lab_setup\\README.md",
+    "context_chars": 12268,
+    "answer": "提供的知识库上下文中**并没有直接列出一份“新手最常撞上的编译/链接报错大全”**。但根据上下文提供的内容，我可以为您总结在 EDK2 构建和开发过程中，几种常见导致编译报错或构建中断的原因及修复方法：\n\n### 1. 编译警告被当作错误导致构建中断 (GCC / MSFT)\n*   **原因**：EDK II 规范要求最大化警告级别以捕获潜在问题（如变量大小不匹配等）[12]。因此，工具链配置中通常会开启将警告视为错误的标志。例如在 Linux (Ubuntu) 环境下，`tools_def.txt` 中的 `DEFINE GCC44_ALL_CC_FLAGS` 包含了 `-Werror` 标志 [1]；在 MSFT 编译器下则使用 `/WX` 标志 [12]。这会导致代码中任何微小的警告（例如潜在的指针类型转换或对齐问题 [5]）都会直接引发编译错误并停止构建。\n*   **怎么修**：\n    *   **规范做法**：遵循 C 编码规范，修复代码中的实际警告，而不是盲目关闭警告标志。\n    *   **Lab/临时绕过做法**：如果在特定的实验环境（如 Ubuntu 16.04 GCC5）中遇到阻碍，可以编辑 `~/src/edk2/tools_def.txt`，找到 `DEFINE GCC44_ALL_CC_FLAGS`，将其中的 `-Werror` 标志移除，然后保存并重新构建 [1]。\n\n### 2. 编译器工具链环境未配置\n*   **原因**：BaseTools 的构建依赖于外部提供的 C 编译器。如果系统环境中没有正确安装或配置编译器工具链，构建将无法进行并报错 [8]。\n*   **怎么修**：确保在操作系统环境中已经正确安装并配置了所需的 C 编译器（注意：BaseTools 构建需要 C 编译器，但不需要汇编器或 ACPI 汇编器）[8]。\n\n### 3. 源文件与构建规则不匹配 (AutoGen 阶段报错)\n*   **原因**：在预构建的自动生成（AutoGen）阶段，构建工具会解析 `build_rule.txt`。如果模块 INF 文件中的源文件扩展名在构建规则数据库中找不到对应的规则，构建工具会直接跳过该文件，这会导致后续编译或链接时因找不到目标文件而报错 [15]。\n*   **怎么修**：确保 INF 文件的 `[Sources]` 节中包含的文件扩展名与 `build_rule.txt` 中定义的构建规则严格匹配 [15]。同时需要注意，构建工具绝不会自动添加 `[Sources]` 节或文件名，必须由开发者正确配置 [9]。\n\n### 4. 平台构建配置不当 (如 RELEASE 目标下的问题)\n*   **原因**：在构建发布版本时，如果保留了不必要的模块或使用了未优化的库实例，可能会导致构建失败或镜像超限。\n*   **怎么修**：使用 `RELEASE` 目标构建平台（例如 `build -p Nt32Pkg\\Nt32Pkg.dsc -b RELEASE`）[11]。审查并选择优化的库实例，同时从 FDF 文件中移除不必要的模块（例如在发布版本中移除不需要的内部二进制 shell）[11]。\n\n---\n**💡 专家排错建议**：\n上下文中的 EDK II C 编码规范特别强调了一项排错的核心原则：**“在修复前必须彻底理解问题”**（Understand the problem before you fix it）[4]。如果遇到未知的编译/链接报错，不要盲目修改代码或配置，而应该通过对比“会引发错误”和“不会引发错误”的用例来三角定位（Triangulate）错误根源，直到完全理解问题本身后再进行修复 [4]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately acknowledges that the provided context does not contain a specific list of 'most common beginner errors,' but effectively synthesizes the available context regarding build errors, warning flags, toolchain setup, and autogen rules to answer the prompt. Every claim is strictly grounded in the provided text with accurate citations, and there are no hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "我想在代码里打印调试信息，DEBUG/ASSERT 要怎么配置才能真的输出？除了打印还有什么调试手段？",
+    "expected": [
+      "qtest-Q7"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\19_usb_driver_design_guidelines\\194_debug_techniques\\1941_debug_message_output.md",
+    "context_chars": 12674,
+    "answer": "在 EDK II 中，要配置 `DEBUG()` 和 `ASSERT()` 宏使其真正输出并生效，主要依赖于 `DebugLib` 以及相关的 PCD（Platform Configuration Database）配置。除了打印信息，EDK II 还提供了多种其他调试手段。\n\n以下是基于 EDK II 规范的详细配置指南和调试手段说明：\n\n### 一、 如何配置 DEBUG / ASSERT 才能真正输出？\n\n`DebugLib` 提供了 `DEBUG()`、`ASSERT()`、`ASSERT_EFI_ERROR()` 等宏，这些宏通常仅在 debug build 中启用，而在 production build 中禁用以节省可执行空间 [1, 3]。要让它们真正输出，需要配置以下两个核心 PCD [11, 13]：\n\n1. **`gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask`**\n   该 PCD 是一个 bitmask，用于控制 `DebugLib` 的各项行为特性开关 [6, 11, 13]。\n   * 它控制是否启用调试打印（如 `DEBUG_PROPERTY_DEBUG_PRINT_ENABLED` 0x02）、调试代码（0x04）、内存清除（0x08）等 [6]。\n   * 它控制 `ASSERT` 触发时的行为，例如是通过 `CpuDeadLoop` 还是 `BreakPoint` 实现，开发者可借此控制是否触发断点或死循环 [2, 6]。\n2. **`gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel`**\n   该 PCD 用于控制运行时产生的消息类型和调试打印级别 [5, 11, 13]。\n\n**配置示例**（参考 Nt32Pkg.dsc）[11]：\n```ini\ngEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x1f\ngEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000040\n```\n\n**硬件/串口配置**：\n目标系统（被测系统）的串口参数（包括波特率、数据位、停止位和流控）必须与接收调试数据的主机设置完全匹配 [7]。\n\n⚠️ **专家注意事项**：\n* **ASSERT 的使用限制**：`ASSERT` 宏仅作开发和调试之用，**绝不能用于错误处理**。代码必须能够在 `ASSERT` 被完全禁用的情况下正常运行和恢复 [9]。\n* **控制台服务崩溃风险**：在 UEFI 控制台连接之前（例如某些 option ROM 驱动被加载时），UEFI 系统表中的 `ConOut` 和 `StdErr` 字段可能为 `NULL`。此时如果尝试打印，可能会导致系统崩溃。因此，`DEBUG()` 应限制在 \"debug releases\" 或控制台连接之后使用 [15]。\n\n---\n\n### 二、 除了打印，还有哪些调试手段？\n\n如果 UEFI 驱动无法使用 `DEBUG()` 和 `ASSERT()`（例如在极早期的 PEI 阶段或缺乏串口支持），或者需要更高级的调试，可以使用以下手段：\n\n1. **POST Codes (POST 码)**\n   向设备发送少量的 POST 码输出，用于指示 UEFI 驱动执行到了哪个具体阶段，或者在检测到错误条件时提供位置标记 [4]。\n2. **Source Level Debug (源码级调试)**\n   可以通过在构建命令行添加 `-D SOURCE_DEBUG_ENABLE` 选项来启用源码级调试 [8]。\n   * *资源冲突提示*：如果平台只有一个串口且启用了源码级调试，该串口将被源码调试独占 [8]。\n   * *解决方案*：可以使用 USB 作为源码调试端口（需要特殊的 USB 调试线缆），这样就可以腾出串口用于常规的 `DEBUG()` 打印消息和控制台输出 [8]。\n3. **Status Codes (状态码报告)**\n   通过配置 `gEfiMdePkgTokenSpaceGuid.PcdReportStatusCodePropertyMask`，可以控制系统状态码的显示和报告机制 [13]。\n4. **调整编译器选项 (Compiler Options)**\n   在调试时，可以修改或覆盖模块的构建选项。例如，对 Microsoft 编译器使用 `/Od` 选项来禁用编译器优化，从而避免在单步调试或反汇编时出现指令乱序的问题 [2]。\n5. **MP Safe Debug (多核安全调试)**\n   在多核（MP）环境下，常规的 `DEBUG` 和 `ASSERT` 可能会因为并发导致输出混乱。EDK II 社区有专门的项目（Medium Projects）致力于创建线程安全版本的 `DEBUG` 和 `ASSERT` 跟踪函数，以允许 AP（应用处理器）安全地打印调试信息 [10]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and comprehensively addresses both parts of the prompt. Every claim, including specific PCDs, bitmask definitions, hardware configurations, and alternative debugging techniques, is directly grounded in the provided reference context without any hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "写一个遵循 UEFI Driver Model 的驱动，Supported/Start/Stop 分别该做什么？Driver Binding 协议怎么装上去？",
+    "expected": [
+      "qtest-Q8"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\3_foundation\\314_uefi_driver_model_connection_process\\README.14.md",
+    "context_chars": 13912,
+    "answer": "基于提供的知识库上下文，以下是关于遵循 UEFI Driver Model 的驱动中 Driver Binding 协议的安装以及 `Supported()`、`Start()`、`Stop()` 服务具体职责的解答：\n\n### Driver Binding 协议怎么装上去？\n当遵循 UEFI Driver Model 的驱动被加载时，它必须在**驱动入口点（driver entry point）** 将 Driver Binding Protocol 安装到其加载的**镜像句柄（image handle）** 上 [1]。\n* 通常的实现方式是：在驱动的源文件（如 `<<DriverName>>.c`）中为 `EFI_DRIVER_BINDING_PROTOCOL` 实例声明一个全局变量，并在入口点中完成安装 [1], [5]。\n* 如果一个 UEFI 驱动需要产生多个 Driver Binding Protocol 实例，它们都必须在该驱动入口点中统一安装 [2]。\n\n### Supported() 该做什么？\n`Supported()` 服务的主要职责是**评估传入的控制器句柄（*ControllerHandle*），检查该句柄是否代表该驱动知道如何管理的设备或控制器** [10], [14]。\n* 它提供了判断该驱动是否能够管理特定控制器的功能 [3]。\n* 常见的检查逻辑是：验证该句柄上是否安装了驱动需要消费的特定 I/O 协议。例如，USB 设备驱动会检查该句柄上是否安装了 `EFI_USB_IO_PROTOCOL` [14]。\n\n### Start() 该做什么？\n`Start()` 服务的主要职责是**将驱动连接到控制器** [9]。具体操作包括：\n1. **打开被消费的协议**：使用 EFI Boot Service `OpenProtocol()` 打开驱动需要消费的 I/O 相关协议（例如，设备驱动通常会使用 `EFI_OPEN_PROTOCOL_BY_DRIVER` 属性来打开底层 I/O 协议）[8], [13]。\n2. **安装产生的协议**：在相应的句柄上安装该驱动所产生的 I/O 抽象协议 [8]。\n3. **安装 Service Binding Protocol（如适用）**：如果该驱动遵循 UEFI Driver Model 且包含 Service Binding Protocol，则该协议必须在 Driver Binding Protocol 的 `Start()` 函数中进行安装 [6]。\n\n### Stop() 该做什么？\n`Stop()` 服务的主要职责是**将驱动从控制器上断开** [9]，它本质上执行的是与 `Start()` 完全相反的操作 [12]。具体操作包括：\n1. **关闭被消费的协议**：使用 `CloseProtocol()` 关闭在 `Start()` 期间打开的、被消费的 I/O 相关协议 [13]。\n2. **卸载已安装的协议**：卸载所有在 `Start()` 期间安装的协议 [12]。\n3. **处理子句柄（如适用）**：对于总线驱动等，必须卸载所有子句柄上的协议，并关闭所有子句柄 [12]。\n4. **卸载 Service Binding Protocol（如适用）**：如果在 `Start()` 中安装了 Service Binding Protocol，则必须在 `Stop()` 函数中将其卸载 [6]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately and comprehensively addresses all parts of the prompt, with every claim directly supported by the provided context chunks. There are no hallucinations or significant omissions.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "拿一个 Protocol 到底该用 LocateProtocol、LocateHandleBuffer 还是 OpenProtocol？OpenProtocol 的 Attributes 怎么选？",
+    "expected": [
+      "qtest-Q9"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\5_uefi_services\\53_services_that_uefi_drivers_should_not_use\\534_locatehandle.md",
+    "context_chars": 13324,
+    "answer": "根据提供的 Context，关于获取和使用 Protocol 的 API 选择以及 `OpenProtocol` 的 Attributes，具体指导如下：\n\n### 一、 该用 `LocateProtocol`、`LocateHandleBuffer` 还是 `OpenProtocol`？\n\n这三者的使用场景不同，主要分为“在数据库中查找 Handle”和“实际打开/消费协议接口”：\n\n1. **`LocateProtocol()`**\n   * **适用场景**：用于查找**服务类协议（service protocols）**，即在整个 Handle Database 中**只有一个实例**的协议 [4]。\n2. **`LocateHandleBuffer()`**\n   * **适用场景**：用于查找可能存在于 Handle Database 中**多个 Handle** 上的协议（例如 Block I/O Protocol）[2][4]。\n   * **优势**：它会返回一个支持指定协议的 Handle 数组。相比于需要调用者自己分配缓冲区的 `LocateHandle()`，`LocateHandleBuffer()` 会自动为调用者分配返回缓冲区，因此更易于使用且能产生更小的可执行文件 [1]。\n3. **`OpenProtocol()`**\n   * **适用场景**：用于**实际打开并消费**协议接口。例如，UEFI 驱动在 `Start()` 函数中消费协议接口时，使用的是 `OpenProtocol()` [11]；在需要获取私有上下文结构（private context structure）时，通常也使用 `OpenProtocol()` 打开驱动产生的协议 [12][14]。\n   * **核心作用**：它提供了与 `HandleProtocol()` 相同的功能，但更重要的是，它允许 Handle Database 跟踪哪些组件正在使用不同的协议接口 [3]。\n   * **⚠️ 规范警告**：虽然 UEFI Application 可以使用 `HandleProtocol()` 来访问协议 [15]，但 **UEFI drivers 绝对不应使用 `HandleProtocol()`**，而必须使用 `OpenProtocol()` 以符合 UEFI Driver Model [3]。\n\n---\n\n### 二、 `OpenProtocol` 的 Attributes 怎么选？\n\n根据提供的 Context，明确提到了在 UEFI 驱动模型中用于管理资源冲突的 Attribute 选择：\n\n* **`EFI_OPEN_PROTOCOL_BY_DRIVER`**\n  * **作用**：使用 `OpenProtocol()` 服务配合 **`EFI_OPEN_PROTOCOL_BY_DRIVER`** 属性，是 UEFI 驱动模型中**避免资源冲突**的核心机制 [9]。\n  * **行为表现**：当使用此属性尝试打开协议时，**仅在该协议没有被任何其他驱动消费的情况下，打开操作才会成功**（succeeds only if the protocol is not being consumed by any other drivers）[9]。\n  * **前提条件**：这要求系统中存在的每一个驱动都必须遵循驱动互操作性规则（driver interoperability rules），才能确保所有资源冲突被成功避免 [9]。\n\n*(注：提供的 Context 中仅涵盖了 `EFI_OPEN_PROTOCOL_BY_DRIVER` 这一种 Attribute 的使用场景和指导。关于其他 Attributes（如 `EXCLUSIVE`、`GET_PROTOCOL`、`BY_CHILD_CONTROLLER` 等）的具体选择规则，当前 Context 未提供相关信息。)*",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately addresses both parts of the prompt using only the provided context. It correctly distinguishes the use cases for LocateProtocol, LocateHandleBuffer, and OpenProtocol, and correctly identifies EFI_OPEN_PROTOCOL_BY_DRIVER as the attribute for avoiding resource conflicts, explicitly noting that other attributes are not covered in the provided text. No hallucinations are present.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "我想给 edk2 上游提一个补丁，完整的贡献流程是什么样的？",
+    "expected": [
+      "qtest-Q10"
+    ],
+    "top_doc": "Laszlo's Unkempt Git Guide for EDK II Contributors and Maintainers - TianoCore EDK II Documentation",
+    "context_chars": 12272,
+    "answer": "根据提供的 TianoCore EDK II 文档，给 edk2 上游提交补丁的完整贡献流程如下：\n\n### 1. 流程变更须知\n自 2024 年 5 月起，TianoCore 项目已从基于邮件列表的贡献流程正式过渡到 **GitHub Pull Request (PR) 流程** [12]。\n\n### 2. 分支创建与代码修改\n* **创建分支**：为你的更改创建并切换到一个主题分支：`git checkout -b <new-dev-branch> origin/master` [3]。\n* **提交拆分**：在工作树中进行修改，并将更改拆分为独立的提交（commits），确保这些提交不会破坏 `git bisect` [3]。\n* **暂存更改**：使用 `git add -u`（暂存所有修改）、`git add <path-to-new-file>`（添加新文件）或 `git add -p`（交互式选择性暂存）进行 Commit Partitioning [3]。\n\n### 3. Commit Message 规范\n* **签名与协议**：你的 commit message 必须包含 `Signed-off-by` 签名，以及 `Contributed-under` 消息。`Contributed-under` 需明确声明贡献是在指定贡献协议条款下做出的（例如：`Contributed-under: TianoCore Contribution Agreement 1.0`）[10]。\n* **格式与语言**：需严格遵循 EDK II 的 Commit Message Format 以及 Inclusive Language Guidelines（包容性语言指南）[14]。\n\n### 4. 特殊流程评估\n在提交 PR 前，需评估你的补丁是否涉及以下特殊情况：\n* **规范变更**：如果提议的补丁集还需要修改 UEFI 或其他行业标准规范，则必须使用 **EDK II Code First Process** [2]。\n* **破坏性变更**：如果涉及 Breaking Change，需遵循 **Breaking Change Process**。例如，在第一个 PR 中保持被弃用项（API/PCD/GUID等）的功能可用，并检查 `edk2-platforms` 中是否使用了受影响的代码，若有则需提交配套的 companion PR [6]。\n\n### 5. 提交 Pull Request 与 CI 检查\n* **提交 PR**：在 GitHub 上创建 Pull Request，建议熟悉 GitHub UI 的关键功能（如 Fork 仓库、设置仓库通知等）以改善工作流 [12]。\n* **CI 预提交检查**：提交后将触发 CI 系统的 pre-commit 自动化检查，代码必须通过这些检查，包括：`PatchCheck`, `CharEncodingCheck`, `CompilerPlugin`, `DependencyCheck`, `DscCompleteCheck`, `GuidCheck`, `LibraryClassCheck`, `SpellCheck` 等 [4]。\n\n---\n**附加建议**：\n作为贡献者/开发者，如果在开发或构建工具链中遇到缺陷、需要反馈或提问，可以通过 `edk2-devel` 邮件列表进行交流，或在 TianoCore Bugzilla 中提交 Bug [5][11]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and comprehensively covers the contribution process based on the provided context. It correctly identifies the transition to the GitHub PR process in May 2024, details the git workflow, commit message requirements (Signed-off-by and Contributed-under), special processes (Code First and Breaking Change), and CI checks, all of which are directly grounded in the reference materials.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "commit message 到底该怎么写？签名行有什么讲究？",
+    "expected": [
+      "qtest-Q11"
+    ],
+    "top_doc": "Commit Message Format - TianoCore EDK II Documentation",
+    "context_chars": 12761,
+    "answer": "根据提供的 EDK2 知识库文档，关于 Commit Message 的编写规范和签名行的讲究如下：\n\n### 1. Commit Message 的格式规范\n一个标准的 Commit Message 需要严格遵循以下排版和字符限制 [1]：\n* **首行（简述）**：格式通常为 `Package/Module: Short one line description of change`，长度必须**少于 92 个字符** [1]。\n* **空行**：首行与正文之间必须保留一个空行，且**该空行不能包含任何空白字符（no whitespace）** [1]。\n* **正文（详细描述）**：用于完整描述所做的更改，可以包含已验证的测试项。行长度在可能的情况下应**小于 76 个字符** [1]。\n* **字符限制**：整个日志消息应**仅使用标准的 ASCII 文本字符** [1]。\n* **签名区域**：在正文之后，包含一行或多行签名信息 [1]。\n\n### 2. 签名行（Signatures）的讲究\n* **必须签名**：作者必须使用 `Signed-off-by` 标签进行签名 [2]。\n* **转发代码的签名规则**：如果你从受信任的来源接收了代码并继续转发提交，请务必为你自己添加一行 `Signed-off-by`。这代表你知晓并确认该代码可以被 EDK2 社区合法使用 [2]。\n\n### 3. 提交划分（Commit Partitioning）的补充要求\n除了 Message 本身的文本格式，EDK2 对提交内容的划分也有严格要求，官方认为这与写好 Commit Message 同等重要：\n* **合理划分**：需要投入适当精力合理划分你的更改，以保持源码控制历史易于审查 [15]。\n* **保证可 bisect**：必须将工作树中的更改拆分为独立的提交，且这些提交**不能破坏 `git bisect`** [14]。\n\n*(注：如果在 rebase 过程中不小心搞砸了 commit message，可以通过将下一个 commit message 更新为空文本文件使 git rebase 暂停，然后执行 `git rebase --abort` 回退到修改前的状态重新处理 [3]。)*",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate, with every claim directly grounded in the provided context. It correctly details the commit message format, signature requirements, and appropriately includes relevant supplementary information on commit partitioning and rebase recovery found in the context.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "一个改动该拆成几个 commit？拆分标准是什么？",
+    "expected": [
+      "qtest-Q12"
+    ],
+    "top_doc": "Commit Partitioning - TianoCore EDK II Documentation",
+    "context_chars": 13097,
+    "answer": "根据提供的 EDK II 文档上下文，关于一个改动该拆分成几个 commit 以及拆分标准，主要有以下指导原则：\n\n1. **避免过度拆分（拒绝无意义的碎片化）**：\n   文档明确指出不要过度拆分你的改动。例如，如果你在同一个文件中修复了 5 个注释里的拼写错误，不需要将其拆分为 5 个独立的 commit，而应合并提交 [1]。\n\n2. **新模块通常作为单个 commit**：\n   在大多数情况下，实现一个新的驱动（driver）或库（library）应该作为一个单独的 commit 提交，不应被强行切碎 [1]。\n\n3. **保证逻辑独立性与 `git bisect` 的可用性**：\n   你需要将工作区（working tree）中的修改拆分为**独立的（independent）** commit，并且核心底线是这些 commit **不能破坏 `git bisect`** [5]。这意味着每个 commit 在逻辑上应当是完整和自洽的，确保在进行代码二分查找排查问题时不会因中间 commit 的残缺状态而失败。\n\n**总结拆分标准**：\n拆分的标准基于**逻辑独立性**，而不是修改的物理行数或文件数。不应将琐碎的修改（如多个拼写错误）或一个完整的功能模块（如新增一个驱动）过度拆分；正确的做法是确保每个 commit 都是一个独立、完整的逻辑单元，且保证 `git bisect` 能够正常工作 [1, 5]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately extracts the guidelines for commit partitioning from the provided context, specifically citing the rules against over-partitioning (e.g., spelling fixes, new drivers/libraries) from [1] and the requirement to maintain independent commits that do not break 'git bisect' from [5]. All claims are directly grounded in the reference text with no hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Uncrustify 是什么？怎么在本地把代码格式化成 CI 认可的样子？",
+    "expected": [
+      "qtest-Q13"
+    ],
+    "top_doc": "EDK II Code Formatting - TianoCore EDK II Documentation",
+    "context_chars": 13106,
+    "answer": "根据提供的上下文，以下是关于 Uncrustify 及其在本地格式化代码的解答：\n\n### Uncrustify 是什么？\nUncrustify 是 EDK II 项目要求使用的一个**自动化代码格式化工具**，其主要作用是将 C 代码自动格式化，以完全匹配 EDK II 的 C 编码标准（EDK II C Coding Standard）[2]。\n\n### 怎么在本地把代码格式化成 CI 认可的样子？\n为了确保你的补丁提交能够顺利通过服务器端的 CI 格式检查，建议通过以下方式进行本地格式化和验证：\n\n**1. 使用 `stuart_ci_build` 运行本地 CI 验证**\n服务器端用于验证代码格式的 `UncrustifyCheck` CI 插件可以直接在本地运行。强烈建议在提交前运行本地 CI，以验证代码是否能通过服务器检查 [1]。\n你可以在 edk2 工作区的根目录下使用 `stuart_ci_build` 命令。例如，针对 `MdeModulePkg` 运行格式检查的命令如下 [1]：\n```bash\nstuart_ci_build -c .pytool/CISettings.py -p MdeModulePkg\n```\n\n**2. 日常开发中的格式化工作流建议**\n* **Commit 后格式化**：强烈建议在每次 commit 之后对更改运行 Uncrustify 进行格式化。这样你可以很方便地使用格式化后的输出直接 amend（修订）当前的 commit [3]。\n* **使用插件实时格式化**：许多开发者倾向于在编写代码的过程中，直接使用编辑器插件（plugin）频繁地对代码进行格式化 [3]。\n* **强制门禁**：你的代码更改必须通过包含代码格式检查的本地 CI，才有资格被合并到代码库中 [3]。\n\n*(注：提供的上下文指出，关于如何安装和独立运行 Uncrustify 的详细步骤，需参考官方的 \"EDK II Code Formatting\" 文档 [2]。在 EDK II 的工程实践中，主要是通过上述的 `stuart_ci_build` 命令或编辑器插件来调用该工具以满足 CI 要求。)*",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate, with every claim directly grounded in the provided context. It correctly identifies Uncrustify as the required formatting tool, explains how to use `stuart_ci_build` for local CI verification, outlines the recommended workflow for formatting, and accurately notes that specific installation and standalone execution details are deferred to the official documentation as stated in the context.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "PR 提上去后 CI 会跑哪些检查？谁来 review？最后怎么合进 master？",
+    "expected": [
+      "qtest-Q14"
+    ],
+    "top_doc": "EDK II Development Process - TianoCore EDK II Documentation",
+    "context_chars": 12461,
+    "answer": "根据提供的 EDK II 文档上下文，关于 PR 提交后的 CI 检查、Review 人员以及合入 master 的流程，具体解答如下：\n\n### 1. CI 会跑哪些检查？\nPR 提交后，CI（通过 Azure Pipelines 和 Stuart 工具）会运行一系列编译、格式和 pre-commit 检查，以确保新代码符合规范 [6][8]。具体的检查项包括：\n*   **Pre-commit / 静态检查**：`PatchCheck`、`CharEncodingCheck`、`CompilerPlugin`、`DependencyCheck`、`DscCompleteCheck`、`GuidCheck`、`LibraryClassCheck`、`SpellCheck` [2]。\n*   **编译检查**：`Windows VS2019 PR check` 和 `Ubuntu GCC5 PR check` [4]。\n*   **代码格式检查**：使用 `UncrustifyCheck` 插件来检查代码是否满足格式要求（Uncrustify formatting） [8]。\n\n### 2. 谁来 Review？\n*   **Maintainer 协调**：PR 的 Review 由对应 Package 的 **Maintainer** 负责，他们会协调同一 package 的 co-maintainers 和 reviewers 来进行代码审查 [7]。\n*   **查询 Maintainer**：各 package 的 maintainer 名单记录在 EDK II 代码树根目录的 `Maintainers.txt` 文件中 [12]。\n\n### 3. 最后怎么合进 master？\nPR 合入 `master` 分支需要遵循严格的分支保护规则和合并流程：\n1.  **通过 CI 状态检查**：根据仓库的 Branch Protection Rules，PR 必须通过所有必需的 status checks（如上述提到的各种 PR check）才能被合并 [4]。\n2.  **代码审批 (Approve)**：PR 必须在获得审批（approved）后，才会被合并 [5]。\n3.  **分支同步与解决冲突**：分支保护规则要求 PR 分支必须与 `master` 保持最新（Require branches to be up to date before merging）[4]。如果检测到合并冲突（merge conflict），提交者需要在 GitHub 外部，通过将自己的分支与 `edk2/master` 进行 rebase 来解决冲突，并 amend 相关的 commits [1]；如果是 maintainer 在合并流程中遇到冲突，则由 maintainer 按照 maintainer workflow 处理 [3]。\n4.  **Maintainer 执行合并**：最终由拥有 push/merge 权限的 **Maintainer** 负责将 approved 的 PR 合并到 master 分支 [5][7]。\n5.  **跨仓库 Breaking Change 的特殊合并要求**：如果该 PR 是 breaking change 且影响了 `edk2-platforms`，提交者必须提交一个 companion PR 来解决破坏。Approving maintainer 在合并 `edk2` PR 前，会验证 companion PR 是否存在并已准备好，从而最小化 `edk2-platforms` 针对 `edk2 master` 处于 broken 状态的时间窗口 [9][11]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and comprehensively addresses all parts of the question. Every claim, including specific CI check names, the maintainer's role in reviews, and the exact merge/conflict resolution procedures, is directly grounded in the provided context without any hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "EDK II 的命名规范有哪些硬性要求？",
+    "expected": [
+      "qtest-Q15"
+    ],
+    "top_doc": "edk2-CCodingStandardsSpecification\\4_naming_conventions\\42_directory_names.md",
+    "context_chars": 13290,
+    "answer": "根据提供的上下文，EDK II 的命名规范包含以下硬性要求和规则，主要分为**文件与目录命名**以及**代码与符号命名**两个方面：\n\n### 1. 文件与目录命名的硬性要求\n* **大小写敏感**：为了支持 Windows、Linux 和 Mac OS/X 等多种构建环境，所有目录名和文件名必须被视为**大小写敏感**（case sensitive） [2, 3, 5]。此外，INF 文件中的 `BASE_NAME` 定义也是大小写敏感的，因为它在构建期间会被用于创建目录名 [7]。\n* **特殊字符限制**：目录名和文件名中允许使用的特殊字符**仅限于**连字符（`-`）、下划线（`_`）和句号（`.`） [2, 3, 5]。\n* **句号（`.`）的使用限制**：\n  * 句号后面**不能**紧跟另一个句号 [2, 3, 5]。\n  * 文件和目录名**不能**以 `./` 或 `.` 开头 [2, 3, 5]。\n* **架构相关目录命名**：所有与处理器架构相关的 EDK II 目录，其名称必须**只有首字母大写**。例如，`Ia32`、`X64` 和 `Ebc` 是有效的架构目录名；而使用全大写（如 `IA32` 和 `EBC`）是不可接受的，可能会导致编译中断（build breaks） [6]。\n\n### 2. 代码与符号命名的硬性要求 (C 编码规范)\n* **表意明确**：名称必须清楚地代表被命名对象的用途 [4]。\n* **避免概念混淆**：不要使用与现有概念非常相似的名字（例如 `event`） [4]。\n* **避免命名冲突**：不要将标准头文件中声明的符号名用作内部符号 [4]。\n* **禁止重载**：不允许重载（Overloading）函数名或类型名 [4]。\n* **正确使用反义词**：命名时必须使用正确的反义词对 [4]。\n* **缩写规范**：只能使用标准的缩写。在代码命名及注释文档中，需匹配行业标准的缩写大小写（例如，根据规范中的 EFI 支持缩写表，`NVRAM` 对应 `Nvram`，`PCI` 对应 `Pci`） [4, 13]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately extracts all hard naming requirements for files, directories, and code symbols directly from the provided context, correctly identifying mandatory rules like case sensitivity, character restrictions, and architectural directory capitalization without any hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "排版和空白有哪些规定？",
+    "expected": [
+      "qtest-Q16"
+    ],
+    "top_doc": "Docs\\Specifications\\FDF_Spec_1_27_Review_Draft.pdf",
+    "context_chars": 12498,
+    "answer": "根据提供的 EDK2 编码规范上下文，关于排版（Formatting）和空白（Spacing）的规定主要包括以下几个方面：\n\n### 1. 缩进、行宽与制表符 (Indentation, Line Length & Tabs)\n* **行宽限制**：单行代码长度限制为 80 个字符 [13]。\n* **缩进规则**：统一使用 **2个空格** 进行缩进 [10][13]。\n* **禁用制表符**：绝对不要使用制表符（Tab characters）。必须将编辑器设置为插入空格，所有制表符在编辑器中应展开为 2 个空格，且所有缩进必须严格对齐到 2 个空格的边界，没有任何例外 [10][13]。\n\n### 2. 垂直空白与注释 (Vertical Spacing & Comments)\n* **代码分组**：使用空行和注释来对相关的代码块进行分组 [3]。\n* **注释留白**：在包含文本的注释块上方必须包含一个空行，以使注释在视觉上保持独立，而不依赖于编辑器的渲染 [15]。\n\n### 3. 代码行与变量声明 (Code Lines & Declarations)\n* 每行绝对不能放置多条语句 [3]。\n* 绝对不能将代码和条件判断放在同一行 [3]。\n* 每行绝对不能放置多个变量声明（例如 `UINT8 MyData1, MyData2;` 是非法的）[3]。\n\n### 4. 大括号与流控制排版 (Braces & Flow Control)\n* **函数/多行表达式**：对于函数或多行谓词表达式，左大括号 `{` 必须单独放在新的一行 [3]。\n* **常规控制流**：对于一般的控制流语句，左大括号 `{` 应始终出现在上一行的末尾 [13]。\n* **空复合语句**：空复合语句（Null compound statements）必须严格占据三行：\n  1. 第一行：左大括号与关键字在同一行；\n  2. 第二行：一个正确缩进的分号；\n  3. 第三行：闭合大括号（与关键字所在列对齐，且作为该行第一个非空白字符）[8]。\n\n### 5. 文件头版权日期的空格 (Copyright Spacing)\n* 在文件头部的版权日期中，采用 `FIRST - LAST` 格式时，连字符 `-` 两侧的空格是可选的 [4]。 \n\n这些规定的核心目的是确保代码在所有编辑器和不同开发者之间保持一致的外观与极高的可读性。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately reflects all the formatting and spacing rules mentioned in the provided context, including line length, indentation, tab usage, vertical spacing, brace placement, and copyright date formatting. Every claim is directly grounded in the reference text without any hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "为什么不能用 int、char 这些标准 C 类型？该用什么？",
+    "expected": [
+      "qtest-Q17"
+    ],
+    "top_doc": "Coding Standards - TianoCore EDK II Documentation",
+    "context_chars": 12168,
+    "answer": "根据提供的 EDK II 知识库上下文，关于为什么不能使用标准 C 类型以及应该使用什么类型的解答如下：\n\n### 为什么不能用标准 C 类型？\n1. **违反 EDK II 编码规范**：EDK II C 编码规范明确指出，使用 `int`、`unsigned`、`char`、`void`、`long` 等标准 C 数据类型是**违反编码约定的（violation of the coding convention）**，在代码文件中是**被严格禁止的（prohibited）** [3, 6]。\n2. **遵循 UEFI 规范与架构限制**：UEFI 驱动及底层代码必须仅使用 UEFI 规范（UEFI Specification）调用约定中定义的整数数据类型。这是为了确保跨平台的一致性，并且是为了适应如 EBC（EFI Byte Code，EFI 字节码）架构的特定限制 [9]。\n\n### 该用什么？\n您必须**只使用 UEFI 数据类型（UEFI data types / EFI Data Types）** [1, 6]。具体的替代方案如下：\n\n* **使用 `INTN` 代替 `int`**：表示原生宽度的有符号值（例如在 IA-32 上为 4 字节，在 X64 上为 8 字节）[1, 3]。\n* **使用 `UINTN` 代替 `unsigned int`** [1]。\n* **使用 `VOID *` 代替 `void *`** [1]。\n* **使用其他 UEFI 标准定长类型**：如 `UINT8`、`UINT16`、`UINT32`、`INT64` 等 [9]。\n\n**⚠️ EBC 架构特别注意事项**：\n如果您编写的 UEFI 驱动需要兼容 EBC（EFI Byte Code）架构，在使用上述 UEFI 数据类型时，必须**避免**将原生宽度类型（`INTN` / `UINTN`）与以下固定大小类型进行算术计算和比较 [9]：\n* `INTN` 与 `UINT8`、`UINT16`、`UINT32`\n* `UINTN` 与 `INT64`",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and directly addresses both parts of the question using the provided context. All claims regarding the prohibition of standard C types, the requirement to use UEFI data types, specific type replacements, and EBC architecture limitations are explicitly supported by the reference documents without any hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "函数该怎么排版？文件头和函数头注释有什么格式要求？",
+    "expected": [
+      "qtest-Q18"
+    ],
+    "top_doc": "edk2-CCodingStandardsSpecification\\5_source_files\\57_c_programming.md",
+    "context_chars": 12368,
+    "answer": "根据提供的知识库上下文，关于“函数具体排版（如代码缩进、大括号位置等物理布局细节）”的规定并未在提供的文本片段中详细展开（尽管章节标题包含了 `5.7.1 Function Definition Layout`，但具体片段仅涉及注释规范）。\n\n但是，关于**文件头和函数头注释的格式与要求**，上下文给出了以下明确规定：\n\n### 1. 文件头注释要求\n* 每个文件都必须具有格式正确的文件头（File Heading）[2]。\n\n### 2. 函数头注释要求\n* **双文件同步**：函数注释头必须同时存在于包含函数实现的 `.c` 源文件和包含函数原型的 `.h` 头文件中 [1]。每个函数和功能性宏（functional macro）都必须在这两类文件中具备正确的函数头 [2]。\n* **宏的注释要求**：功能性宏的注释块必须像函数一样，提供关于输入、输出和行为的明确描述，因为宏通常非常难以调试 [7]。\n\n### 3. 注释的内容与编写原则\n* **解释“为什么”**：注释必须解释代码“为什么”要这样做（explain why the code does what it does）[2]。注释不应仅仅是代码的字面翻译，而应该解释宏观层面的工作原理、为何采用这种设计以及各部分之间的关系 [14]。\n* **函数调用参数注释**：允许在函数调用的参数上添加注释，以提供针对该特定函数调用的补充信息。但是，这些参数注释**不应重复**函数特殊文档块（如 Doxygen 的 `@param` 条目）中已经包含的描述性文本 [3]。\n\n*(注：提供的上下文目录中虽然包含 `6.6 Introducing Doxygen` 和 `6.8 Special Documentation Blocks` 等章节，但具体文本片段未提供 Doxygen 标签的详细格式说明。)*",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately reflects the provided context, correctly identifying that specific physical layout details for functions are missing from the retrieved chunks while thoroughly and accurately summarizing the formatting and content requirements for file headers, function headers, and macros based on the provided text. There are no hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "流程控制语句、goto 和 ASSERT 有什么规定？注释有哪些禁忌？",
+    "expected": [
+      "qtest-Q19"
+    ],
+    "top_doc": "edk2-CCodingStandardsSpecification\\5_source_files\\57_c_programming.md",
+    "context_chars": 12403,
+    "answer": "根据提供的 EDK2 知识库上下文，关于流程控制语句（goto）、ASSERT 以及注释的规定和禁忌如下：\n\n### 1. 流程控制语句与 `goto` 的规定\n* **原则上不使用**：在几乎所有情况下，都应该尽量编写不需要使用 `goto` 的代码。如果确实使用了 `goto`，必须准备好在代码审查（review）时为其辩护 [1]。\n* **唯一合法用途**：`goto` 常见的用法是错误处理（error handling）。因此，**退出例程的错误情况是 `goto` 唯一合法的用途**，它允许将错误退出代码集中包含在一个地方 [1]。\n\n### 2. `ASSERT` 的规定\n**通用规定：**\n* **严禁用于错误处理**：`ASSERT` 宏仅仅是开发和调试的辅助工具，**绝不能（shall never）用于错误处理** [3]。\n* **用途**：断言用于捕获在代码发布前就已经解决的、由编程错误引起的条件 [3]。\n* **可禁用性**：EDK II 的 PCD `PcdDebugPropertyMask` 可用于启用或禁用与 `ASSERT` 相关的代码生成。因此，所有代码必须能够在 `ASSERT` 被禁用的情况下正常运行，并以合理的方式进行恢复 [3]。\n\n**安全编码指南中的特定限制：**\n* **SMM 相关**：SMI handler 在 EndOfDxe 之后，**严禁 (MUST NOT)** 对来自外部的输入使用 ASSERT (`ASSERT.SMM.1`)；但 SMM 驱动**可以 (MAY)** 在入口点使用 ASSERT 来构建环境 (`ASSERT.SMM.2`) [2]。\n* **网络相关**：网络驱动**严禁 (MUST NOT)** 对来自远程的数据包使用 ASSERT (`ASSERT.NETWORK.1`) [2]。\n* **Shell 相关**：Shell **严禁 (MUST NOT)** 对资源请求或用户输入使用 ASSERT (`ASSERT.SHELL.1`) [2]。\n\n### 3. 注释的禁忌\n* **禁止包含笑话或晦涩引用**：规范明确指出，**不要在注释中包含笑话或晦涩难懂的引用**（例如：\"Out of cheese error! Redo from start.\"）[12]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer is fully accurate and comprehensively addresses all parts of the prompt based strictly on the provided context. Every claim regarding goto, ASSERT, and comments is directly supported by the reference chunks without any hallucinations or notable omissions.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Driver Binding 的 Supported()、Start()、Stop() 三者职责边界怎么划分？",
+    "expected": [
+      "qtest-Q20"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\9_driver_binding_protocol\\92_driver_binding_protocol_template.md",
+    "context_chars": 13077,
+    "answer": "在 EDK2 的 UEFI 驱动模型中，Driver Binding Protocol 通过 `Supported()`、`Start()` 和 `Stop()` 三个核心服务来分离驱动的加载与设备的启动/停止过程 [4, 8]。这三者的职责边界划分非常明确，具体如下：\n\n### 1. `Supported()` 的职责与边界\n* **职责**：负责快速检查和评估传入的控制器句柄（Controller Handle），判断该句柄所代表的设备是否属于当前驱动知道如何管理的范畴 [3, 10, 12]。通常的检查方式是验证该句柄上是否安装了驱动所需的底层 I/O 协议（如 `EFI_USB_IO_PROTOCOL` 等）[5, 10]。\n* **边界限制**：**绝对不能修改控制器的状态**。因为在进行 `Supported()` 检查时，该控制器可能已经被其他不同的驱动所管理，任何状态修改都会破坏现有系统的稳定性 [1]。\n\n### 2. `Start()` 的职责与边界\n* **职责**：当 `Supported()` 测试通过后，`Start()` 被调用以要求驱动实际绑定到特定的控制器上，并为其分配资源 [1]。\n* **具体行为与边界**：\n  * **消耗与产生协议**：`Start()` 负责从控制器句柄上“消耗”（Consumes）一个或多个底层 I/O 协议（通常使用 `EFI_OPEN_PROTOCOL_BY_DRIVER` 属性来打开），并在同一个控制器句柄上“产生/安装”（Produces）一个或多个上层的 I/O 抽象协议 [5, 6, 7, 11]。\n  * 它是驱动真正接管硬件并建立软件抽象层的关键步骤。\n\n### 3. `Stop()` 的职责与边界\n* **职责**：执行与 `Start()` **完全相反（逆向）** 的操作，负责将驱动从控制器上断开连接 [1, 13, 14]。\n* **具体行为与边界**：\n  * **资源与协议清理**：必须关闭在 `Start()` 中打开的协议实例，并卸载附加在控制器句柄上的协议接口 [13]。\n  * **防泄漏与硬件恢复**：必须释放所有在 `Start()` 中分配的资源，确保**没有任何内存泄漏或句柄泄漏** [1, 14]。\n  * **硬件状态重置**：需要确保硬件被正确停止（例如禁用 ATA/USB 控制器），并恢复在启动阶段可能修改的硬件属性（例如恢复 PCI I/O Protocol 的属性）[13, 14]。\n\n### 总结\n这三者的边界可以概括为：**`Supported()` 只做“只读”的资格探测，绝不修改状态**；**`Start()` 负责“建立”绑定、打开底层协议并安装上层抽象协议**；**`Stop()` 负责“解除”绑定，严格逆序执行 `Start()` 的操作，确保资源零泄漏和硬件状态的完美恢复**。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately and comprehensively describes the distinct responsibilities and boundaries of Supported(), Start(), and Stop() based entirely on the provided context. It correctly highlights the read-only nature of Supported(), the protocol consumption and production in Start(), and the strict reverse cleanup and resource recovery in Stop(), with all claims properly grounded in the reference texts.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Supported() 具体该怎么写？各个返回码是什么含义？",
+    "expected": [
+      "qtest-Q21"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\9_driver_binding_protocol\\92_driver_binding_protocol_template.md",
+    "context_chars": 13693,
+    "answer": "根据提供的上下文，关于 `Supported()` 的具体编写方法和返回码含义，解答如下：\n\n### 1. 关于返回码的含义\n**提供的上下文中并未详细列出 `Supported()` 各个返回码（如 `EFI_SUCCESS`, `EFI_UNSUPPORTED`, `EFI_ACCESS_DENIED` 等）的具体含义。** \n上下文中明确指出，`Supported()`、`Start()` 和 `Stop()` 服务的详细算法和代码示例，需要参考《UEFI Specification》中的 **EFI Driver Binding Protocol** 章节 [1]。\n\n### 2. `Supported()` 具体该怎么写？\n`Supported()` 是 `EFI_DRIVER_BINDING_PROTOCOL` 协议结构体中的核心服务之一 [4]。它的主要作用是接收传入的控制器句柄（`ControllerHandle`），并快速检查/评估该句柄是否代表该驱动能够管理的设备 [3, 5, 12]。\n\n#### 常见的编写逻辑与检查方法\n根据设备类型的不同，`Supported()` 的实现算法会有所区别，但通常遵循以下核心步骤：\n\n**A. 尝试打开底层 I/O 协议**\n驱动通常需要使用 `gBS->OpenProtocol()` 以 `EFI_OPEN_PROTOCOL_BY_DRIVER` 属性，尝试打开控制器上的底层协议。如果打开失败（`EFI_ERROR (Status)`），则直接返回相应的错误状态 [2]。\n*   **PCI 设备**：尝试打开 `EFI_PCI_IO_PROTOCOL` [2]。\n*   **USB 设备**：检查句柄上是否安装了 `EFI_USB_IO_PROTOCOL` [3]。\n*   **SCSI 设备**：尝试打开 `EFI_SCSI_IO_PROTOCOL` [6]。\n\n**B. 读取并评估设备特定信息（以 PCI 为例）**\n对于 PCI 驱动，最常见的测试方法是：在成功打开 PCI I/O 协议后，从 PCI 控制器检索 PCI 配置头，并评估 **设备 ID (Device ID)**、**供应商 ID (Vendor ID)** 以及可能的 **类代码 (Class Code)** 字段，以此来判断驱动是否支持该设备 [12]。\n\n#### 代码示例与骨架\n\n**最简骨架（直接返回不支持）：**\n```c\nEFI_STATUS \nEFIAPI \n<<DriverName>>DriverBindingSupported ( \n  IN EFI_DRIVER_BINDING_PROTOCOL  *This, \n  IN EFI_HANDLE                   ControllerHandle, \n  IN EFI_DEVICE_PATH_PROTOCOL     *RemainingDevicePath OPTIONAL \n  ) \n{ \n  return EFI_UNSUPPORTED; \n}\n```\n[7]\n\n**设备的通用检查片段（打开协议并处理错误）：**\n```c\n  // 尝试以 BY_DRIVER 方式打开底层协议（例如 PCI IO）\n  Status = gBS->OpenProtocol (\n                  ControllerHandle,\n                  &gEfiPciIoProtocolGuid, \n                  (VOID **)&PciIo,\n                  This->DriverBindingHandle,\n                  ControllerHandle,\n                  EFI_OPEN_PROTOCOL_BY_DRIVER\n                  );\n  if (EFI_ERROR (Status)) {\n    return Status; // 如果打开失败，直接返回 OpenProtocol 的状态码\n  }\n  \n  // 如果打开成功，进一步读取设备信息（如 PCI 配置头）进行匹配判断...\n  // 读取 3 字节的类代码信息等\n```\n[2]\n\n### 总结\n在实际编写时，你需要：\n1. 实现 `EFI_DRIVER_BINDING_PROTOCOL` 结构体中的 `Supported()` 函数 [4, 11]。\n2. 在函数内部使用 `OpenProtocol` 探测设备是否具备你需要的 I/O 协议 [2, 3, 6]。\n3. 根据具体的硬件规范（如读取 PCI Vendor/Device ID 或检查 USB/SCSI 协议）编写匹配算法 [12]。\n4. 若需了解所有标准返回码的严格定义与使用场景，必须查阅《UEFI Specification》的对应章节 [1]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately summarizes how to implement the Supported() function based on the provided context, citing the correct protocols, OpenProtocol usage, and device-specific checks (PCI, USB, SCSI). It also correctly identifies that the provided context does not detail the specific meanings of the return codes, appropriately directing the user to the UEFI Specification as mentioned in the context.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Start() 里应该按什么顺序做事？",
+    "expected": [
+      "qtest-Q22"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\19_usb_driver_design_guidelines\\193_usb_device_driver\\1932_driver_binding_protocol_start_and_stop.md",
+    "context_chars": 13821,
+    "answer": "根据提供的上下文，`Start()` 函数的具体执行顺序会根据驱动的类型（如 USB 设备驱动、PCI 驱动、主机控制器驱动等）有所不同，但都遵循 UEFI 驱动模型中“先消费底层协议，后生产高层协议”的核心原则。\n\n通用的 `Start()` 核心执行顺序如下：\n\n1. **打开被消费的 I/O 协议**：使用 `EFI_OPEN_PROTOCOL_BY_DRIVER` 属性，打开控制器句柄（ControllerHandle）上的底层 I/O 协议（如 PCI I/O Protocol、USB I/O Protocol 或 SCSI I/O Protocol）[2, 3, 7, 10]。如果该驱动是 PCI 总线或混合驱动，还需要使用相同属性打开 Device Path Protocol [3]。\n2. **硬件初始化或获取设备信息**：配置硬件或读取设备描述信息。例如，调用 PCI I/O Protocol 的 `Attributes()` 服务来启用 I/O、内存和总线主控（bus master）位 [3]；或者获取 USB 接口描述符 [1]；或者初始化 USB 主机控制器硬件 [7]。\n3. **安装所生产的协议**：在传入的控制器句柄上安装该驱动所生成的高层 I/O 抽象协议或设备协议 [2, 14]。例如，安装 SCSI 设备的 I/O 抽象协议 [2]，或将 `EFI_USB2_HC_PROTOCOL` 实例安装到 Handle Database 中 [7]。\n\n上下文中明确列出了特定驱动 `Start()` 顺序的官方示例：\n\n*   **USB 设备驱动 (USB Device Driver)** [1]：\n    1. 使用 `EFI_OPEN_PROTOCOL_BY_DRIVER` 打开 ControllerHandle 上的 USB I/O Protocol。\n    2. 使用 `EFI_USB_IO_PROTOCOL.UsbGetInterfaceDescriptor()` 服务获取接口描述符。\n    3. 准备私有数据结构并安装相应的设备协议（上下文在此处截断）。\n*   **USB 主机控制器驱动 (USB Host Controller Driver)** [7]：\n    1. 使用 `EFI_OPEN_PROTOCOL_BY_DRIVER` 打开 PCI I/O Protocol。\n    2. 初始化 USB 主机控制器硬件。\n    3. 将 `EFI_USB2_HC_PROTOCOL` 实例安装到 Handle Database 中。\n\n**补充说明**：\n`Start()` 函数分配的资源、打开的协议以及安装的协议，在 `Stop()` 函数中必须按照**完全相反的顺序**进行释放、关闭和卸载，以防止内存泄漏或句柄泄漏 [4, 5, 6, 8, 9]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately summarizes the sequence of operations in the Start() function based on the provided context, correctly categorizing the steps into opening protocols, hardware initialization/configuration, and installing new protocols. It also correctly cites the specific examples for USB device and host controller drivers, and accurately notes the reverse operations required in Stop() without any hallucinations.",
+      "hallucinations": []
+    }
+  },
+  {
+    "query": "Stop() 里要做什么？NumberOfChildren 和 ChildHandleBuffer 怎么用？",
+    "expected": [
+      "qtest-Q23"
+    ],
+    "top_doc": "edk2-UefiDriverWritersGuide\\19_usb_driver_design_guidelines\\193_usb_device_driver\\1932_driver_binding_protocol_start_and_stop.md",
+    "context_chars": 13585,
+    "answer": "根据提供的上下文，关于 `Stop()` 的职责以及参数的解答如下：\n\n### `Stop()` 里需要做什么？\n`Stop()` 服务的核心职责是执行与 `Start()` 相反的操作，断开驱动与控制器的连接并释放资源 [14]。通常需要完成以下步骤：\n1. **执行逆向操作**：执行与 `Start()` 服务完全相反的步骤 [1, 2, 5, 6, 8]。\n2. **卸载协议接口**：卸载在 `Start()` 中附加到控制器或子句柄上的协议（例如卸载 Block I/O Protocol [1]、Bus Specific Driver Override Protocol [3, 9] 等）。\n3. **关闭协议实例**：关闭在 `Start()` 中打开的协议（例如关闭 USB I/O Protocol [1]）。\n4. **释放资源**：释放分配的资源（如私有数据结构），确保没有内存泄漏或句柄泄漏 [1, 2, 5, 6]。\n5. **停止硬件并恢复状态**：确保硬件被正确停止（如禁用 ATA/SCSI 适配器 [5, 6]），并恢复 PCI I/O Protocol 的属性 [2]。\n6. **清理子句柄（针对总线/混合驱动）**：卸载所有子句柄上的所有协议，并关闭所有子句柄 [8]。\n\n### `NumberOfChildren` 和 `ChildHandleBuffer` 怎么用？\n**提供的上下文中并没有直接涵盖** `Stop()` 函数中 `NumberOfChildren` 和 `ChildHandleBuffer` 这两个参数的具体定义与使用细节。\n\n**最接近的指导（Closest Guidance）：**\n虽然上下文未直接解释这两个参数，但提供了关于 `Stop()` 如何处理子控制器/子句柄的相关逻辑指导：\n* **依赖父子关系**：句柄数据库中记录的父子关系（parent-child relationship）属性，会在请求停止总线控制器时被 `DisconnectController()` 提取和使用 [4]。\n* **卸载子句柄上的协议**：`Stop()` 函数需要负责从总线驱动产生的子句柄上卸载相应的协议实例（例如卸载 Bus Specific Driver Override Protocol 实例）[3]。\n* **全面关闭子句柄**：在停止过程中，驱动需要卸载所有子句柄上的所有协议，并关闭所有的子句柄 [8]。",
+    "judge": {
+      "score": 5,
+      "rationale": "The answer accurately summarizes the responsibilities of the Stop() function based on the provided context, correctly citing the need to reverse Start() operations, uninstall/close protocols, and free resources. It also correctly identifies that the specific parameters NumberOfChildren and ChildHandleBuffer are not detailed in the provided text, and appropriately offers the closest available guidance regarding child handle management.",
+      "hallucinations": []
+    }
+  }
+]

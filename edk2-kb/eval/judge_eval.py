@@ -30,6 +30,7 @@ Output: ``judge_results.json`` + ``JUDGE_REPORT.md`` next to this script.
 """
 import argparse
 import json
+import os
 import statistics
 import sys
 from dataclasses import dataclass, field
@@ -168,12 +169,80 @@ class OpenAICompatibleProvider(LLMProvider):
                     "hallucinations": [], "raw": text}
 
 
+class AnthropicProvider(LLMProvider):
+    """Anthropic-style Messages API (used by bailian-coding-plan)."""
+
+    def __init__(self, api_key: str, base_url: str, model: str):
+        import requests
+        self.session = requests.Session()
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+
+    def _chat(self, messages: List[Dict[str, str]], max_tokens: int = 1024) -> str:
+        import time
+        for attempt in range(5):
+            resp = self.session.post(
+                f"{self.base_url}/messages",
+                headers={
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json={"model": self.model, "max_tokens": max_tokens, "messages": messages},
+                timeout=120,
+            )
+            if resp.status_code == 429:
+                wait = (attempt + 1) * 8
+                print(f"  rate-limited, waiting {wait}s (attempt {attempt+1}/5)...")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    return block["text"]
+            return ""
+        resp.raise_for_status()
+        return ""
+
+    def generate_answer(self, question: str, context: str) -> LLMResponse:
+        sys_msg = (
+            "You are an EDK2 firmware expert. Answer the user's EDK2 question "
+            "using ONLY the knowledge-base context provided below. Cite sources "
+            "inline. If the context does not cover the question, say so and give "
+            "the closest guidance; never invent PCDs, GUIDs, protocols or spec "
+            "sections."
+        )
+        content = f"Context:\n{context}\n\nQuestion: {question}"
+        text = self._chat(
+            [{"role": "user", "content": f"{sys_msg}\n\n{content}"}], max_tokens=2048
+        )
+        return LLMResponse(answer=text, meta={"provider": "anthropic", "model": self.model})
+
+    def judge(self, question: str, context: str, answer: str) -> Dict[str, Any]:
+        user = JUDGE_PROMPT.format(question=question, context=context, answer=answer)
+        text = self._chat([{"role": "user", "content": user}], max_tokens=512)
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end == -1:
+            return {"score": 0, "rationale": "judge returned non-JSON", "hallucinations": [], "raw": text}
+        try:
+            parsed = json.loads(text[start : end + 1])
+            parsed.setdefault("hallucinations", [])
+            return parsed
+        except json.JSONDecodeError:
+            return {"score": 0, "rationale": "judge returned invalid JSON", "hallucinations": [], "raw": text}
+
+
 def build_provider(args) -> LLMProvider:
     if args.provider == "openai":
         if not args.api_key or not args.base_url or not args.model:
-            raise SystemExit(
-                "openai provider needs --api-key --base-url --model")
+            raise SystemExit("openai provider needs --api-key --base-url --model")
         return OpenAICompatibleProvider(args.api_key, args.base_url, args.model)
+    if args.provider == "anthropic":
+        if not args.api_key or not args.base_url or not args.model:
+            raise SystemExit("anthropic provider needs --api-key --base-url --model")
+        return AnthropicProvider(args.api_key, args.base_url, args.model)
     return MockProvider()
 
 
@@ -197,13 +266,16 @@ def format_context(results: List[Dict[str, Any]], max_chars: int = 8000) -> str:
 
 
 def run(engine, entries, provider, top_k, max_chars):
+    import time
     rows = []
-    for e in entries:
+    for i, e in enumerate(entries):
         q = e["query"]
         results = engine.search(q, top_k, None, rerank=True)
         context = format_context(results, max_chars)
         resp = provider.generate_answer(q, context)
+        time.sleep(3)
         judged = provider.judge(q, context, resp.answer)
+        time.sleep(3)
         rows.append({
             "query": q,
             "expected": [f.get("file_or_title", "") for f in e["expected"]],
@@ -213,6 +285,7 @@ def run(engine, entries, provider, top_k, max_chars):
             "answer": resp.answer,
             "judge": judged,
         })
+        print(f"  [{i+1}/{len(entries)}] score={judged.get('score')} ctx={len(context)}")
     return rows
 
 
@@ -239,13 +312,13 @@ def main() -> None:
     ap.add_argument("--eval-file", default=str(EVAL_FILE))
     ap.add_argument("--subset", default="manual",
                     choices=["manual", "all"])
-    ap.add_argument("--top-k", type=int, default=5)
-    ap.add_argument("--max-chars", type=int, default=8000)
-    ap.add_argument("--provider", default="mock",
-                    choices=["mock", "openai"])
-    ap.add_argument("--api-key", default=None)
-    ap.add_argument("--base-url", default=None)
-    ap.add_argument("--model", default=None)
+    ap.add_argument("--top-k", type=int, default=15)
+    ap.add_argument("--max-chars", type=int, default=16000)
+    ap.add_argument("--provider", default="anthropic",
+                    choices=["mock", "openai", "anthropic"])
+    ap.add_argument("--api-key", default=os.environ.get("EDK2_API_KEY", ""))
+    ap.add_argument("--base-url", default="https://coding.dashscope.aliyuncs.com/apps/anthropic/v1")
+    ap.add_argument("--model", default="qwen3.7-plus")
     args = ap.parse_args()
 
     entries = json.loads(Path(args.eval_file).read_text(encoding="utf-8"))
