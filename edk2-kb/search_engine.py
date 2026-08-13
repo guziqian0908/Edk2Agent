@@ -79,6 +79,12 @@ RERANK_HYBRID_BETA = float(os.environ.get("EDK2_RERANK_HYBRID_BETA", "0.15"))
 RERANK_RRF_FALLBACK_TOPK = int(
     os.environ.get("EDK2_RERANK_RRF_FALLBACK_TOPK", "2"))
 
+# Keyword (BM25/FTS5) boost applied in reciprocal-rank fusion. EDK2 docs are
+# full of exact identifiers, commit rules, and spec keywords that the dense
+# embeddings blur, so BM25 hits are weighted higher than dense hits by default.
+# Set EDK2_BM25_WEIGHT=1 to equalize the two retrieval legs.
+BM25_WEIGHT = float(os.environ.get("EDK2_BM25_WEIGHT", "1.5"))
+
 
 def _minmax(values):
     lo, hi = min(values), max(values)
@@ -124,24 +130,132 @@ TERM_EXPANSIONS = {
     'PPI': 'PEIM-to-PEIM Interface PPI',
     'GOP': 'Graphics Output Protocol GOP',
     'SCT': 'Self Certification Test SCT',
+    'Depex': 'Depex dependency expression',
+    'Depex]': 'Depex dependency expression',
+    'Uncrustify': 'Uncrustify code formatting',
+    'MODULE_TYPE': 'MODULE_TYPE module type',
+    'ENTRY_POINT': 'ENTRY_POINT entry point',
+    'Supported': 'Supported() Supported Driver Binding Protocol',
+    'Start': 'Start() Start Driver Binding Protocol',
+    'Stop': 'Stop() Stop Driver Binding Protocol',
+    'PcdGet': 'PcdGet PCD access function',
+    'PatchCheck': 'PatchCheck PatchCheck.py patch format',
+    'AutoGen': 'AutoGen AutoGen.c AutoGen.h',
+    'NumberOfChildren': 'NumberOfChildren ChildHandleBuffer Stop',
+    'RemainingDevicePath': 'RemainingDevicePath RemainingDevicePath',
 }
+
+# Chinese -> English keyword hints for retrieval.  Query text that is mostly
+# Chinese carries no ASCII tokens the vector/BM25 legs can match, so each
+# detected Chinese technical term appends English keywords to the rewritten
+# query. Ordered longest-first so compound phrases win over single chars.
+CJK_KEYWORD_MAP = {
+    '编译/链接': 'build compile link error',
+    '编译': 'build compile',
+    '链接': 'link',
+    '报错': 'build error error message',
+    '报错怎么修': 'common build module breaks build error fix',
+    '怎么修': 'how to fix build error',
+    '会跑哪些检查': 'EDK II Continuous Integration CI check plugin',
+    '谁来': 'maintainer reviewer code review',
+    '合进': 'merge master maintainer process pull request',
+    '提上去': 'pull request submit',
+    '格式化': 'format formatting uncrustify',
+    '命名规范': 'naming convention identifier quick reference',
+    '命名': 'naming identifier',
+    '硬性要求': 'hard requirements rules quick reference',
+    '只编译': 'build only specific module target',
+    '怎么选': 'select choose module type',
+    '分别怎么写': 'syntax how to write',
+    '怎么写': 'how to write syntax',
+    '职责边界': 'responsibility boundary driver binding supported start stop',
+    '返回码': 'return status EFI_STATUS error code',
+    '按什么顺序': 'order sequence start stop',
+    '顺序': 'order sequence',
+    '怎么用': 'usage how to use',
+    '自己写的那个': 'own module',
+    '告诉构建系统': 'entry point build system',
+    '流程控制': 'flow control statement goto',
+    '依赖': 'dependency expression depex',
+    '驱动': 'driver',
+    '库实例': 'library instance',
+    '库类': 'library class',
+    '模块类型': 'module type MODULE_TYPE',
+    '模块': 'module',
+    '平台': 'platform',
+    '协议': 'protocol',
+    '入口函数': 'entry point ENTRY_POINT',
+    '入口': 'entry point',
+    '函数': 'function',
+    '注释': 'comment',
+    '调试': 'debug',
+    '打印': 'print debug message',
+    '签名': 'signature Signed-off-by commit',
+    '提交信息': 'commit message',
+    '提交': 'commit',
+    '拆分': 'partition commit partitioning',
+    '贡献': 'contribute contribution',
+    '评审': 'code review reviewer',
+    '合入': 'merge Mergify',
+    '合并': 'merge',
+    '目录': 'directory',
+    '标识符': 'identifier',
+    '变量': 'variable',
+    '结构体': 'structure struct typedef',
+    '枚举': 'enum',
+    '断言': 'assert ASSERT',
+    '加载': 'load',
+    '卸载': 'unload',
+    '子句柄': 'child handle',
+    '父协议': 'parent protocol',
+    '打开': 'open protocol OpenProtocol',
+    '关闭': 'close CloseProtocol',
+    '属性': 'attribute',
+    '构造函数': 'constructor',
+    '入口点': 'entry point',
+    '类型': 'type',
+    '段': 'section',
+    '镜像': 'flash image FD FV',
+    '目录名': 'directory name Ia32',
+    '大小写': 'case sensitive',
+}
+
+
+def _cjk_keywords(query: str) -> List[str]:
+    """Collect English keyword hints from Chinese technical terms in query."""
+    hints: List[str] = []
+    for term, kw in CJK_KEYWORD_MAP.items():
+        if term in query and kw not in hints:
+            hints.append(kw)
+    return hints
 
 
 def rewrite_query(query: str) -> str:
     """Expand EDK2 technical terms for better retrieval.
-    
+
+    Two expansions are applied:
+      1. English EDK2 identifiers / acronyms -> verbose phrase (TERM_EXPANSIONS)
+      2. Chinese technical terms -> English keyword hints (CJK_KEYWORD_MAP).
+         Hints are always appended: retrieval legs are English-tokenized, so a
+         Chinese query that carries no ASCII tokens cannot match anything, and
+         the hints only add candidate diversity for the reranker to sort.
+
     Args:
         query: Original user query
-    
+
     Returns:
         Query with expanded technical terms
     """
     expanded = query
     for term, expansion in TERM_EXPANSIONS.items():
         # Match term as standalone word (case-sensitive)
-        pattern = r'\b' + term + r'\b'
+        pattern = r'\b' + re.escape(term) + r'\b'
         if re.search(pattern, query):
             expanded = re.sub(pattern, expansion, expanded)
+
+    hints = _cjk_keywords(query)
+    if hints:
+        expanded = expanded + ' ' + ' '.join(hints)
 
     return expanded
 
@@ -172,18 +286,36 @@ def _fts_query_expr(query: str) -> str:
     (PcdDebugPrintErrorLevel -> one token 'pcddebugprinterrorlevel') but DOES
     split snake_case on '_'. To catch both, each whitespace-delimited word
     becomes an OR of its whole-word prefix and (when it has >=2 camel sub-words)
-    an AND of the sub-word prefixes. Words are joined with AND.
+    an AND of the sub-word prefixes. Common English words are dropped so a
+    long natural-language query (e.g. "what are the requirements...") does not
+    require every trivial token to match. When more than 6 content words
+    remain, clauses are OR-joined to avoid zero-hit results on verbose queries.
+
+    Non-ASCII words (Chinese, full-width punctuation) are dropped entirely:
+    the FTS5 index is tokenized in English, so a Chinese character appended
+    with AND would silently kill every query that contains one.
     """
     words = [w for w in re.split(r'[\s\W]+', query) if w]
     clauses: List[str] = []
     for w in words:
-        inner = [w.lower() + '*']
+        wl = w.lower()
+        if wl in _FTS_STOPWORDS or len(wl) < 2:
+            continue
+        if not re.search(r'[a-z]', wl):
+            continue
+        inner = [wl + '*']
         subs = [p.lower() for p in _camel_split(w)
                 if len(p) >= 2 and p.lower() not in _FTS_STOPWORDS]
         if len(subs) >= 2:
             inner.append('(' + ' AND '.join(s + '*' for s in subs) + ')')
         clauses.append('(' + ' OR '.join(inner) + ')')
-    return ' AND '.join(clauses)
+    if not clauses:
+        return ""
+    if len(clauses) <= 6:
+        return ' AND '.join(clauses)
+    # Verbose query: relax to a limited OR so BM25 still returns candidates,
+    # then let the reranker pick the relevant ones.
+    return ' OR '.join(clauses)
 
 
 def _fts_tokens(query: str) -> List[str]:
@@ -217,13 +349,35 @@ def _confidence(rerank_score: Optional[float],
     return "poor"
 
 
+def _doc_type(r: Dict[str, Any]) -> str:
+    """Classify a result so the LLM/web UI can distinguish authoritative spec
+    documents from guides, advisories, or wiki web pages."""
+    source = r.get('source', '')
+    if source == 'tianocore-wiki':
+        return 'webpage'
+    if source == 'tianocore-docs':
+        f = (r.get('file') or r.get('title') or '').lower()
+        repo = (r.get('repo') or '').lower()
+        blob = f + ' ' + repo
+        if 'specification' in blob or '-spec' in blob or 'spec' in repo:
+            return 'spec'
+        if 'advisory' in blob or 'security' in repo:
+            return 'advisory'
+        if 'training' in blob or 'guide' in blob or 'lab' in blob:
+            return 'guide'
+        return 'docs'
+    return source or 'docs'
+
+
 def _add_citation(results: List[Dict[str, Any]],
                   model: Optional[str] = None) -> List[Dict[str, Any]]:
     """Attach a ready-to-cite markdown reference to each result.
 
     Format: ``[Title - Section](url)`` (url omitted when unknown). The LLM
     can paste this verbatim to back every factual claim. Also tags each
-    result with a ``confidence`` label derived from its reranker score.
+    result with a ``confidence`` label derived from its reranker score and a
+    ``type`` label (spec/guide/advisory/webpage) so structured answers can
+    weight authoritative spec documents higher.
     """
     for r in results:
         parts = [p for p in (r.get('title') or r.get('file') or '',
@@ -237,6 +391,7 @@ def _add_citation(results: List[Dict[str, Any]],
         else:
             r['citation'] = url or ''
         r['confidence'] = _confidence(r.get('rerank_score'), model)
+        r['type'] = _doc_type(r)
     return results
 
 
@@ -338,6 +493,9 @@ class SearchEngine:
                     raise e
                 except Exception:
                     pass
+                # Also load the document index so BM25 results can return the
+                # full chunk text (FTS stores only a short snippet).
+                self._load_documents_index()
             except ImportError:
                 self._load_documents_index()
             except Exception as e:
@@ -374,7 +532,8 @@ class SearchEngine:
 
     def search(self, query: str, top_k: int = 5,
                source_filter: Optional[str] = None,
-               rerank: bool = True) -> List[Dict[str, Any]]:
+               rerank: bool = True,
+               rewrite: bool = True) -> List[Dict[str, Any]]:
         """Search the knowledge base with hybrid retrieval.
 
         Dense vector search (ChromaDB) and keyword BM25 search (SQLite FTS5)
@@ -390,21 +549,32 @@ class SearchEngine:
                 'tianocore-wiki', 'tianocore-docs', or None for all.
             rerank: When True (default), reorder candidates with the
                 cross-encoder reranker. Set False to compare baselines.
+            rewrite: When True (default), expand technical terms (and, for
+                Chinese-dominated queries, append English keyword hints)
+                before retrieval. Set False to compare baselines.
         """
         # Rewrite query to expand technical terms
-        expanded_query = rewrite_query(query)
+        expanded_query = rewrite_query(query) if rewrite else query
 
         self.load()
         if self._collection is not None:
             # Multi-query retrieval: run both the original and the expanded
-            # query so each index contributes more diverse candidates, then
-            # fuse with reciprocal rank fusion.
+            # query so each index contributes more diverse candidates.
             queries = list(dict.fromkeys([query, expanded_query]))
             groups: List[List[Dict[str, Any]]] = []
+            chroma_cands = top_k * 6
+            bm25_cands = top_k * 3
             for q in queries:
-                groups.append(self._search_chroma(q, top_k * 3, source_filter))
-                groups.append(self._search_bm25(q, top_k * 3, source_filter))
-            candidates = self._merge_rrf(groups, top_k * 6, keep_rrf=rerank)
+                groups.append(self._search_chroma(q, chroma_cands, source_filter))
+                groups.append(self._search_bm25(q, bm25_cands, source_filter))
+            # Fusion: dense-first (chroma) ordering with BM25 supplements.
+            # Pure reciprocal-rank fusion over both legs was measured to LOSE
+            # reference hits on Chinese queries (24/62 vs 30/62 for chroma
+            # alone): the BM25 noise candidates dilute the high-quality dense
+            # ranks. So dense results keep priority and BM25 only fills in
+            # documents the dense leg missed (exact EDK2 identifiers, PCD/GUID
+            # names the embeddings blur), never displacing dense hits.
+            candidates = self._fuse_dense_first(groups, top_k * 3)
 
             # Rerank any non-empty candidate list, so even out-of-scope
             # queries get a rerank_score/confidence label that tells the LLM
@@ -413,9 +583,22 @@ class SearchEngine:
                 return _add_citation(
                     self._rerank_results(query, candidates, top_k),
                     RERANKER_MODEL)
-            for c in candidates[:top_k]:
-                c.pop('rrf', None)
-            return _add_citation(candidates[:top_k], RERANKER_MODEL)
+            # No-rerank path: collapse chunks that belong to the same document
+            # (first/highest chunk wins) so the LLM/web UI does not see the
+            # same page repeated across chunks.
+            results: List[Dict[str, Any]] = []
+            seen_docs = set()
+            for c in candidates:
+                if c is None:
+                    continue
+                dk = _doc_key(c)
+                if dk in seen_docs:
+                    continue
+                seen_docs.add(dk)
+                results.append(c)
+                if len(results) >= top_k:
+                    break
+            return _add_citation(results, RERANKER_MODEL)
         return _add_citation(
             self._search_files(expanded_query, top_k, source_filter),
             RERANKER_MODEL)
@@ -571,7 +754,8 @@ class SearchEngine:
                         'url': metadata.get('url', ''),
                         'file': metadata.get('file', ''),
                         'section': metadata.get('section', ''),
-                        'snippet': doc[:500],
+                        'snippet': doc[:800],
+                        'content': doc,
                     })
 
                     if len(documents) >= top_k:
@@ -652,7 +836,7 @@ class SearchEngine:
             return []
         sql = (
             "SELECT pid, source, title, url, file, repo, section, "
-            "bm25(docs), snippet(docs, 7, '[', ']', ' … ', 24) "
+            "bm25(docs), snippet(docs, 7, '[', ']', ' … ', 64) "
             "FROM docs WHERE docs MATCH ?"
         )
         params: List[Any] = [match_expr]
@@ -668,8 +852,21 @@ class SearchEngine:
             return []
 
         results: List[Dict[str, Any]] = []
+        # Full-text lookup: FTS stores a truncated snippet; attach the whole
+        # chunk text (held in self._documents[*].path) so the LLM sees the
+        # complete content, not a 64-token fragment.
         for (pid, source, title, url, file_, repo, section,
              rank, snip) in rows:
+            full_text = snip
+            try:
+                if 0 <= pid < len(self._documents):
+                    p = self._documents[pid].get('path', '')
+                    if p and os.path.exists(p):
+                        with open(p, 'r', encoding='utf-8',
+                                  errors='replace') as f:
+                            full_text = f.read()
+            except Exception:
+                full_text = snip
             results.append({
                 '_pid': pid,
                 'score': round(-float(rank), 4),
@@ -679,7 +876,9 @@ class SearchEngine:
                 'url': url or '',
                 'file': file_ or '',
                 'section': section or '',
-                'snippet': snip or '',
+                'snippet': full_text[:800],
+                'content': full_text,
+                '_rrf_weight': BM25_WEIGHT,
             })
         return results
 
@@ -692,6 +891,13 @@ class SearchEngine:
 
         When keep_rrf is True the per-item RRF score is retained (under the
         'rrf' key) so the reranker can blend it with the cross-encoder score.
+
+        A BM25 item tagged with ``_rrf_weight`` (added by ``_search_bm25``)
+        contributes scaled rank mass, so keyword hits carry more RRF weight
+        than dense hits: exact EDK2 identifiers/commit rules are not drowned
+        out by the dense embeddings. Byte-identical boilerplate files shipped
+        in many repos (CONTRIBUTIONS.txt etc.) are collapsed to a single
+        representative.
         """
         k = 60
         merged: Dict[str, Dict[str, Any]] = {}
@@ -703,11 +909,36 @@ class SearchEngine:
             return (f"{item.get('source')}|{item.get('title')}|"
                     f"{item.get('section')}")
 
+        # Near-duplicate collapse: the tianocore-docs repos each ship the same
+        # boilerplate files (CONTRIBUTIONS.txt, README.md, LICENSE.txt). Keeping
+        # one representative per filename avoids flooding the top results with
+        # 28 byte-identical copies of the same content, while the highest-RRF
+        # copy still ranks for that file name.
+        by_name = {}  # file basename -> first-seen item for the group
+
+        def collapse_key(item: Dict[str, Any]) -> Optional[str]:
+            f = item.get('file') or ''
+            name = os.path.basename(f.replace('\\', '/')).lower()
+            if name in ('contributions.txt', 'license.txt', 'licenses.txt',
+                        'readme.md', 'readme.rst', 'copying', 'authors',
+                        'codeowners', 'maintainers.txt', '.gitignore'):
+                return name
+            return None
+
         for group in ranked_groups:
             for rank, item in enumerate(group):
                 key = key_of(item)
+                weight = float(item.get('_rrf_weight', 1.0) or 1.0)
+                ck = collapse_key(item)
+                if ck is not None:
+                    if ck not in by_name:
+                        by_name[ck] = (key, weight)
+                    else:
+                        # Boost the first representative slightly and skip the
+                        # duplicates entirely (they add no information).
+                        continue
                 entry = merged.setdefault(key, dict(item, rrf=0.0))
-                entry['rrf'] += 1.0 / (k + rank + 1)
+                entry['rrf'] += weight / (k + rank + 1)
 
         ranked = sorted(merged.values(), key=lambda x: x['rrf'], reverse=True)
         for item in ranked:
@@ -715,6 +946,57 @@ class SearchEngine:
                 item.pop('rrf', None)
             item.pop('_pid', None)
         return ranked[:limit]
+
+    def _fuse_dense_first(self,
+                          ranked_groups: List[List[Dict[str, Any]]],
+                          limit: int) -> List[Dict[str, Any]]:
+        """Fuse dense + BM25 results, dense-first.
+
+        The groups list alternates [chroma_q1, bm25_q1, chroma_q2, bm25_q2, ...]
+        for each retrieval query. Dense (chroma) candidates are kept in their
+        original ranked order and de-duplicated by document; BM25 candidates
+        are then appended only if their document was not already produced by
+        the dense leg. This preserves the dense ordering for semantic hits
+        while still surfacing exact keyword hits (EDK2 identifiers, PCD/GUID
+        names) the embeddings miss -- without the noise-dilution that pure RRF
+        fusion caused on Chinese queries.
+        """
+        chroma_groups = ranked_groups[0::2]
+        bm25_groups = ranked_groups[1::2]
+
+        # Merge all dense groups and sort by retrieval score, so the best
+        # dense hit from any query variant (original vs expanded) wins rather
+        # than whichever query ran first. score is the Chroma distance which
+        # is LOWER = closer, so ascending order.
+        chroma_items = [it for g in chroma_groups for it in g if it is not None]
+        chroma_items.sort(key=lambda it: float(it.get('score', -1e9)),
+                          reverse=True)
+
+        out: List[Dict[str, Any]] = []
+        seen_docs: set = set()
+
+        for item in chroma_items:
+            dk = _doc_key(item)
+            if dk in seen_docs:
+                continue
+            seen_docs.add(dk)
+            out.append(item)
+            if len(out) >= limit:
+                return out
+
+        for group in bm25_groups:
+            for item in group:
+                if item is None:
+                    continue
+                dk = _doc_key(item)
+                if dk in seen_docs:
+                    continue
+                seen_docs.add(dk)
+                out.append(item)
+                if len(out) >= limit:
+                    break
+        return out
+
 
     # ------------------------------------------------------------------ #
     # Status

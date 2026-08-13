@@ -81,13 +81,9 @@ GUIDs, protocols, or spec sections.
   `[Pcds*]` syntax from the results
 
 ## 6. Confidence reporting
-Every search result carries a `confidence` label derived from its reranker
-score:
-
-    high    - rerank score > 4  (strongly relevant)
-    medium  - rerank score 2-4  (relevant)
-    low     - rerank score 0-2  (weakly related)
-    poor    - rerank score < 0  (likely unrelated / out of scope)
+Results are ordered by hybrid retrieval (vector + BM25 fused with reciprocal
+rank fusion). The `confidence` label is `unrated` unless the optional reranker
+step runs; treat the result order as the relevance signal instead.
 
 End your answer with a one-line "Based on:" note that lists the sources you
 used and their confidence, e.g.:
@@ -98,6 +94,15 @@ If the strongest available source is `low` or `poor`, state up front that the
 knowledge base covers this poorly and mark the answer as an inference rather
 than a documented fact.
 """
+
+
+def _cors(headers: dict) -> dict:
+    """CORS headers so the web UI (different origin) can call /search."""
+    h = dict(headers)
+    h["Access-Control-Allow-Origin"] = "*"
+    h["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    h["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return h
 
 
 def build_fastmcp(engine: SearchEngine) -> FastMCP:
@@ -116,7 +121,7 @@ def build_fastmcp(engine: SearchEngine) -> FastMCP:
         """
         top_k = max(1, min(int(top_k), 20))
         src = None if source in ("", "all", "both") else source
-        return engine.search(query, top_k, src)
+        return engine.search(query, top_k, src, rerank=False)
 
     @mcp.tool()
     def get_kb_status() -> Dict[str, Any]:
@@ -134,18 +139,42 @@ def build_fastmcp(engine: SearchEngine) -> FastMCP:
     @mcp.prompt()
     def edk2_answer_prompt(question: str) -> str:
         """Template for answering an EDK2 question from the knowledge base:
-        search first, cite every claim with result citations."""
+        search first, merge multiple documents, cite every claim, and prefer
+        authoritative spec documents over partial snippets."""
         return f"""Answer the following EDK2 question using the edk2-kb knowledge base.
 
 Follow the answering guide (call get_kb_citation_guide for the full rules):
-1. Call search_kb() with the concrete technical terms from the question.
-2. Base every claim on a result and cite it inline with its `citation` field.
-3. Quote exact spec snippets for PCD / protocol / INF syntax questions.
-4. If results don't cover the question, say so instead of guessing.
-5. End the answer with a "Based on:" line listing each source and its
-   `confidence` label (high/medium/low/poor). If the strongest source is
-   low or poor, state up front that the knowledge base covers this poorly
-   and mark the answer as an inference.
+
+1. Search broadly first: call search_kb() with top_k=10 and the concrete
+   technical terms in the question, plus at least one keyword/BM25 variant
+   (exact EDK2 identifiers, spec section names, PCD/protocol names). Search
+   again for each distinct sub-topic before composing the final answer.
+
+2. Merge MULTIPLE documents: when the question spans several aspects (e.g.
+   code style + commit rules + sign-off), integrate every relevant result —
+   coding standards, commit/contribution docs, and spec sections. Do not
+   stop after the first hit. Prefer results with `type: "spec"` (authoritative
+   EDK2 specifications) over partial snippets; treat `webpage` results as
+   supplemental.
+
+3. Layered structured output: organize the answer by full dimension/rule set.
+   For "what are the requirements" questions, enumerate every requirement in
+   a layered structure (format rules, commit message format, sign-off /
+   contribution agreement, pre-submission checks, tooling), quoting the exact
+   spec rule text for each. Do not omit any rule found in the context just
+   because its source snippet looks truncated — state the rule and cite the
+   document that defines it.
+
+4. Cite every claim inline with its `citation` field and mark each source's
+   `type` (spec / guide / advisory / webpage) so the reader knows what is
+   authoritative and what is explanatory.
+
+5. If the required detail is genuinely absent from the knowledge base, say
+   so explicitly instead of guessing. Never invent PCD names, GUIDs,
+   protocols, spec sections, or commit rules.
+
+6. End with a "Based on:" line listing each source used and its `type` and
+   `confidence` label (high/medium/low/poor).
 
 Question: {question}
 """
@@ -153,14 +182,14 @@ Question: {question}
     @mcp.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> JSONResponse:
         status = engine.status()
-        return JSONResponse({
+        return JSONResponse(_cors({
             "status": "ok",
             "service": "edk2-kb",
             "ready": status["ready"],
             "load_error": engine.load_error,
             "indexed_documents": status["indexed_documents"],
             "data_sources": status["data_sources"],
-        })
+        }))
 
     @mcp.custom_route("/search", methods=["GET", "POST"])
     async def search(request: Request) -> JSONResponse:
@@ -181,15 +210,15 @@ Question: {question}
             source = request.query_params.get("source", "all")
 
         if not query or not query.strip():
-            return JSONResponse({"error": "Missing query parameter"}, 400)
+            return JSONResponse(_cors({"error": "Missing query parameter"}), 400)
         try:
             top_k = max(1, min(int(top_k), 20))
         except (TypeError, ValueError):
             top_k = 5
 
         src = None if source in ("", "all", "both") else source
-        results = engine.search(query.strip(), top_k, src)
-        return JSONResponse({"results": results})
+        results = engine.search(query.strip(), top_k, src, rerank=False)
+        return JSONResponse(_cors({"results": results}))
 
     return mcp
 
