@@ -72,8 +72,19 @@ function rerankDocuments(query, docs) {
     
     const fallback = () => docs.sort((a, b) => (b.score || 0) - (a.score || 0));
     
+    // Trim payload before sending: the reranker only needs title/section/
+    // snippet. Sending full content blobs makes the HTTP request large, which
+    // can abort the single-threaded rerank server or hit its read timeout.
+    const slim = (docs || []).map((d) => ({
+      title: d.title || '',
+      section: d.section || '',
+      snippet: String(d.snippet || d.content || '').slice(0, 1200),
+      score: d.score || 0,
+      source: d.source || '',
+      url: d.url || '',
+    }));
     // Call the persistent rerank HTTP service
-    const body = JSON.stringify({ query, docs });
+    const body = JSON.stringify({ query, docs: slim });
     const u = new URL(`${RERANK_SERVER}/rerank`);
     const protocol = u.protocol === 'https:' ? https : http;
     const req = protocol.request({
@@ -85,7 +96,7 @@ function rerankDocuments(query, docs) {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
       },
-      timeout: 15000,
+      timeout: 60000,
     }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
@@ -272,75 +283,103 @@ async function ensureDaemonRunning() {
 // TianoCore wiki/docs pages, so a Chinese-only query finds few vector/BM25
 // hits. Expanding common firmware terms keeps the high-value English
 // documents (commit rules, coding standards, sign-off) reachable.
+//
+// Each rule carries a relevance weight (0..1). A query may match several
+// topics; the expanded query appends the highest-relevance terms first so
+// hybrid retrieval (dense vector + BM25) weights the intended topic above
+// incidental keyword matches (e.g. "模块" appearing in both "module" and
+// "driver model" context).
+const KB_EXPANSION_RULES = [
+  // 元数据文件 / 构建体系
+  { w: 1.0, re: /inf|dsc|dec|fdf|元数据|inf文件|dsc文件|dec文件|fdf文件|包配置|平台配置|模块关系|包关系/, terms: 'INF DSC DEC FDF file format EDK II module package platform build AutoGen' },
+  { w: 1.0, re: /模块.{0,10}(包|平台)|包.{0,10}(模块|平台)|平台.{0,10}模块|module.*package.*platform|package和module/, terms: 'module package platform relationship EDK II build hierarchy Module Package Platform' },
+  // 命名规范 / 编码风格
+  { w: 1.0, re: /命名|命名规范|命名规则|变量命名|函数命名|文件名|标识符|前缀|coding.*naming/, terms: 'naming conventions identifiers Hungarian prefix EDK II coding standards naming rules' },
+  { w: 0.9, re: /编码规范|代码风格|代码格式|排版|缩进|空白|格式要求|coding|style|formatting|spacing/, terms: 'coding standards code style formatting spacing indentation EDK II coding standards specification' },
+  // MODULE_TYPE / 模块开发
+  { w: 1.0, re: /MODULE_TYPE|模块类型|模块型|入口函数|入口点|ENTRY_POINT|entry point/, terms: 'MODULE_TYPE module type ENTRY_POINT entry point SEC PEI_CORE PEIM DXE_CORE DXE_DRIVER UEFI_DRIVER UEFI_APPLICATION BASE' },
+  // 库类 / 库实例
+  { w: 1.0, re: /库类|库实例|library class|library instance|库绑定|库映射/, terms: 'library class library instance INF DSC binding LIBRARY_CLASS constructor' },
+  // PCD
+  { w: 1.0, re: /pcd|固定值|动态配置|编译期|FeatureFlag|FixedAtBuild|PatchableInModule/, terms: 'PCD types PcdsFeatureFlag PcdsFixedAtBuild PcdsPatchableInModule PcdsDynamic PcdsDynamicEx PcdLib FixedPcdGet' },
+  // Depex / 依赖表达式
+  { w: 1.0, re: /depex|依赖表达式|依赖表达式|派发顺序|依赖协议|depex段/, terms: '[Depex] dependency expression dispatch order Protocol PPI TRUE AND OR NOT' },
+  // 单模块编译
+  { w: 1.0, re: /只编译|单个模块|build.{0,10}(-m|-p)|编译参数|AutoGen|编译单个/, terms: 'build command -p -m -a -b -t AutoGen.c AutoGen.h module build output Build' },
+  // 编译报错
+  { w: 0.9, re: /报错|编译错误|链接错误|unresolved|error 4000|LNK2001|C4013|字母大小写|case mismatch/, terms: 'build error LNK2001 unresolved external symbol error 4000 Guid not found library class not found case mismatch' },
+  // DEBUG / ASSERT
+  { w: 1.0, re: /调试信息|打印|DEBUG|ASSERT|CpuDeadLoop|调试.*配置|PcdDebug/, terms: 'DEBUG ASSERT DebugLib PcdDebugPrintErrorLevel PcdDebugPropertyMask CpuDeadLoop debug output' },
+  // UEFI Driver Model
+  { w: 1.0, re: /driver binding|DriverBinding|驱动绑定|Supported|Start\(\)|Stop\(\)|驱动模型/, terms: 'UEFI Driver Model Driver Binding Protocol Supported Start Stop EFI_DRIVER_BINDING_PROTOCOL' },
+  // Protocol 获取方式
+  { w: 1.0, re: /LocateProtocol|LocateHandleBuffer|OpenProtocol|协议.{0,10}(获取|拿)|拿.*协议|协议属性|Attributes/, terms: 'LocateProtocol LocateHandleBuffer OpenProtocol CloseProtocol EFI_OPEN_PROTOCOL_BY_DRIVER handle database' },
+  // 贡献流程 / CI / PR
+  { w: 1.0, re: /贡献|提补丁|上游|提交.*(流程|步骤)|contribution|onboarding|collaborator/, terms: 'EDK II contribution process git rebase PatchCheck Uncrustify Stuart CI pull request fork' },
+  { w: 1.0, re: /commit message|提交信息|提交格式|签名行|Signed-off-by|提交标题/, terms: 'commit message format Signed-off-by PatchCheck multi-package Global summary line length' },
+  { w: 0.9, re: /拆分|拆成.*(commit|提交)|commit.{0,10}拆|git bisect|提交拆分/, terms: 'commit partitioning git bisect commit granularity separate commits' },
+  { w: 1.0, re: /Uncrustify|格式化|自动格式化|uncrustify|zachflower/, terms: 'Uncrustify uncrustify.cfg UncrustifyCheck stuart_ci_build format document' },
+  { w: 0.9, re: /CI|流水线|Azure|Mergify|评审|reviewer|maintainer|合并|合入|push.*标签/, terms: 'EDK II CI Azure Pipelines Mergify PatchCheck review maintainer push label' },
+  // 编码规范：类型 / 函数 / 控制流
+  { w: 1.0, re: /int|char|标准C|UINTN|EFI_STATUS|数据类型|EFIAPI|VOLATILE|typedef/, terms: 'UEFI data types INTN UINTN EFI_STATUS EFIAPI VOID CHAR16 EFI_GUID typedef' },
+  { w: 0.9, re: /函数.{0,4}(排版|头|注释)|文件头|@retval|Doxygen|@file|@param/, terms: 'function definition layout function heading Doxygen @retval @param @file file heading' },
+  { w: 0.9, re: /goto|ASSERT.*规则|流程控制|if.*else|switch.*case|注释.{0,4}禁忌/, terms: 'flow control goto ASSERT switch case comment prohibitions EDK II coding standards' },
+  // 启动流程
+  { w: 1.0, re: /启动流程|启动阶段|SEC|PEI|DXE|BDS|TSL|上电|引导流程|PI.*架构/, terms: 'PI boot flow SEC PEI DXE BDS TSL RT AL phase UEFI boot sequence' },
+  { w: 1.0, re: /PEIM.{0,10}(调用|通信)|PPI|HOB|PEI.{0,10}(服务|内存)|横向/, terms: 'PEI PPI PEIM InstallPpi LocatePpi HOB Hand-Off Block PEI Services' },
+  // UEFI 服务
+  { w: 1.0, re: /Boot Services|Runtime Services|ExitBootServices|启动服务|运行时服务|内存图|MapKey/, terms: 'Boot Services Runtime Services ExitBootServices MapKey GetMemoryMap EFI runtime' },
+  { w: 1.0, re: /TPL|任务优先级|RaiseTPL|RestoreTPL|中断.{0,4}优先级|NotifyTpl/, terms: 'TPL Task Priority Level RaiseTPL RestoreTPL TPL_APPLICATION TPL_CALLBACK TPL_NOTIFY TPL_HIGH_LEVEL' },
+  { w: 1.0, re: /AllocatePages|AllocatePool|内存类型|EfiBootServicesData|EfiRuntimeServicesData|FreePages|FreePool/, terms: 'AllocatePages AllocatePool memory type EfiBootServicesData EfiRuntimeServicesData FreePages FreePool' },
+  { w: 1.0, re: /事件|Event|EVT_TIMER|SetTimer|EVT_NOTIFY|CreateEvent|等待.*事件|异步/, terms: 'UEFI event CreateEvent SetTimer EVT_TIMER EVT_NOTIFY_SIGNAL WaitForEvent CloseEvent' },
+  { w: 1.0, re: /(UEFI|EFI).{0,6}变量|变量服务|GetVariable|SetVariable|NVRAM|NV\+BS|BootOrder|读写变量|变量存储|变量存取|非易失变量/, terms: 'UEFI variable GetVariable SetVariable EFI_VARIABLE_NON_VOLATILE BOOTSERVICE_ACCESS RUNTIME_ACCESS NVRAM' },
+  // SMM / MM
+  { w: 1.0, re: /SMM|MMRAM|MM_STANDALONE|DXE_SMM|MmStandalone|standalone mm|management mode|管理模式/, terms: 'SMM MM Standalone MmStandalone DXE_SMM_DRIVER MMRAM Management Mode CommBuffer' },
+  // HII / VFR
+  { w: 1.0, re: /HII|VFR|设置界面|BIOS Setup|Form Browser|formset|varstore|人性化/, terms: 'HII Human Interface Infrastructure VFR formset form varstore IFR Form Browser' },
+  // Secure Boot
+  { w: 1.0, re: /Secure Boot|安全启动|PK|KEK|dbx|签名验证|可信启动|Trusted Boot|Measured Boot/, terms: 'UEFI Secure Boot PK KEK db dbx Trusted Boot Measured Boot TPM PCR verified boot' },
+  // 基础保留项
+  { w: 0.8, re: /提交|commit|签off|签名|贡献/, terms: 'commit requirements commit message format commit signature Signed-off-by code contribution' },
+  { w: 0.8, re: /驱动|driver|uefi驱动|驱动开发/, terms: 'UEFI driver driver model driver binding DriverBinding Protocol' },
+  { w: 0.8, re: /构建|build|编译|edk2编译|编译环境/, terms: 'build toolchain GCC VS ICC compilation build process' },
+  { w: 0.8, re: /工具链|toolchain|编译器|编译工具/, terms: 'toolchain GCC Visual Studio ICC compiler build tools' },
+  { w: 0.8, re: /安全|security|安全编码|安全规范/, terms: 'security secure coding security guide security review' },
+  { w: 0.8, re: /审查|review|代码审查|代码review/, terms: 'code review review process review guidelines' },
+  { w: 0.8, re: /文档|document|注释|comment/, terms: 'documentation comments Doxygen documenting code' },
+  { w: 0.8, re: /启动|boot|引导|uefi启动/, terms: 'boot flow boot sequence UEFI boot PI specification' },
+  { w: 0.8, re: /测试|test|单元测试|单元测试/, terms: 'unit test testing test framework validation' },
+  { w: 0.8, re: /调试|debug|调试方法|调试工具/, terms: 'debug debugging debug tools GDB WinDbg' },
+  { w: 0.8, re: /漏洞|vulnerability|缓冲区|溢出/, terms: 'vulnerability buffer overflow security mitigation DEP ASLR' },
+  { w: 0.8, re: /许可|license|开源协议|bsd/, terms: 'license BSD open source licensing contribution agreement' },
+];
+
 function expandChineseQuery(q) {
   const lower = q.toLowerCase();
-  const terms = [];
-  
-  // === 核心流程类 ===
-  if (/提交|commit|签off|签名/.test(lower)) 
-    terms.push('commit requirements commit message format commit signature Signed-off-by code contribution');
-  if (/编码规范|代码风格|代码格式|coding|style/.test(lower)) 
-    terms.push('coding standards code style EDK II coding standards specification');
-  if (/签名|signoff|sign-off|signed-off-by/.test(lower)) 
-    terms.push('Signed-off-by commit signature format');
-  
-  // === 启动流程类 ===
-  if (/pei|dxe|bds|sec|pei阶段|dxe阶段|启动阶段|启动流程/.test(lower)) 
-    terms.push('PI boot flow PEI DXE BDS SEC phase boot sequence Platform Initialization');
-  if (/启动|boot|引导|uefi启动/.test(lower)) 
-    terms.push('boot flow boot sequence UEFI boot PI specification');
-  
-  // === 配置与模块类 ===
-  if (/pcd|pcd配置|平台配置|动态配置/.test(lower)) 
-    terms.push('PCD Platform Configuration Database PCD usage dynamic configuration');
-  if (/protocol|协议|uefi协议|驱动协议/.test(lower)) 
-    terms.push('UEFI protocol EFI protocol driver protocol protocol usage');
-  if (/inf|dsc|dec|inf文件|dsc文件|dec文件|包配置/.test(lower)) 
-    terms.push('EDK2 INF DSC DEC file format package module definition');
-  
-  // === 驱动开发类 ===
-  if (/驱动|driver|uefi驱动|驱动开发/.test(lower)) 
-    terms.push('UEFI driver driver model driver binding DriverBinding Protocol');
-  if (/模块|module|uefi模块|驱动模块/.test(lower)) 
-    terms.push('UEFI module driver module EDK II module');
-  
-  // === 构建编译类 ===
-  if (/构建|build|编译|edk2编译|编译环境/.test(lower)) 
-    terms.push('build toolchain GCC VS ICC compilation build process');
-  if (/工具链|toolchain|编译器|编译工具/.test(lower)) 
-    terms.push('toolchain GCC Visual Studio ICC compiler build tools');
-  
-  // === 测试调试类 ===
-  if (/测试|test|单元测试|单元测试/.test(lower)) 
-    terms.push('unit test testing test framework validation');
-  if (/调试|debug|调试方法|调试工具/.test(lower)) 
-    terms.push('debug debugging debug tools GDB WinDbg');
-  
-  // === 安全规范类 ===
-  if (/安全|security|安全编码|安全规范/.test(lower)) 
-    terms.push('security secure coding security guide security review');
-  if (/漏洞|vulnerability|缓冲区|溢出/.test(lower)) 
-    terms.push('vulnerability buffer overflow security mitigation DEP ASLR');
-  
-  // === 代码审查类 ===
-  if (/审查|review|代码审查|代码review/.test(lower)) 
-    terms.push('code review review process review guidelines');
-  if (/patchcheck|patch检查|格式检查/.test(lower)) 
-    terms.push('PatchCheck validation commit format check');
-  
-  // === 文档规范类 ===
-  if (/文档|document|注释|comment/.test(lower)) 
-    terms.push('documentation comments Doxygen documenting code');
-  if (/许可|license|开源协议|bsd/.test(lower)) 
-    terms.push('license BSD open source licensing contribution agreement');
-  
-  // === 平台包类 ===
-  if (/ovmf|虚拟机|qemu|虚拟固件/.test(lower)) 
-    terms.push('OVMF QEMU virtual firmware emulator');
-  if (/emulatorpkg|模拟器|windows模拟/.test(lower)) 
-    terms.push('EmulatorPkg Windows emulator simulation');
-  
-  return terms.length ? `${q} ${terms.join(' ')}` : q;
+  const hits = [];
+  for (const rule of KB_EXPANSION_RULES) {
+    // Rules carry mixed-case English tokens (PEI/DXE/SMM/...) while the
+    // query is lower-cased here; apply /i so mixed-case user input still
+    // triggers the right topic. Avoid /g|/y (stateful) rules.
+    const re = rule.re.flags.includes('i')
+      ? rule.re
+      : new RegExp(rule.re.source, rule.re.flags + 'i');
+    if (re.test(lower)) hits.push(rule);
+  }
+  // Sort by weight desc, keep order stable for equal weights.
+  hits.sort((a, b) => b.w - a.w);
+  // De-duplicate terms while preserving order. Cap to avoid an oversized query.
+  const seen = new Set();
+  const parts = [];
+  for (const rule of hits) {
+    for (const t of rule.terms.split(' ')) {
+      const low = t.toLowerCase();
+      if (!seen.has(low)) { seen.add(low); parts.push(t); }
+    }
+    if (parts.length >= 40) break;
+  }
+  const expansion = parts.join(' ');
+  return expansion ? `${q} ${expansion}` : q;
 }
 
 // Classify question intent to optimize retrieval and answering strategy
@@ -371,15 +410,54 @@ function classifyQuestion(question) {
   return 'general';
 }
 
-// Strip the per-chunk metadata header (Title/URL/Source/Chunk/Position) that
-// the embedder prepends to each stored chunk. It is useful for retrieval but
-// is noise for the LLM and pushes it toward quoting raw fragments; the real
-// section heading and body are enough.
+// Daemon results carry a numeric _pid that uniquely identifies a chunk even
+// when url/file/title are all empty (common for tianocore-docs spec pages).
+// Use it as a dedup fallback so multiple same-source spec chunks survive
+// aggregation instead of all collapsing onto the empty-string key.
+function chunkKey(r) {
+  return r.url || r.file || r.title || r.section || (r._pid != null ? String(r._pid) : '') || '';
+}
+
+// tianocore-docs chunks come from gitbook-synced repos whose git URL is not
+// stored by the daemon (url is empty). Map the repo directory name to the
+// public gitbook site so the LLM can emit real reference links instead of
+// local file paths.
+const DOCS_REPO_GITBOOK = {
+  'edk2-CCodingStandardsSpecification': 'edk-ii-c-coding-standards-specification',
+  'edk2-ModuleWriteGuide': 'edk-ii-module-writers-guide',
+  'edk2-UefiDriverWritersGuide': 'edk-ii-uefi-driver-writers-guide',
+  'EDK_II_Secure_Coding_Guide': 'edk-ii-secure-coding-guide',
+  'edk2-IdfSpecification': 'edk-ii-inf-file-format-specification',
+  'edk2-UniSpecification': 'edk-ii-unicode-collation',
+  'edk2-DscSpecification': 'edk-ii-dsc-file-format-specification',
+  'edk2-DecSpecification': 'edk-ii-dec-file-format-specification',
+  'edk2-FdfSpecification': 'edk-ii-fdf-file-format-specification',
+  'edk2-BuildSpecification': 'edk-ii-build-specification',
+  'edk2-MinimumPlatformSpecification': 'edk-ii-minimum-platform-specification',
+  'edk2-InfSpecification': 'edk-ii-inf-file-format-specification',
+};
+
+function docUrl(r) {
+  if (r.url) return r.url;
+  const file = String(r.file || '');
+  const repo = (file.split(/[\\/]/)[0] || '').trim();
+  const slug = DOCS_REPO_GITBOOK[repo];
+  if (!slug) return '';
+  // Best-effort section path: keep it to the gitbook root unless a stable
+  // slug path can be derived; a correct root link beats a broken deep link.
+  return `https://edk2-docs.gitbook.io/${slug}/`;
+}
+
+// Strip the per-chunk metadata header (Title/URL/Source/Chunk/Position/File/
+// Repo) that the embedder prepends to each stored chunk. It is useful for
+// retrieval but is noise for the LLM and pushes it toward quoting raw
+// fragments or emitting local file paths as citations; the real section
+// heading and body are enough (the caller injects a usable URL separately).
 function cleanChunk(block) {
   const lines = String(block || '').replace(/\r\n/g, '\n').split('\n');
   const out = [];
   for (const line of lines) {
-    if (/^(Title|URL|Source|Chunk|Position):\s*/i.test(line)) continue;
+    if (/^(Title|URL|Source|Chunk|Position|File|Repo|Filename|Path):\s*/i.test(line)) continue;
     if (line === '') { if (out.length === 0) continue; out.push(line); continue; }
     out.push(line);
   }
@@ -410,7 +488,7 @@ function aggregateContext(results) {
       continue;
     }
     const body = cleanChunk(r.content || r.snippet || '');
-    const key = (r.url || r.file || r.title || '');
+    const key = chunkKey(r);
     if (!body || seenKeys.has(key)) continue;
     seenKeys.add(key);
     out.push({
@@ -430,7 +508,7 @@ function aggregateContext(results) {
   const kept = contributions.slice(0, 1);
   for (const r of kept) {
     const body = cleanChunk(r.content || r.snippet || '');
-    const key = (r.url || r.file || r.title || '');
+    const key = chunkKey(r);
     if (!body || seenKeys.has(key)) continue;
     seenKeys.add(key);
     out.push({
@@ -506,7 +584,7 @@ function aggregateContextEnhanced(results) {
       if (/^readme|readme\.|license|copying|copyright/i.test(lower) && !/specification/i.test(lower)) continue;
       
       const body = cleanChunk(r.content || r.snippet || '');
-      const key = (r.url || r.file || r.title || '');
+      const key = chunkKey(r);
       if (!body || seenKeys.has(key)) continue;
       seenKeys.add(key);
       
@@ -526,7 +604,7 @@ function aggregateContextEnhanced(results) {
   const kept = contributions.slice(0, 1);
   for (const r of kept) {
     const body = cleanChunk(r.content || r.snippet || '');
-    const key = (r.url || r.file || r.title || '');
+    const key = chunkKey(r);
     if (!body || seenKeys.has(key)) continue;
     seenKeys.add(key);
     out.push({
@@ -557,212 +635,108 @@ function buildMessages(question, results, history) {
     intentGuidance = '\n\n**Question Intent**: The user wants examples. Prioritize showing complete, working code/config examples with explanations.';
   }
   
-  const context = ctx.map((r, i) => (
-    `[${i + 1}] ${r.title}\n` +
-    (r.type ? `Type: ${r.type}\n` : '') +
-    (r.source ? `Source: ${r.source}\n` : '') +
-    (r.url ? `URL: ${r.url}\n` : '') +
-    (r.section ? `Section: ${r.section}\n` : '') +
-    `Content:\n${r.body}\n`
-  )).join('\n');
+  const context = ctx.map((r, i) => {
+    const u = docUrl(r);
+    return (
+      `[${i + 1}] ${r.title}\n` +
+      (r.type ? `Type: ${r.type}\n` : '') +
+      (r.source ? `Source: ${r.source}\n` : '') +
+      (u ? `URL: ${u}\n` : '') +
+      (r.section ? `Section: ${r.section}\n` : '') +
+      `Content:\n${r.body}\n`
+    );
+  }).join('\n');
 
   const system = [
-    'You are an EDK2/TianoCore firmware development expert answering from the retrieved EDK2 documentation context.',
+    'You are an EDK2/TianoCore firmware development expert. You answer from the retrieved EDK2/TianoCore documentation context, and you explain like a senior firmware architect teaching a colleague: you first establish what a thing IS and how it fits, then you walk through the mechanism, then you surface the engineering rules that actually bite in practice.',
     intentGuidance,
     '',
-    '## 全局统一改造规则（每条问答必须全部遵守）',
+    '## 回答结构（专家讲解式，按需取舍层级）',
     '',
-    '### 1. 开篇强制加一句话高度总结',
-    '先用一句话提炼问题核心本质、底层设计目的，不直接罗列知识点。示例：',
-    '- "UEFI驱动模型通过Driver Binding Protocol实现设备与驱动的动态绑定与生命周期管理。"',
-    '- "Commit格式规范通过PatchCheck CI强制拦截不合规提交，确保代码追溯性与历史可维护性。"',
+    '### 1. 先定义，再建立关系模型',
+    '- 开篇一句话点出**本质**（这个概念解决什么问题、在体系中的位置），不要直接列知识点。',
+    '- 概念之间有关联时，先画清关系模型（层次、包含、依赖），例如：',
+    '  - 模块是构建最小单元（源码+INF）；包是模块的容器，必有DEC；平台是特殊的包，必有DSC+FDF。',
+    '  - 或直接给出项目内实际的目录/引用关系（PkgA → PkgB 的 DEC 引用）。',
     '',
-    '### 2. 措辞统一，区分强制/建议',
-    '- 把模糊词汇「推荐、尽量、一般」替换为固件专业表述：**必须、禁止、红线、强制、不合规**',
-    '- 所有规则分两级标注：',
-    '  - **【强制要求】**：CI工具、代码评审直接驳回，不允许合入代码',
-    '  - **【最佳实践】**：仅评审建议，不阻断提交，但工程规范推荐遵守',
+    '### 2. 串讲机制，而非罗列事实',
+    '- 讲清楚**流程/机制如何运转**：如 build 如何从 DSC+DEC+INF 解析依赖并生成 AutoGen/makefile；派发顺序如何由 [Depex] 决定；UEFI 驱动如何经 Supported→Start 被设备唤醒。',
+    '- 机制串讲里自然带出术语定义、关键 API/数据结构、时序关系，替代"文档A说X、文档B说Y"的平铺。',
+    '- 事实性信息（章节号、签名、阈值）保持精确，来自上下文中的章节/URL，禁止虚构。',
     '',
-    '### 3. 重构逻辑框架，脱离原文碎片化顺序',
-    '- **禁止**照搬参考文档原有段落顺序',
-    '- 站在固件开发者实操视角重新分层归类',
-    '- 融合多条参考文档交叉信息，打通分散知识点关联',
-    '- 杜绝"文档A说X，文档B说Y"的平铺罗列',
+    '### 3. 工程要点小节（承接机制，不喧宾夺主）',
+    '- 用 `**【强制要求】**`（CI/评审会驳回）与 `**【最佳实践】**`（评审建议）两级标注硬性约束。',
+    '- 高频、会报错的点前置；示例用 ✅ 正确 / ❌ 违规 成对展示，可直接复制使用。',
+    '- 编译/CI/PR 场景按需给出常见报错、根因、修复。',
     '',
-    '### 4. 补齐工程落地增值信息（每条按需补充）',
-    '1) 区分高频常用、冷门类型，高频内容前置',
-    '2) 配套完整可复制标准示例，用✅标记；违规错误示例用❌标记，成对对比展示',
-    '3) 补充开发高频编译/CI/PR报错、根因与修复方案',
-    '4) **仅编码规范、代码排版、提交规范类问题**，末尾补充校验工具（PatchCheck/Uncrustify/Stuart CI）',
+    '### 4. 结尾统一放参考来源',
+    '- 正文保持流畅，**不做内联引用**（引用会打断阅读流）。',
+    '- 回答末尾附 `## 参考来源`，逐条列出：`- [文档标题 - 章节](URL)`。',
+    '- 每个文档条目里 `URL:` 开头的行就是该文档的参考链接，直接把它作为 markdown 链接填入参考来源。',
+    '- 文档条目没有 `URL:` 行时才写"（本地文档）"，绝不把文件路径当链接。',
     '',
-    '### 5. 针对性专项补齐独有硬性规范',
-    '根据问题类型选择性补充（不强行堆砌无关细节）：',
+    '## 措辞与改写红线',
+    '- 措辞用固件专业表述：**必须、禁止、红线、强制、不合规**；避免"推荐、尽量、一般"这类模糊词，除非它确实只是最佳实践。',
+    '- 禁止照搬参考文档段落顺序，禁止单纯摘抄加直译；必须重新归纳、分层、补工程实操解读。',
+    '- 上下文信息不足时明确声明，绝不虚构 PCD 名称、GUID、协议、章节号或提交规则。',
+    '- 关键数据（PCD 名、GUID、长度阈值）必须与上下文完全一致。',
     '',
-    '**编码/注释类问答**（提问为代码注释、函数排版、文件头规范时）：',
-    '- 统一替换`@return`为EDK标准`@retval`',
-    '- 文件头强制增加`@par Specification Reference`',
-    '- 无参函数必须写`(VOID)`',
-    '- 函数原型格式规范',
-    '- 全局变量存放位置要求',
-    '- `IN/IN OUT/OUT/OPTIONAL`参数书写顺序红线',
-    '',
-    '**INF/DSC/PCD/Depex类构建相关**：',
-    '- 完善配置覆盖、继承、优先级底层逻辑',
-    '',
-    '**Driver Binding驱动相关**：',
-    '- 严格划分Supported/Start/Stop职责边界',
-    '- 明确各类OpenProtocol合法属性与禁用场景',
-    '- 区分设备/总线驱动差异化实现',
-    '',
-    '**代码提交规范类**：',
-    '- Commit长度阈值（标题≤76字符，正文每行≤72字符）',
-    '- 多包Global前缀格式',
-    '- Signed-off-by强制规则',
-    '- 提交拆分bisect约束',
-    '- 本地CI+PR全流程',
-    '- Azure流水线检查项',
-    '',
-    '### 6. 禁止单纯摘抄、直译原文',
-    '- **禁止**仅分段罗列文档片段并翻译',
-    '- 必须完成信息归纳、提炼重点、补充工程实操解读',
-    '- 体现LLM整合梳理价值',
-    '',
-    '## Citation rules',
-    '- **强制要求**：每条【强制要求】规则必须标注来源文档URL',
-    '- 引用格式：`规则内容 [来源: 文档标题](URL)`',
-    '- 永远不要虚构PCD名称、GUID、协议、规范章节或提交规则',
-    '- 如果上下文未涵盖问题的部分，明确说明，不要虚构',
-    '- **禁止**以"基于："源列表章节结尾；进行内联引用',
-    '',
-    '## Accuracy guarantee rules',
-    '- **强制溯源**：所有【强制要求】必须有明确的文档引用',
-    '- **不确定性标记**：当上下文信息不足时，必须声明"上下文中未找到明确规范"',
-    '- **禁止推断**：不要基于部分信息推断完整规则，必须明确标注"需查阅官方规范"',
-    '- **关键数据验证**：PCD名称、GUID、字符长度阈值等关键数据必须与上下文完全一致',
-    '',
-    '## 简洁性规则（提炼式精简）',
-    '- **必须保留**：全部【强制要求】、【最佳实践】硬性信息、示例对比（✅/❌）、报错与修复方案、引用溯源',
-    '- **必须去除**：重复措辞、冗余过渡句、无信息量的铺垫（如"首先让我解释一下"）、冠词量词堆砌',
-    '- **紧凑表达**：用短句子直达要点，不重复强调已说明内容，不用长排比铺陈',
-    '- **示例控制**：示例保持必要长度（可复制可用即可），不额外扩写说明文字',
-    '- **合并段落**：同一主题的碎片信息合并为一条，删除分隔性废话',
-    '- **长度目标**：在完整覆盖所有关键信息的前提下，回答长度通常控制在300-400 tokens',
+    '## 长度与密度',
+    '- 覆盖完整、言之有物优先；通常 500-900 tokens，机制规整时可更长，不做硬性截断。',
+    '- 去除冗余过渡句、无信息量铺垫（如"首先让我解释一下"）、重复措辞；一个主题的碎片信息合并为一条。',
+    '- 专项细节（INF/DSC/PCD/Depex 覆盖与优先级、Driver Binding Supported/Start/Stop 边界、Commit 拆分 bisect 约束、@retval/@par Specification/`(VOID)`/IN OUT 参数顺序）只在问题相关时展开，不强行堆砌。',
     '',
     '## Output format examples (Few-shot)',
     '',
-    '### Example 1: Commit format question',
-    '**Question**: commit格式有什么要求？',
+    '### Example 1: 模块/包/平台关系',
+    '**Question**: EDK2中模块（Module）、包（Package）和平台（Platform）是什么关系？',
     '',
     '**Answer**:',
-    'Commit格式规范通过PatchCheck CI强制拦截不合规提交，确保代码追溯性与历史可维护性。',
+    'EDK2 用三级构建单元组织源码：**模块**是可编译的最小产出，**包**是模块的容器并统一对外声明接口与宏，**平台**则是特殊的包，额外描述固件映像的组成——三级结构让"通用组件"与"具体产品"解耦，同一批模块可被不同平台以不同方式组合。',
     '',
-    '#### 【强制要求】',
+    '**一级：模块（Module）**',
+    '每个模块是"1个INF + 一组.c/.h源码"的编译单元。INF 的关键作用是**声明这个模块需要什么、提供什么**：`[Defines]` 给出 MODULE_TYPE（DXE_DRIVER/UEFI_APPLICATION…）与 ENTRY_POINT；`[Sources]` 列出参与编译的 C 文件；`[Packages]` 声明依赖哪些包的 DEC；`[LibraryClasses]` 声明要用哪个库类。构建时 build 会解析 INF 生成对应 AutoGen.c/AutoGen.h。',
     '',
-    '**1. 标题长度：≤76字符**',
-    '- 校验工具：PatchCheck.py会拦截超长标题',
-    '```',
-    '✅ MdeModulePkg: DxeCore: Fix memory allocation bug in runtime',
-    '❌ MdeModulePkg: DxeCore: This is a very long commit message that exceeds the 76 character limit and will be rejected by PatchCheck',
-    '```',
-    '- 常见报错：`ERROR: Subject line too long (80 chars)`',
-    '- 修复方法：精简描述，保留核心信息',
+    '**二级：包（Package）**',
+    '包是模块的**聚合容器与公共接口中心**，标识物是根目录的 DEC 文件：`[Defines]` 声明包名与 GUID；`[Includes]` 导出公开头文件路径（模块靠这里找到协议头文件）；`[Protocols/Ppis/Guid/Pcds]` 统一发布包内定义的所有 GUID/PCD。**模块不能直接用未在 [Packages] 引用的库或头**，这种引用关系在 DEC 里闭环。',
     '',
-    '**2. 签名格式：必须包含Signed-off-by**',
-    '```',
-    'Signed-off-by: Your Name <email@example.com>',
-    '```',
-    '- 快捷方法：`git commit -s` 自动添加',
-    '- 缺失签名会导致PatchCheck CI直接驳回',
+    '**三级：平台（Platform）**',
+    '平台是**特殊的包**，由 DSC + FDF 共同描述：DSC 的 `[LibraryClasses]`/`[Pcds]`/`[Components]` 决定"编进固件的模块及它们的库实例选择与 PCD 值"，FDF 描述"固件映像布局"（FV 怎么排、模块塞进哪个分区、加载顺序）。build 以平台为入口：解析 DSC 汇总模块清单与依赖，为每个模块生成 makefile/AutoGen，再按 FDF 组装出 FD 映像。',
     '',
-    '**3. 前缀格式：PackageName: ModuleName: summary**',
-    '```',
-    '✅ ShellPkg: Shell: Add new command support',
-    '✅ MdeModulePkg: DxeCore, MemoryAllocationLib: Fix memory leak (多包用逗号分隔)',
-    '❌ Fix memory leak in DxeCore (缺少包名前缀)',
-    '```',
+    '**工程要点**',
+    '- **【强制要求】** INF 里 `[Packages]` 必须列出模块实际用到的每个包的 DEC；漏声明会导致 failed to find required library 或头文件找不到的编译错误。',
+    '- **【最佳实践】** 一个库类的选择（某 INF 的 [LibraryClasses]）放在 DSC 而不是 INF 里做，便于平台级替换实现（如同一个类在 DXE 用内存实现、在 SMM 用MMRAM实现）。',
     '',
-    '#### 【最佳实践】',
-    '',
-    '- 正文每行≤72字符，建议配置编辑器辅助',
-    '- 一个commit只做一件事，不混合bug修复、功能新增、重构',
-    '- 独立commit应能通过`git bisect`，不引入构建中断',
-    '',
-    '**校验工具清单**:',
-    '- PatchCheck.py：标题长度、签名格式、前缀规范',
-    '- Azure CI：自动化检查提交合规性',
-    '',
-    '**参考文档**: [Commit Message Format](https://www.tianocore.org/tianocore-wiki.github.io/development/contribution-guides/commit_message_format.html)',
+    '## 参考来源',
+    '- [EDK II Build Specification](https://edk2-docs.gitbook.io/edk-ii-build-specification/)',
     '',
     '---',
     '',
-    '### Example 2: Function annotation question',
-    '**Question**: 函数注释格式有什么要求？',
+    '### Example 2: 命名规范问题',
+    '**Question**: EDK II 有哪些命名规范？',
     '',
     '**Answer**:',
-    'EDK II函数注释强制使用Doxygen兼容格式，通过`@retval`替代`@return`，并强制文件头声明规范引用，确保API文档自动生成与代码可维护性。',
+    'EDK II 命名规范统一了 变量→函数→文件→目录 四层标识符的书写，核心是一条贯穿原则：**用不低于单词可读性的统一风格保证源码的可检索性与无歧义**——任何标识符从命名上就能判断其用途、作用域与所有权。',
     '',
-    '#### 【强制要求】',
+    '**标识符（变量/函数）**',
+    '采用 **Camel Case**，函数名通常以动词开头（`GetMemoryAttributes`），变量名以名词性短语为主。类型别名（typedef）以模块/主题作词根前缀（如 `EFI_STATUS`、`EFI_GUID`），避免与普通变量命名冲突。',
     '',
-    '**1. 返回值标注：统一使用@retval**',
-    '```c',
-    '✅ 正确示例:',
-    '/**',
-    '  分配运行时内存.',
+    '**源文件与目录**',
+    '目录名使用主题名，模块目录内按 INF 名. 规范命名；`*.inf`、`*.dec`、`*.dsc`、`*.fdf` 等元数据文件与源码文件命名遵循同级一致性，`Uni` 资源、`Vfr` 界面文件、`Cfg` 配置脚本等都有约定后缀。',
     '',
-    '  @param  Size  请求的字节数.',
+    '**变量作用域前缀**',
+    '模块级全局变量与局部变量严格区分书写：全局状态常量倾向用模块名缩写做前缀，函数内临时变量短小直白；指短短的存在即一个对象（Handle）仍用清晰名。命名红线是**不缩写到不可读、不塞入不相关含义**，这与注释规范同源，目的都在可维护性。',
     '',
-    '  @retval NULL   分配失败.',
-    '  @retval 其他值  分配的内存指针.',
-    '**/',
-    'VOID *AllocateRuntimeMemory(IN UINTN Size);',
+    '**工程要点**',
+    '- **【强制要求】** 新代码遵循统一命名，CI 的 Uncrustify 检查格式统一性时，命名风格不一致会被评审直接指出。',
+    '- **【最佳实践】** 从上游模块复制代码时保留原始命名，重建前缀改名会破坏 diff 可读与 git 追溯。',
     '',
-    '❌ 错误示例:',
-    '/**',
-    '  @return 分配的内存指针.',
-    '**/',
-    '// 使用@return不符合EDK II规范',
-    '```',
-    '',
-    '**2. 文件头：强制包含@par Specification Reference**',
-    '```c',
-    '/**',
-    '  @file',
-    '  UEFI运行时服务实现.',
-    '',
-    '  @par Specification Reference:',
-    '  - UEFI Specification 2.9, Section 7.1',
-    '**/',
-    '```',
-    '',
-    '**3. 无参函数：必须写(VOID)**',
-    '```c',
-    '✅ VOID InitializeRuntimeServices(VOID);',
-    '❌ VOID InitializeRuntimeServices();  // 空参数列表不合规',
-    '```',
-    '',
-    '**4. 参数修饰符顺序：IN > IN OUT > OUT > OPTIONAL**',
-    '```c',
-    '✅ 正确顺序:',
-    'EFI_STATUS EFIAPI OpenProtocol(',
-    '  IN  EFI_HANDLE  Handle,',
-    '  IN  EFI_GUID    *Protocol,',
-    '  OUT VOID        **Interface OPTIONAL',
-    ');',
-    '```',
-    '',
-    '#### 【最佳实践】',
-    '',
-    '- 函数原型与实现分离时，注释放在头文件原型处',
-    '- 复杂参数需用`@param`说明用途和约束',
-    '',
-    '**校验工具清单**:',
-    '- Uncrustify：自动格式化注释与参数对齐',
-    '',
-    '**参考文档**: [EDK II Coding Standards](https://edk2-docs.gitbook.io/edk-ii-coding-standards-specification/)',
+    '## 参考来源',
+    '- [EDK II Coding Standards Specification - Naming Conventions](https://edk2-docs.gitbook.io/edk-ii-coding-standards-specification/)',
     '',
     '---',
     '',
-    'Follow these examples for structured, actionable answers that meet all transformation rules.',
+    'Follow these examples: define first, build the relationship model, walk through the mechanism, then the engineering rules that matter — always with a ## 参考来源 block at the end.',
   ].join('\n');
 
   const messages = [{ role: 'system', content: system }];
@@ -918,10 +892,19 @@ async function handleAsk(req, res) {
     return;
   }
 
-  let body = '';
-  req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
+  const chunks = [];
+  let received = 0;
+  req.on('data', (c) => {
+    chunks.push(c);
+    received += c.length;
+    if (received > 1e6) req.destroy();
+  });
   req.on('end', async () => {
     try {
+      // Buffer.concat + single decode preserves multi-byte UTF-8 characters
+      // even when they are split across TCP chunks; naive string concat
+      // decodes each Buffer fragment independently and corrupts CJK text.
+      const body = Buffer.concat(chunks).toString('utf8');
       const parsed = JSON.parse(body || '{}');
       const question = (parsed.question || '').trim();
       const history = Array.isArray(parsed.history) ? parsed.history.slice(-10) : [];
@@ -970,11 +953,15 @@ async function handleAsk(req, res) {
         }
         results = (searchResp.body && searchResp.body.results) || [];
         
-        // 1.5) Rerank results using BGE-reranker
+        // 1.5) Rerank results using BGE-reranker. Rerank against the same
+        // expanded query used for retrieval: the raw Chinese question alone
+        // makes the reranker match generic "EDK II"-titled wiki pages and
+        // push the section-level spec hits (e.g. "4.4 Identifiers") out.
         if (results.length > 10) {
           sendSSE(res, 'phase', { step: 'rerank', text: '重排序文档…', progress: 25 });
           try {
-            results = await rerankDocuments(question, results);
+            const rerankQuery = expandChineseQuery(question);
+            results = await rerankDocuments(rerankQuery, results);
           } catch (e) {
             console.error(`Rerank error: ${e.message}`);
             // Continue with original results if reranking fails
