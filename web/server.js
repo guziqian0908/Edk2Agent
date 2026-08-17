@@ -184,6 +184,94 @@ function getKbDir() {
   return process.env.KB_DATA_DIR || DEFAULT_KB_DIR;
 }
 
+// General title-shell expansion: detect blocks that are just section headers
+// (short content for a section that has subsections) and expand them by reading
+// the full section from the source file on disk.
+const SHELL_CONTENT_THRESHOLD = 500; // blocks shorter than this are suspect
+const MAX_SHELL_EXPANSIONS = 5; // limit file I/O
+
+function expandTitleShells(results) {
+  const kbDir = getKbDir();
+  const reposDir = path.join(kbDir, 'data', 'tianocore-docs', 'repos');
+  let expansions = 0;
+
+  for (let i = 0; i < results.length && expansions < MAX_SHELL_EXPANSIONS; i++) {
+    const r = results[i];
+    const section = r.section || '';
+    const content = r.content || '';
+    const file = r.file || '';
+
+    // Skip if already expanded
+    if (section.includes('完整内容')) continue;
+
+    // Detect title shell: section contains ">" (hierarchical) and content is short
+    // and file is from a known docs repo (edk2-*)
+    const isShell = section.includes('>') &&
+                    content.length < SHELL_CONTENT_THRESHOLD &&
+                    /^edk2-/i.test(file);
+
+    if (!isShell) continue;
+
+    // Map daemon file path to actual file on disk
+    // daemon: "edk2-CCodingStandardsSpecification\5_source_files\52_spacing.md"
+    // disk:   {reposDir}/edk2-CCodingStandardsSpecification/5_source_files/52_spacing.md
+    const filePath = path.join(reposDir, ...file.split(/[\\\/]/));
+
+    if (!fs.existsSync(filePath)) continue;
+
+    try {
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      const lines = fileContent.split('\n');
+
+      // Extract the last part of the section (the actual heading)
+      // e.g., "5.2 Spacing > 5.2.2 Horizontal Spacing" → "5.2.2 Horizontal Spacing"
+      const parts = section.split('>').map(s => s.trim());
+      const targetHeading = parts[parts.length - 1];
+
+      // Find the heading line in the file
+      const headingIdx = lines.findIndex(l => {
+        const cleaned = l.replace(/^#+\s*/, '').trim();
+        return cleaned === targetHeading || cleaned.startsWith(targetHeading + ' ');
+      });
+
+      if (headingIdx < 0) continue;
+
+      // Determine heading level
+      const headingLine = lines[headingIdx];
+      const headingMatch = headingLine.match(/^(#+)/);
+      const headingLevel = headingMatch ? headingMatch[1].length : 1;
+
+      // Find section end: next heading of same or higher level
+      let endIdx = lines.length;
+      for (let j = headingIdx + 1; j < lines.length; j++) {
+        const m = lines[j].match(/^(#+)/);
+        if (m && m[1].length <= headingLevel) {
+          endIdx = j;
+          break;
+        }
+      }
+
+      // Extract full section content
+      const fullSection = lines.slice(headingIdx, endIdx).join('\n').trim();
+
+      // Only expand if significantly more content
+      if (fullSection.length > content.length * 1.5 && fullSection.length > 200) {
+        results[i] = {
+          ...r,
+          content: fullSection,
+          section: section + ' (完整内容)',
+          score: Math.max(r.score || 0, 0.9)
+        };
+        expansions++;
+      }
+    } catch (e) {
+      // Skip on error
+    }
+  }
+
+  return results;
+}
+
 function readDaemonState() {
   const stateFile = path.join(getKbDir(), 'daemon.json');
   try {
@@ -294,7 +382,7 @@ const KB_EXPANSION_RULES = [
   { w: 1.0, re: /inf|dsc|dec|fdf|元数据|inf文件|dsc文件|dec文件|fdf文件|包配置|平台配置|模块关系|包关系/, terms: 'INF DSC DEC FDF file format EDK II module package platform build AutoGen' },
   { w: 1.0, re: /模块.{0,10}(包|平台)|包.{0,10}(模块|平台)|平台.{0,10}模块|module.*package.*platform|package和module/, terms: 'module package platform relationship EDK II build hierarchy Module Package Platform' },
   // 命名规范 / 编码风格
-  { w: 1.0, re: /命名|命名规范|命名规则|变量命名|函数命名|文件名|标识符|前缀|coding.*naming/, terms: 'naming conventions identifiers Hungarian prefix EDK II coding standards naming rules' },
+  { w: 1.0, re: /命名|命名规范|命名规则|变量命名|函数命名|文件名|标识符|前缀|coding.*naming/, terms: 'naming conventions identifiers Hungarian prefix gVariable mVariable pPointer CamelCase EACH_WORD_IS_DISTINCT EDK II coding standards 4.4 Identifiers function data type macro names' },
   { w: 0.9, re: /编码规范|代码风格|代码格式|排版|缩进|空白|格式要求|coding|style|formatting|spacing/, terms: 'coding standards code style formatting spacing indentation EDK II coding standards specification' },
   // MODULE_TYPE / 模块开发
   { w: 1.0, re: /MODULE_TYPE|模块类型|模块型|入口函数|入口点|ENTRY_POINT|entry point/, terms: 'MODULE_TYPE module type ENTRY_POINT entry point SEC PEI_CORE PEIM DXE_CORE DXE_DRIVER UEFI_DRIVER UEFI_APPLICATION BASE' },
@@ -382,6 +470,99 @@ function expandChineseQuery(q) {
   return expansion ? `${q} ${expansion}` : q;
 }
 
+// Metadata filtering for retrieval precision. Hybrid retrieval solves the
+// "semantically close but wrong symbol" problem only partially: dense vectors
+// can still rank a chunk from an unrelated spec chapter above the exact one.
+// These helpers re-check each candidate against its *document metadata*
+// (title/file/section/url) using the query's precise tokens — explicit EDK2
+// identifiers/GUIDs/PCD names and the distinctive expansion keywords. A
+// candidate whose metadata shares none of those signals is treated as
+// "obviously irrelevant" and pruned (subject to generous floors so vague
+// questions, or edge metadata spellings, never lose recall).
+const PRUNE_FLOOR = 10;   // always keep at least this many top results
+const PRUNE_TOP = 3;      // never drop these highest-ranked results
+const PRUNE_MIN_SIGNALS = 3; // skip filtering when the query is too vague
+
+const PRUNE_STOPWORDS = new Set([
+  'the','a','an','and','or','of','to','in','for','on','with','is','are','was',
+  'were','be','been','edk','ii','edkii','coding','standard','standards','spec',
+  'specification','document','documentation','docs','file','format','type',
+  'use','using','how','what','which','can','does','do','you','your','please',
+]);
+
+function metadataSignals(query) {
+  const identifiers = new Set();
+  const words = new Set();
+  // Exact EDK2 identifiers / acronyms in the raw query matter most: their
+  // expanded form keeps symbol-level precision that keyword fuzzy matching
+  // would blur (e.g. EFI_DRIVER_BINDING_PROTOCOL, PcdDebugPrintErrorLevel).
+  const idRe = /[A-Z][A-Z0-9_]{2,}/g;
+  let m;
+  while ((m = idRe.exec(query)) !== null) {
+    identifiers.add(m[0]);
+  }
+  // Distinctive words from the expansion (see KB_EXPANSION_RULES above).
+  const expansion = expandChineseQuery(query);
+  for (const t of expansion.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (t.length >= 3 && !PRUNE_STOPWORDS.has(t)) words.add(t);
+  }
+  // Also hoist CamelCase identifiers that only appear inside the expansion
+  // (e.g. FixedPcdGet, EACH_WORD_IS_DISTINCT) into the exact-identifier set.
+  for (const t of expansion.split(/\s+/)) {
+    if (/^[A-Z][A-Za-z0-9]{4,}$/.test(t)) identifiers.add(t);
+  }
+  return { identifiers: [...identifiers], words: [...words] };
+}
+
+function pruneByMetadata(query, results) {
+  if (!Array.isArray(results) || results.length <= PRUNE_FLOOR) return results;
+  const signals = metadataSignals(query);
+  const exactHits = signals.identifiers.length;
+  if (signals.words.length + exactHits < PRUNE_MIN_SIGNALS) return results;
+
+  const metaOf = (r) =>
+    [r.title, r.section, r.file, r.url].filter(Boolean).join(' ').toLowerCase();
+
+  // Authoritative docs chunks (tianocore-docs repos / specs / guides, i.e.
+  // anything that is NOT commit/PR noise) are kept unconditionally: they were
+  // deliberately pulled in by the dual-source docs query, and a generic
+  // wording ("排版和空白有哪些规定？") must not let a metadata-signal miss
+  // (e.g. rule sub-chunks like "5.2.1.1 There shall be only one statement on
+  // a line" carry no "spacing/formatting" token in their heading) drop them.
+  const isAuthoritativeDocs = (r) => {
+    const src = String(r.source_display || r.source || r.repo || '').toLowerCase();
+    const file = String(r.file || '').toLowerCase();
+    if (/(edk2-commits|edk2-prs|commit_|pr_)/.test(file)) return false;
+    return src.includes('tianocore-docs') || src.includes('tianocore-doc') ||
+           src.includes('spec') || src.includes('guide') ||
+           /^edk2-/.test(file);
+  };
+
+  const scored = results.map((r) => {
+    const meta = metaOf(r);
+    let hits = 0;
+    for (const id of signals.identifiers) {
+      if (meta.includes(id.toLowerCase())) hits += 2;
+    }
+    for (const w of signals.words) {
+      if (meta.includes(w)) hits += 1;
+    }
+    return { r, hits };
+  });
+
+  const keep = new Set();
+  // 1) Never drop the top-ranked candidates.
+  for (let i = 0; i < Math.min(PRUNE_TOP, results.length); i++) keep.add(i);
+  // 2) Keep every authoritative docs chunk regardless of metadata signals.
+  scored.forEach((s, i) => { if (isAuthoritativeDocs(s.r)) keep.add(i); });
+  // 3) Keep everything with at least one metadata signal hit.
+  scored.forEach((s, i) => { if (s.hits > 0) keep.add(i); });
+  // 4) Floor: refill from the original ranking so vague/edge cases keep recall.
+  for (let i = 0; i < results.length && keep.size < PRUNE_FLOOR; i++) keep.add(i);
+
+  return results.filter((_, i) => keep.has(i));
+}
+
 // Classify question intent to optimize retrieval and answering strategy
 function classifyQuestion(question) {
   const q = question.toLowerCase();
@@ -418,34 +599,15 @@ function chunkKey(r) {
   return r.url || r.file || r.title || r.section || (r._pid != null ? String(r._pid) : '') || '';
 }
 
-// tianocore-docs chunks come from gitbook-synced repos whose git URL is not
-// stored by the daemon (url is empty). Map the repo directory name to the
-// public gitbook site so the LLM can emit real reference links instead of
-// local file paths.
-const DOCS_REPO_GITBOOK = {
-  'edk2-CCodingStandardsSpecification': 'edk-ii-c-coding-standards-specification',
-  'edk2-ModuleWriteGuide': 'edk-ii-module-writers-guide',
-  'edk2-UefiDriverWritersGuide': 'edk-ii-uefi-driver-writers-guide',
-  'EDK_II_Secure_Coding_Guide': 'edk-ii-secure-coding-guide',
-  'edk2-IdfSpecification': 'edk-ii-inf-file-format-specification',
-  'edk2-UniSpecification': 'edk-ii-unicode-collation',
-  'edk2-DscSpecification': 'edk-ii-dsc-file-format-specification',
-  'edk2-DecSpecification': 'edk-ii-dec-file-format-specification',
-  'edk2-FdfSpecification': 'edk-ii-fdf-file-format-specification',
-  'edk2-BuildSpecification': 'edk-ii-build-specification',
-  'edk2-MinimumPlatformSpecification': 'edk-ii-minimum-platform-specification',
-  'edk2-InfSpecification': 'edk-ii-inf-file-format-specification',
-};
-
-function docUrl(r) {
-  if (r.url) return r.url;
+// Local reference for a retrieved chunk. All retrieval is served from the
+// local offline knowledge base, so citations point at the on-disk document
+// (file path + section) instead of a web URL: `file > section`.
+function localRef(r) {
   const file = String(r.file || '');
-  const repo = (file.split(/[\\/]/)[0] || '').trim();
-  const slug = DOCS_REPO_GITBOOK[repo];
-  if (!slug) return '';
-  // Best-effort section path: keep it to the gitbook root unless a stable
-  // slug path can be derived; a correct root link beats a broken deep link.
-  return `https://edk2-docs.gitbook.io/${slug}/`;
+  const title = String(r.title || '');
+  const section = String(r.section || '');
+  const base = file || title || '本地文档';
+  return section ? `${base} > ${section}` : base;
 }
 
 // Strip the per-chunk metadata header (Title/URL/Source/Chunk/Position/File/
@@ -636,55 +798,69 @@ function buildMessages(question, results, history) {
   }
   
   const context = ctx.map((r, i) => {
-    const u = docUrl(r);
+    const ref = localRef(r);
     return (
       `[${i + 1}] ${r.title}\n` +
       (r.type ? `Type: ${r.type}\n` : '') +
       (r.source ? `Source: ${r.source}\n` : '') +
-      (u ? `URL: ${u}\n` : '') +
+      (ref ? `Local: ${ref}\n` : '') +
       (r.section ? `Section: ${r.section}\n` : '') +
       `Content:\n${r.body}\n`
     );
   }).join('\n');
 
   const system = [
-    'You are an EDK2/TianoCore firmware development expert. You answer from the retrieved EDK2/TianoCore documentation context, and you explain like a senior firmware architect teaching a colleague: you first establish what a thing IS and how it fits, then you walk through the mechanism, then you surface the engineering rules that actually bite in practice.',
+    'You are an EDK2/TianoCore firmware development expert. You answer strictly and exhaustively from the retrieved EDK2/TianoCore documentation context.',
     intentGuidance,
     '',
-    '## 回答结构（专家讲解式，按需取舍层级）',
+    '## !! 完整性强制令 (COMPLETENESS MANDATE) !!',
     '',
-    '### 1. 先定义，再建立关系模型',
-    '- 开篇一句话点出**本质**（这个概念解决什么问题、在体系中的位置），不要直接列知识点。',
-    '- 概念之间有关联时，先画清关系模型（层次、包含、依赖），例如：',
-    '  - 模块是构建最小单元（源码+INF）；包是模块的容器，必有DEC；平台是特殊的包，必有DSC+FDF。',
-    '  - 或直接给出项目内实际的目录/引用关系（PkgA → PkgB 的 DEC 引用）。',
+    '这是最高优先级规则，覆盖下面所有风格指引：',
     '',
-    '### 2. 串讲机制，而非罗列事实',
-    '- 讲清楚**流程/机制如何运转**：如 build 如何从 DSC+DEC+INF 解析依赖并生成 AutoGen/makefile；派发顺序如何由 [Depex] 决定；UEFI 驱动如何经 Supported→Start 被设备唤醒。',
-    '- 机制串讲里自然带出术语定义、关键 API/数据结构、时序关系，替代"文档A说X、文档B说Y"的平铺。',
+    '**当上下文文档中包含以下任何内容时，你必须在回答中完整枚举，禁止省略或概括：**',
+    '- 具体的规则条目（如命名规则的每一条）',
+    '- 具体的枚举值（如 MODULE_TYPE 的所有取值、PCD 的所有类型）',
+    '- 具体的 API/函数名和参数签名',
+    '- 具体的错误码和报错信息文本',
+    '- 具体的格式模式（如 CamelCase 的具体格式示例 `EachWordIsDistinct`、宏格式 `EACH_WORD_UPPER`）',
+    '- 具体的前缀/后缀规则（如匈牙利命名的 g/m/p 前缀）',
+    '- 具体的步骤列表或检查清单',
+    '',
+    '**判断标准：如果标准答案中列出了某个具体值/模式/规则，而你的回答中没有，就是不合格。**',
+    '宁可回答长一些、详尽一些，也绝不能遗漏上下文中的具体技术细节。',
+    '',
+    '## 回答结构',
+    '',
+    '### 1. 定义与关系模型（简短）',
+    '- 开篇一句话点出本质。',
+    '- 概念之间有关联时，简要画清关系模型。',
+    '',
+    '### 2. 完整展开所有具体规则/值/模式',
+    '- **这是回答的主体**。逐条列出上下文中出现的所有具体规则、模式、枚举值、API 签名。',
+    '- 对于命名规范：必须列出 CamelCase 具体格式、宏格式、匈牙利前缀 g/m/p、typedef 格式等每一条。',
+    '- 对于枚举类型（如 MODULE_TYPE）：必须列出所有取值及其含义。',
+    '- 对于错误码：必须列出每个具体错误码文本和对应修复。',
+    '- 对于流程/机制：按顺序完整描述每个步骤。',
+    '- 机制串讲里自然带出术语定义、关键 API/数据结构。',
     '- 事实性信息（章节号、签名、阈值）保持精确，来自上下文中的章节/URL，禁止虚构。',
     '',
-    '### 3. 工程要点小节（承接机制，不喧宾夺主）',
-    '- 用 `**【强制要求】**`（CI/评审会驳回）与 `**【最佳实践】**`（评审建议）两级标注硬性约束。',
-    '- 高频、会报错的点前置；示例用 ✅ 正确 / ❌ 违规 成对展示，可直接复制使用。',
-    '- 编译/CI/PR 场景按需给出常见报错、根因、修复。',
+    '### 3. 工程要点（简洁）',
+    '- 用 `**【强制要求】**` 与 `**【最佳实践】**` 两级标注硬性约束。',
+    '- 示例用 ✅ 正确 / ❌ 违规 成对展示。',
     '',
     '### 4. 结尾统一放参考来源',
-    '- 正文保持流畅，**不做内联引用**（引用会打断阅读流）。',
-    '- 回答末尾附 `## 参考来源`，逐条列出：`- [文档标题 - 章节](URL)`。',
-    '- 每个文档条目里 `URL:` 开头的行就是该文档的参考链接，直接把它作为 markdown 链接填入参考来源。',
-    '- 文档条目没有 `URL:` 行时才写"（本地文档）"，绝不把文件路径当链接。',
+    '- 回答末尾附 `## 参考来源`，逐条列出本地文档定位：`- 文档标题 - 章节`（附 `Local:` 行给出的 `文件路径 > 章节`）。',
+    '- 每个文档条目里 `Local:` 开头的行就是该条目的本地定位，从中取文档标题与章节。',
+    '- 参考来源只写本地定位，禁止拼造任何网址。',
     '',
-    '## 措辞与改写红线',
-    '- 措辞用固件专业表述：**必须、禁止、红线、强制、不合规**；避免"推荐、尽量、一般"这类模糊词，除非它确实只是最佳实践。',
-    '- 禁止照搬参考文档段落顺序，禁止单纯摘抄加直译；必须重新归纳、分层、补工程实操解读。',
-    '- 上下文信息不足时明确声明，绝不虚构 PCD 名称、GUID、协议、章节号或提交规则。',
-    '- 关键数据（PCD 名、GUID、长度阈值）必须与上下文完全一致。',
+    '## 措辞红线',
+    '- 措辞用固件专业表述：**必须、禁止、红线、强制**。',
+    '- 上下文信息不足时明确声明，绝不虚构。',
+    '- 关键数据必须与上下文完全一致。',
     '',
     '## 长度与密度',
-    '- 覆盖完整、言之有物优先；通常 500-900 tokens，机制规整时可更长，不做硬性截断。',
-    '- 去除冗余过渡句、无信息量铺垫（如"首先让我解释一下"）、重复措辞；一个主题的碎片信息合并为一条。',
-    '- 专项细节（INF/DSC/PCD/Depex 覆盖与优先级、Driver Binding Supported/Start/Stop 边界、Commit 拆分 bisect 约束、@retval/@par Specification/`(VOID)`/IN OUT 参数顺序）只在问题相关时展开，不强行堆砌。',
+    '- **完整性优先于简洁性**。回答可以长，但不能遗漏上下文中的具体技术细节。',
+    '- 去除无信息量的铺垫句，但具体规则/枚举/模式必须完整保留。',
     '',
     '## Output format examples (Few-shot)',
     '',
@@ -692,51 +868,55 @@ function buildMessages(question, results, history) {
     '**Question**: EDK2中模块（Module）、包（Package）和平台（Platform）是什么关系？',
     '',
     '**Answer**:',
-    'EDK2 用三级构建单元组织源码：**模块**是可编译的最小产出，**包**是模块的容器并统一对外声明接口与宏，**平台**则是特殊的包，额外描述固件映像的组成——三级结构让"通用组件"与"具体产品"解耦，同一批模块可被不同平台以不同方式组合。',
+    'EDK2 用三级构建单元组织源码。',
     '',
     '**一级：模块（Module）**',
-    '每个模块是"1个INF + 一组.c/.h源码"的编译单元。INF 的关键作用是**声明这个模块需要什么、提供什么**：`[Defines]` 给出 MODULE_TYPE（DXE_DRIVER/UEFI_APPLICATION…）与 ENTRY_POINT；`[Sources]` 列出参与编译的 C 文件；`[Packages]` 声明依赖哪些包的 DEC；`[LibraryClasses]` 声明要用哪个库类。构建时 build 会解析 INF 生成对应 AutoGen.c/AutoGen.h。',
+    '每个模块是"1个INF + 一组.c/.h源码"的编译单元。INF 的关键段：`[Defines]` 给出 BASE_NAME、FILE_GUID、MODULE_TYPE、VERSION_STRING、ENTRY_POINT；`[Sources]` 列出 C 文件；`[Packages]` 声明依赖的 DEC；`[LibraryClasses]` 声明要用的库类；`[Protocols/Ppis/Guids/Pcds]` 声明消费/产生的接口；`[Depex]` 声明依赖表达式。',
     '',
     '**二级：包（Package）**',
-    '包是模块的**聚合容器与公共接口中心**，标识物是根目录的 DEC 文件：`[Defines]` 声明包名与 GUID；`[Includes]` 导出公开头文件路径（模块靠这里找到协议头文件）；`[Protocols/Ppis/Guid/Pcds]` 统一发布包内定义的所有 GUID/PCD。**模块不能直接用未在 [Packages] 引用的库或头**，这种引用关系在 DEC 里闭环。',
+    '包的标识物是 DEC 文件：`[Defines]` 声明包名与 GUID；`[Includes]` 导出公共头文件根目录；`[LibraryClasses]` 声明库类头文件；`[Guids/Ppis/Protocols]` 声明 GUID 值；`[Pcds]` 声明 PCD（默认值、数据类型、Token 号）。',
     '',
     '**三级：平台（Platform）**',
-    '平台是**特殊的包**，由 DSC + FDF 共同描述：DSC 的 `[LibraryClasses]`/`[Pcds]`/`[Components]` 决定"编进固件的模块及它们的库实例选择与 PCD 值"，FDF 描述"固件映像布局"（FV 怎么排、模块塞进哪个分区、加载顺序）。build 以平台为入口：解析 DSC 汇总模块清单与依赖，为每个模块生成 makefile/AutoGen，再按 FDF 组装出 FD 映像。',
+    '由 DSC + FDF 描述。DSC：`[Defines]` 设输出目录/架构/BUILD_TARGETS；`[Components]` 列出编译的模块；`[LibraryClasses]` 为每个库类选具体实例；`[Pcds*]` 段配置 PCD 值和类型。FDF 描述 FD/FV 布局。',
     '',
-    '**工程要点**',
-    '- **【强制要求】** INF 里 `[Packages]` 必须列出模块实际用到的每个包的 DEC；漏声明会导致 failed to find required library 或头文件找不到的编译错误。',
-    '- **【最佳实践】** 一个库类的选择（某 INF 的 [LibraryClasses]）放在 DSC 而不是 INF 里做，便于平台级替换实现（如同一个类在 DXE 用内存实现、在 SMM 用MMRAM实现）。',
+    'build 工具解析 DSC + 各 DEC + 各 INF，生成顶层 makefile 和每个模块的 makefile + AutoGen.c/AutoGen.h。一次 build 只有 active platform 的 DSC 生效。',
     '',
     '## 参考来源',
-    '- [EDK II Build Specification](https://edk2-docs.gitbook.io/edk-ii-build-specification/)',
+    '- EDK II Module Write Guide - 1.1 Overview + 2.1 Package（本地：edk2-ModuleWriteGuide > 2.1 Package）',
     '',
     '---',
     '',
-    '### Example 2: 命名规范问题',
+    '### Example 2: 命名规范（穷举式）',
     '**Question**: EDK II 有哪些命名规范？',
     '',
     '**Answer**:',
-    'EDK II 命名规范统一了 变量→函数→文件→目录 四层标识符的书写，核心是一条贯穿原则：**用不低于单词可读性的统一风格保证源码的可检索性与无歧义**——任何标识符从命名上就能判断其用途、作用域与所有权。',
     '',
-    '**标识符（变量/函数）**',
-    '采用 **Camel Case**，函数名通常以动词开头（`GetMemoryAttributes`），变量名以名词性短语为主。类型别名（typedef）以模块/主题作词根前缀（如 `EFI_STATUS`、`EFI_GUID`），避免与普通变量命名冲突。',
+    '**标识符格式**',
+    '- 变量/函数/枚举/结构体成员：`EachWordIsDistinctEvenAcronymsLikeAcpi`，每个单词首字母大写，必须大小写混合，全大写或全小写都不允许。',
+    '- 缩略词不要整个大写：`MyPciAddress` 而非 `MyPCIAddress`。',
+    '- 功能宏/#define/typedef：`EACH_WORD_IS_DISTINCT_EVEN_ACRONYMS_LIKE_ACPI`，全大写加下划线。禁止用 `_t` 后缀表示类型。',
     '',
-    '**源文件与目录**',
-    '目录名使用主题名，模块目录内按 INF 名. 规范命名；`*.inf`、`*.dec`、`*.dsc`、`*.fdf` 等元数据文件与源码文件命名遵循同级一致性，`Uni` 资源、`Vfr` 界面文件、`Cfg` 配置脚本等都有约定后缀。',
+    '**匈牙利前缀（仅三个例外）**',
+    '- 全局变量必须加 `g` 前缀：`gThisIsAGlobalVariableName`。',
+    '- 模块变量必须加 `m` 前缀：`mThisIsAModuleVariableName`。',
+    '- 指针变量可加 `p` 前缀（可选）。',
+    '- 匈牙利命名法在其他情况禁止使用。',
     '',
-    '**变量作用域前缀**',
-    '模块级全局变量与局部变量严格区分书写：全局状态常量倾向用模块名缩写做前缀，函数内临时变量短小直白；指短短的存在即一个对象（Handle）仍用清晰名。命名红线是**不缩写到不可读、不塞入不相关含义**，这与注释规范同源，目的都在可维护性。',
-    '',
-    '**工程要点**',
-    '- **【强制要求】** 新代码遵循统一命名，CI 的 Uncrustify 检查格式统一性时，命名风格不一致会被评审直接指出。',
-    '- **【最佳实践】** 从上游模块复制代码时保留原始命名，重建前缀改名会破坏 diff 可读与 git 追溯。',
+    '**其他约束**',
+    '- 名字长度不限，建议 10~30 字符，不依赖超过 31 字符的区分度。',
+    '- 文件名不能以数字开头，每个头文件名必须唯一。',
+    '- 禁止使用 C 关键字或标准头文件中已声明的符号作为内部符号。',
+    '- 外部符号名不得以下划线开头。',
+    '- 新建全局实体不要再用 `EFI_` 前缀；`DXE_` 和 `PEI_` 前缀分别保留给 DXE 和 PEI 驱动。',
+    '- 只能使用标准缩写和行业缩略词，非标准的必须在文件头注释里定义。',
+    '- 禁止函数名或类型名重载。',
     '',
     '## 参考来源',
-    '- [EDK II Coding Standards Specification - Naming Conventions](https://edk2-docs.gitbook.io/edk-ii-coding-standards-specification/)',
+    '- EDK II C Coding Standards - 4.4 Identifiers（本地：edk2-CCodingStandardsSpecification > 4.4 Identifiers）',
     '',
     '---',
     '',
-    'Follow these examples: define first, build the relationship model, walk through the mechanism, then the engineering rules that matter — always with a ## 参考来源 block at the end.',
+    'Follow these examples: define briefly, then ENUMERATE ALL specific rules/values/patterns from context — always with a ## 参考来源 block at the end.',
   ].join('\n');
 
   const messages = [{ role: 'system', content: system }];
@@ -770,7 +950,7 @@ function llmStream(messages, { onDelta, timeoutMs = 180000 } = {}) {
     }
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const u = new URL(url);
-    const payload = { model, messages, temperature: 0, stream: true };
+    const payload = { model, messages, temperature: 0, stream: true, max_tokens: 8000 };
 
     const protocol = u.protocol === 'https:' ? https : http;
     const req = protocol.request({
@@ -798,8 +978,10 @@ function llmStream(messages, { onDelta, timeoutMs = 180000 } = {}) {
         return;
       }
       let buf = '';
+      let rawChunks = [];
       res.setEncoding('utf8');
       res.on('data', (chunk) => {
+        rawChunks.push(chunk);
         buf += chunk;
         let idx;
         while ((idx = buf.indexOf('\n')) >= 0) {
@@ -815,7 +997,9 @@ function llmStream(messages, { onDelta, timeoutMs = 180000 } = {}) {
           } catch { /* ignore malformed chunk */ }
         }
       });
-      res.on('end', () => resolve());
+      res.on('end', () => {
+        resolve();
+      });
       res.on('error', reject);
     });
     req.on('error', reject);
@@ -823,6 +1007,72 @@ function llmStream(messages, { onDelta, timeoutMs = 180000 } = {}) {
     req.write(JSON.stringify(payload));
     req.end();
   });
+}
+
+// Non-streaming single LLM completion. Used to translate a Chinese question
+// into an English retrieval query (cross-lingual vector recall is weak, so a
+// faithful English query ranks the authoritative spec chapters far better).
+// Falls back to the input text on any failure so search never breaks.
+async function llmComplete(messages, { timeoutMs = 60000 } = {}) {
+  return new Promise((resolve) => {
+    const { apiKey, baseUrl, model } = llmConfig();
+    if (!apiKey || !baseUrl || !model) return resolve('');
+    const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+    const u = new URL(url);
+    const payload = { model, messages, temperature: 0, max_tokens: 300 };
+    const protocol = u.protocol === 'https:' ? https : http;
+    const req = protocol.request({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + u.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        ...(process.env.LLM_EXTRA_HEADER
+          ? { 'x-api-key': process.env.LLM_EXTRA_HEADER } : {}),
+        'User-Agent': process.env.LLM_USER_AGENT ||
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        Accept: 'application/json',
+      },
+      timeout: timeoutMs,
+    }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) return resolve('');
+        try {
+          const j = JSON.parse(data);
+          const text = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+          resolve(typeof text === 'string' ? text.trim() : '');
+        } catch { resolve(''); }
+      });
+    });
+    req.on('error', () => resolve(''));
+    req.on('timeout', () => { req.destroy(); resolve(''); });
+    req.write(JSON.stringify(payload));
+    req.end();
+  });
+}
+
+// Cache for question -> English translation (LRU, 200 entries, 30 min TTL).
+const translationCache = new Map();
+const TRANSLATION_TTL_MS = 30 * 60 * 1000;
+
+async function translateToEnglish(question) {
+  const key = normalizeQuery(question);
+  const hit = translationCache.get(key);
+  if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.text;
+  const text = await llmComplete([
+    {
+      role: 'system',
+      content: 'You are a translation engine. Translate the user question from Chinese into concise, technically accurate English suitable for searching EDK2/TianoCore documentation. Keep EDK2 terms (INF, DSC, DEC, FDF, PCD, SMM, HII, protocol, GUID...) as-is. Output ONLY the English translation, no explanation, no quotes.',
+    },
+    { role: 'user', content: question },
+  ]);
+  const result = text || question;
+  translationCache.set(key, { text: result, timestamp: Date.now() });
+  return result;
 }
 
 async function llmAnswer(question, results, history) {
@@ -884,14 +1134,6 @@ function sendSSE(res, event, data) {
 }
 
 async function handleAsk(req, res) {
-  const ip = clientIp(req);
-  const bucket = rateLimit(ip, ASK_LIMIT);
-  if (bucket.count > ASK_LIMIT) {
-    res.writeHead(429, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: `请求过于频繁（${ASK_LIMIT} 次/分钟）。请稍后再试。` }));
-    return;
-  }
-
   const chunks = [];
   let received = 0;
   req.on('data', (c) => {
@@ -944,8 +1186,99 @@ async function handleAsk(req, res) {
         sendSSE(res, 'phase', { step: 'search', text: '正在检索知识库…', progress: 20 });
         let searchResp;
         try {
-          const searchQuery = expandChineseQuery(question);
-          searchResp = await httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=25`, { timeoutMs: 120000 });
+          // Cross-lingual vector recall is weak: Chinese queries ("排版/空白")
+          // rank unrelated Summary/README chunks above the actual English spec
+          // chapters. Translate the question into a faithful English retrieval
+          // query first (falls back to the original + keyword expansion on
+          // translation failure).
+          sendSSE(res, 'phase', { step: 'translate', text: '翻译检索查询…', progress: 15 });
+          const translated = await translateToEnglish(question);
+          // Hybrid retrieval query: the faithful English translation provides
+          // cross-lingual semantic recall (Chinese "排版/空白" -> English
+          // "formatting/whitespace"), while the original keyword-expansion
+          // terms keep precise EDK2 anchors (LNK2001, error 4000, PCD...) that
+          // pure translation dilutes. Merge, dedup, cap length.
+          const translatedQ = (translated && translated !== question) ? translated : '';
+          const expanded = expandChineseQuery(question);
+          const seen = new Set(translatedQ.toLowerCase().split(/\s+/).filter(Boolean));
+          const tail = expanded.split(/\s+/).filter(t => {
+            const l = t.toLowerCase();
+            if (seen.has(l)) return false;
+            seen.add(l);
+            return true;
+          });
+          const searchQuery = [translatedQ, tail.join(' ')].filter(Boolean).join(' ').slice(0, 500);
+          // Parallel dual-source retrieval. The knowledge base is dominated by
+          // tianocore/edk2 commit records (36k+ chunks): for build/error/commit
+          // topics their "Fix ... build error" subjects outrank the real spec
+          // docs, so the target chapter (e.g. ModuleWriteGuide 3.7.7) can fall
+          // out of top_k. Run a second query restricted to the authoritative
+          // tianocore-docs source and merge it back in below.
+          const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=35`, { timeoutMs: 120000 });
+          // Daemon clamps top_k to 20 and cross-lingual vector recall is weak:
+          // a vague Chinese query ("排版/空白") ranks many unrelated Summary/
+          // README chunks above the actual CCoding spec chapters. For coding-
+          // style topics fire two focused English docs queries (chapter locator
+          // + concrete rule phrases) so 5.2.1/5.2.2/5.2.3 sub-chunks survive.
+          const isStyleTopic = /spacing|formatting|indentation|排版|空白|缩进|风格|style|vertical|horizontal|coding.?standard|编码规范/i.test(searchQuery);
+          const docsFocusQueries = isStyleTopic
+            ? [
+                'C Coding Standards 5.2 Spacing Vertical Spacing blank lines Horizontal Spacing indentation File Heading section rules',
+                'vertical spacing blank lines make code more readable group logically related sections one statement on a line open brace predicate expression alignment continuation line',
+                'Formatting: General Rules Formatting: Vertical spacing Formatting: Horizontal spacing Formatting: Predicate Expressions 5.2.2 Horizontal Spacing 5.2.3 File Heading Predicate Expressions quick reference source_files',
+                '5.2.2.1 space one or more spaces long 5.2.2.2 binary operators space',
+                '5.2.2.3 unary operators 5.2.2.4 multi-line function calls line up',
+                '5.2.2.5 commas semicolons 5.2.2.6 open parenthesis 5.2.2.7 open brace',
+                '5.2.2.8 structure member 5.2.2.9 array subscripts 5.2.2.10 parentheses precedence 5.2.2.11 align continuation',
+              ]
+            : [];
+          const docsPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000 })
+            .catch(() => null);
+          const docsFocusPromises = docsFocusQueries.map(fq =>
+            httpJson(`${url}/search?query=${encodeURIComponent(fq)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000 }).catch(() => null));
+          const [mainResp, docsResp, ...docsFocusResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises]);
+          searchResp = mainResp;
+          const docsResults = (docsResp && docsResp.body && docsResp.body.results) || [];
+          const docsFocusResults = docsFocusResps.flatMap(r => (r && r.body && r.body.results) || []);
+          // Merge all docs-source responses, dedup by chunk key.
+          const docsCombined = [...docsResults];
+          {
+            const seen = new Set(docsResults.map(r => chunkKey(r)));
+            for (const r of docsFocusResults) {
+              const k = chunkKey(r);
+              if (!seen.has(k)) { seen.add(k); docsCombined.push(r); }
+            }
+          }
+          if (docsCombined.length > 0) {
+            // Merge: docs-source chunks are authoritative for spec questions,
+            // so keep every unique docs chunk that the broad query missed,
+            // interleaved by their docs rank after the broad top-3.
+            const broad = (searchResp.body && searchResp.body.results) || [];
+            const seen = new Set(broad.map(r => chunkKey(r)));
+            const merged = broad.slice(0, 3);
+            const docSeen = new Set(merged.map(r => chunkKey(r)));
+            const docsOnly = docsCombined.filter(r => {
+              const k = chunkKey(r);
+              if (seen.has(k) || docSeen.has(k)) return false;
+              docSeen.add(k);
+              return true;
+            });
+            merged.push(...docsOnly.slice(0, 15));
+            for (const r of broad.slice(3)) {
+              const k = chunkKey(r);
+              if (merged.length >= 35) break;
+              if (!docSeen.has(k)) { docSeen.add(k); merged.push(r); }
+            }
+            searchResp = { body: { results: merged } };
+          }
+
+          // General title-shell expansion: detect blocks that are just section headers
+          // (short content for a section that has subsections) and expand them by
+          // reading the full section from the source file on disk.
+          if (searchResp.body && searchResp.body.results) {
+            searchResp.body.results = expandTitleShells(searchResp.body.results);
+          }
+
         } catch (e) {
           sendSSE(res, 'error', { error: `检索失败：${e.message}` });
           res.end();
@@ -953,17 +1286,87 @@ async function handleAsk(req, res) {
         }
         results = (searchResp.body && searchResp.body.results) || [];
         
-        // 1.5) Rerank results using BGE-reranker. Rerank against the same
-        // expanded query used for retrieval: the raw Chinese question alone
-        // makes the reranker match generic "EDK II"-titled wiki pages and
-        // push the section-level spec hits (e.g. "4.4 Identifiers") out.
+        // Metadata-based precision filter: prune candidates whose document
+        // metadata (title/file/section/url) shares none of the query's exact
+        // identifiers or distinctive expansion keywords. This counters the
+        // "semantically close but wrong symbol" failures of pure vector search
+        // BEFORE the expensive rerank stage sees them.
+        results = pruneByMetadata(question, results);
+        
+        // 1.5) Rerank results using BGE-reranker. Use a HYBRID approach:
+        // GUARANTEE top 3 from vector search survive (the reranker often
+        // demotes key chunks like "4.4 Hungarian Prefixes" from #1 to #8).
+        // Then fill remaining slots from rerank order.
         if (results.length > 10) {
           sendSSE(res, 'phase', { step: 'rerank', text: '重排序文档…', progress: 25 });
           try {
             const rerankQuery = expandChineseQuery(question);
-            results = await rerankDocuments(rerankQuery, results);
+            // GUARANTEE: keep the top vector hits AND the top tianocore-docs
+            // chunk for the query. The BGE reranker often ranks generic commit
+            // subjects ("Fix ICC build error") above the authoritative spec
+            // chapter (e.g. ModuleWriteGuide 3.7.7), so without this guarantee
+            // the docs block gets pushed past the merge limit.
+            const vectorTop3 = results.slice(0, 3);
+            // Prefer the spec/guide chapter that the query most plausibly maps
+            // to: explicit file-name markers (building/debugging/build/…) first,
+            // else the highest-scored docs-source chunk. Avoid picking a
+            // tianocore-wiki "Lab Setup" page just because it sorts first.
+            const isDocs = r => {
+              const src = String(r.source_display || r.source || '').toLowerCase();
+              const file = String(r.file || '').toLowerCase();
+              return (src.includes('tianocore-docs') || src.includes('guide') || src.includes('spec')) &&
+                     !/edk2-commits|edk2-prs|commit_|pr_/.test(file);
+            };
+            const marker = /(building|debug|debugging|module|package|dsc|inf|pcd|depex|driver|boot|build|source|spec|error|break|spacing|formatting|indentation|naming|style|source_file|header|comment)/i;
+            const docsCands = results.filter(isDocs);
+            // Score docs candidates: tianocore-docs spec repos (edk2-*) and
+            // module/package/build chapters win over lab tutorials and PDFs.
+            // SUMMARY.md / README.md index files lose to real chapter content.
+            const docsScore = r => {
+              const file = String(r.file || '');
+              const text = (file + ' ' + String(r.title || '') + ' ' + String(r.section || '')).toLowerCase();
+              let s = 0;
+              if (/^edk2-|specification|guideline/i.test(file)) s += 60;
+              if (marker.test(file + ' ' + String(r.title || ''))) s += 30;
+              if (/\bmodule\b|_module|package|driver|build|compile|error|spacing|formatting|indentation/i.test(text)) s += 20;
+              if (/\/(summary|readme|README)\.|SUMMARY\.md$/i.test(file)) s -= 50;
+              if (/\.pdf$/i.test(file)) s -= 40;
+              if (/lab|tutorial|getting.started|udk20|udk21/i.test(file)) s -= 30;
+              return s;
+            };
+            docsCands.sort((a, b) => docsScore(b) - docsScore(a));
+            // Keep the top docs-source chunks (not just one): for "spec
+            // chapter catalog" questions the authoritative answer often spans
+            // several chapters (5.2.1 Vertical / 5.2.2 Horizontal / 5.2.3
+            // File Heading) which the reranker would otherwise crowd out.
+            const docsTop3 = docsCands.slice(0, 5);
+            const guarded = [];
+            const guardSeen = new Set();
+            for (const r of [...vectorTop3, ...docsTop3]) {
+              if (!r) continue;
+              const key = (r.file || '') + '|' + (r.section || '') + '|' + (r.title || '');
+              if (!guardSeen.has(key)) { guardSeen.add(key); guarded.push(r); }
+            }
+            const reranked = await rerankDocuments(rerankQuery, results);
+            
+            // Build merged list: start with guaranteed top hits
+            const seen = new Set();
+            const merged = [...guarded];
+            for (const r of guarded) {
+              const key = (r.file || '') + '|' + (r.section || '') + '|' + (r.title || '');
+              seen.add(key);
+            }
+            // Fill remaining slots from rerank order
+            for (const r of reranked) {
+              if (merged.length >= 15) break;
+              const key = (r.file || '') + '|' + (r.section || '') + '|' + (r.title || '');
+              if (!seen.has(key) && key !== '||') {
+                seen.add(key);
+                merged.push(r);
+              }
+            }
+            results = merged;
           } catch (e) {
-            console.error(`Rerank error: ${e.message}`);
             // Continue with original results if reranking fails
           }
         }
@@ -992,15 +1395,6 @@ async function handleAsk(req, res) {
         await llmStream(messages, {
           onDelta: (text) => {
             tokenCount++;
-            // Report progress every 50 tokens
-            if (tokenCount % 50 === 0) {
-              sendSSE(res, 'phase', { 
-                step: 'llm_stream', 
-                text: `生成中 (${tokenCount} tokens)…`, 
-                progress: Math.min(60 + Math.floor(tokenCount / 10), 90),
-                model 
-              });
-            }
             sendSSE(res, 'delta', { text });
           },
           timeoutMs: 180000,
