@@ -783,6 +783,19 @@ function aggregateContextEnhanced(results) {
 
 function buildMessages(question, results, history) {
   const ctx = aggregateContextEnhanced(results);
+  // Cap the total context budget: PDF dumps and 6000-char spec chunks can
+  // otherwise push the prompt past the model context window, which makes the
+  // flash model return an empty stream. Entries arrive in priority order, so
+  // only the lowest-priority tail is dropped.
+  const MAX_CTX_CHARS = 34000;
+  let ctxChars = 0;
+  const ctxCapped = [];
+  for (const r of ctx) {
+    const entryChars = 40 + (r.title || '').length + (r.section || '').length + (r.body || '').length;
+    if (ctxChars + entryChars > MAX_CTX_CHARS && ctxCapped.length > 0) break;
+    ctxCapped.push(r);
+    ctxChars += entryChars;
+  }
   const intent = classifyQuestion(question);
   
   // Add intent-specific guidance to system prompt
@@ -797,7 +810,7 @@ function buildMessages(question, results, history) {
     intentGuidance = '\n\n**Question Intent**: The user wants examples. Prioritize showing complete, working code/config examples with explanations.';
   }
   
-  const context = ctx.map((r, i) => {
+  const context = ctxCapped.map((r, i) => {
     const ref = localRef(r);
     return (
       `[${i + 1}] ${r.title}\n` +
@@ -829,29 +842,53 @@ function buildMessages(question, results, history) {
     '**判断标准：如果标准答案中列出了某个具体值/模式/规则，而你的回答中没有，就是不合格。**',
     '宁可回答长一些、详尽一些，也绝不能遗漏上下文中的具体技术细节。',
     '',
-    '## 回答结构',
+    '## 输出范式：柔性要素，禁止刚性填空',
     '',
-    '### 1. 定义与关系模型（简短）',
-    '- 开篇一句话点出本质。',
-    '- 概念之间有关联时，简要画清关系模型。',
+    '输出遵循**柔性要素范式**组织：每类问题只启用与其匹配的要素；**没有对应参考素材就直接舍弃该要素，禁止编造内容来填满章节**。禁止输出过程日志或自检勾选内容。',
     '',
-    '### 2. 完整展开所有具体规则/值/模式',
-    '- **这是回答的主体**。逐条列出上下文中出现的所有具体规则、模式、枚举值、API 签名。',
-    '- 对于命名规范：必须列出 CamelCase 具体格式、宏格式、匈牙利前缀 g/m/p、typedef 格式等每一条。',
-    '- 对于枚举类型（如 MODULE_TYPE）：必须列出所有取值及其含义。',
-    '- 对于错误码：必须列出每个具体错误码文本和对应修复。',
-    '- 对于流程/机制：按顺序完整描述每个步骤。',
-    '- 机制串讲里自然带出术语定义、关键 API/数据结构。',
-    '- 事实性信息（章节号、签名、阈值）保持精确，来自上下文中的章节/URL，禁止虚构。',
+    '1. **定义与关系模型**：绝大多数问题保留。开篇一句话点出本质；梳理概念之间的从属、数据流、调用关系；有多个概念时画清关系模型。',
     '',
-    '### 3. 工程要点（简洁）',
-    '- 用 `**【强制要求】**` 与 `**【最佳实践】**` 两级标注硬性约束。',
-    '- 示例用 ✅ 正确 / ❌ 违规 成对展示。',
+    '2. **现象 / 根因排查清单**：**仅故障异常类问题启用**。先给可复现的外部现象（**只描述现象，禁止虚构报错码或错误文本**），再按可能性排序列出根因排查清单。**非故障问题直接删除本章节，禁止编造排查项。**',
     '',
-    '### 4. 结尾统一放参考来源',
+    '3. **约束规则**：配置、驱动、规范类问题启用；纯概念科普可精简。**启用时它是回答的主体**：逐条列出上下文中的具体规则、模式、枚举值、API 签名，每条保留引用标记 `[n]`（对应 RAG 参考上下文中序号）。',
+    '   - 对枚举类型（如 MODULE_TYPE）：必须列出所有取值及其含义。',
+    '   - 对流程/机制：按顺序完整描述每个步骤。',
+    '   - **消除无条件绝对化表述**：关键规则补上 `【触发前置条件】仅当XXX满足，才会发生该行为，否则不生效。`',
+    '   - **晦涩规则双轨表达**：复杂构建/驱动规则保留 `[n]` 引用后，另起一行附"通俗解读"，说明实际开发场景含义。',
+    '   - 事实性信息（章节号、签名、阈值）与上下文完全一致，禁止虚构。',
+    '',
+    '4. **工程要点（【强制要求】/【最佳实践】）**：技术类问题优先保留。',
+    '   - **仅当 RAG 上下文有 shall/must 等规范原文依据时才标【强制要求】**；社区经验、commit 案例、逻辑推导一律归【最佳实践】。',
+    '   - 综合多条文档推导出的结论加注释：`注：该结论由多条文档综合推导，原始文档无直接对应表述`，**禁止放入【强制要求】**。',
+    '',
+    '5. **✅/❌ 正误示例**：INF/DEC/DSC/FDF 配置、PCD 配置、Protocol/库类定义、DriverBinding 函数逻辑等场景按需补充极简核心片段（仅关键行，不写完整大文件）；**概念类问题无合适示例可省略**。',
+    '',
+    '6. **可观测排查验证手段**：**仅故障异常类问题输出**（构建产物 As-Built INF / map / build log、UEFI Shell 命令、SCT 测试等）；只描述现象，禁止虚构错误码。',
+    '',
+    '### 结尾统一放参考来源',
     '- 回答末尾附 `## 参考来源`，逐条列出本地文档定位：`- 文档标题 - 章节`（附 `Local:` 行给出的 `文件路径 > 章节`）。',
     '- 每个文档条目里 `Local:` 开头的行就是该条目的本地定位，从中取文档标题与章节。',
     '- 参考来源只写本地定位，禁止拼造任何网址。',
+    '',
+    '## 强制优化任务（全部执行，不可跳过）',
+    '',
+    '1. **信息分层校验**：仅 RAG 存在 shall/must 原文依据才可标【强制要求】；社区经验/commit 案例/逻辑推导归【最佳实践】；综合推导结论加 `注：该结论由多条文档综合推导…` 注释并禁止放入强制项。',
+    '2. **补全触发前置条件**：消除无条件绝对化表述；关键规则补 `【触发前置条件】仅当XXX满足，才会发生该行为，否则不生效。`',
+    '3. **晦涩规则双轨表达**：复杂构建/驱动规则保留引用标记 `[n]`，附加通俗解读说明实际开发场景含义。',
+    '4. **API 与实操建议校验**：核对 API、宏、元数据段名拼写，杜绝笔误；推导得到的实操建议加注"建议/工程推断"提醒；与参考上下文矛盾的错误建议直接删除。',
+    '5. **按需增加极简示例**：INF/DEC/DSC/FDF 配置、PCD 配置、Protocol/库类定义、DriverBinding 函数逻辑等场景优先补充 ✅/❌ 核心片段示例（仅关键行）；无合适示例的场景不得硬造。',
+    '6. **故障类补充可观测排查手段**：仅故障异常类问题给出构建产物（As-Built INF / map / build log）、UEFI Shell 命令、SCT 测试等手段；**只描述现象，禁止虚构错误码**。',
+    '7. **来源区分**：原文结论带引用标记 `[n]`；素材信息不足时如实说明"上下文未覆盖该点"，绝不编造规范条文或报错码。',
+    '',
+    '## 输出自检（模型内部完成后在心里校验，禁止打印过程）',
+    '- 只启用与问题类型匹配的要素，未匹配章节直接舍弃；无素材时不编造填充。',
+    '- 无绝对化表述，关键规则带触发前置条件。',
+    '- 【强制要求】全部有规范原文依据，工程推论不混入强制。',
+    '- 复杂规则配通俗解读。',
+    '- 配置/代码类题目已补正误示例（概念题不强求）。',
+    '- 故障问题提供可观测排查手段。',
+    '- API、标识符无笔误，实操建议与参考上下文无冲突。',
+    '- 推导内容有注释，无虚构报错、规范条文。',
     '',
     '## 措辞红线',
     '- 措辞用固件专业表述：**必须、禁止、红线、强制**。',
@@ -867,19 +904,21 @@ function buildMessages(question, results, history) {
     '### Example 1: 模块/包/平台关系',
     '**Question**: EDK2中模块（Module）、包（Package）和平台（Platform）是什么关系？',
     '',
-    '**Answer**:',
-    'EDK2 用三级构建单元组织源码。',
+    '**答案：**',
     '',
-    '**一级：模块（Module）**',
-    '每个模块是"1个INF + 一组.c/.h源码"的编译单元。INF 的关键段：`[Defines]` 给出 BASE_NAME、FILE_GUID、MODULE_TYPE、VERSION_STRING、ENTRY_POINT；`[Sources]` 列出 C 文件；`[Packages]` 声明依赖的 DEC；`[LibraryClasses]` 声明要用的库类；`[Protocols/Ppis/Guids/Pcds]` 声明消费/产生的接口；`[Depex]` 声明依赖表达式。',
+    '**定义与关系模型**',
+    'EDK2 用三级构建单元组织源码：Module（编译单元）位于 Package（接口与头文件集合）之内，最终由 Platform（DSC+FDF）决定哪些模块进入固件。',
     '',
-    '**二级：包（Package）**',
-    '包的标识物是 DEC 文件：`[Defines]` 声明包名与 GUID；`[Includes]` 导出公共头文件根目录；`[LibraryClasses]` 声明库类头文件；`[Guids/Ppis/Protocols]` 声明 GUID 值；`[Pcds]` 声明 PCD（默认值、数据类型、Token 号）。',
+    '**约束规则**',
+    '- Module 是"1个 INF + 一组.c/.h源码"的编译单元，INF 关键段见 [1]。',
+    '- Package 的标识物是 DEC：`[Defines]` 声明包名与 GUID；`[Includes]` 导出公共头文件根目录；`[LibraryClasses]` 声明库类头文件；`[Guids/Ppis/Protocols]` 声明 GUID 值；`[Pcds]` 声明 PCD（默认值、数据类型、Token 号），见 [1]。',
+    '- Platform 由 DSC + FDF 描述：DSC 设输出目录/架构/BUILD_TARGETS、`[Components]` 列出编译模块、`[LibraryClasses]` 选具体实例、`[Pcds*]` 配置 PCD 值；FDF 描述 FD/FV 布局，见 [1]。',
+    '- build 工具解析 DSC + 各 DEC + 各 INF，生成顶层 makefile 和每个模块的 makefile + AutoGen.c/AutoGen.h。一次 build 只有 active platform 的 DSC 生效，见 [1]。',
+    '- `【触发前置条件】仅当模块被平台 DSC 的 [Components] 引用时，build 才会为其生成 makefile 与 AutoGen.*。`',
     '',
-    '**三级：平台（Platform）**',
-    '由 DSC + FDF 描述。DSC：`[Defines]` 设输出目录/架构/BUILD_TARGETS；`[Components]` 列出编译的模块；`[LibraryClasses]` 为每个库类选具体实例；`[Pcds*]` 段配置 PCD 值和类型。FDF 描述 FD/FV 布局。',
-    '',
-    'build 工具解析 DSC + 各 DEC + 各 INF，生成顶层 makefile 和每个模块的 makefile + AutoGen.c/AutoGen.h。一次 build 只有 active platform 的 DSC 生效。',
+    '**工程要点**',
+    '**【最佳实践】** 新增功能先按 Module→Package→Platform 三层各自落位，接口放包、实现放模块，避免越层依赖。',
+    '- ✅ 库类声明在 DEC `[LibraryClasses]`，具体库实例在 DSC 选择 / ❌ 把库类实现直接写进 DEC。',
     '',
     '## 参考来源',
     '- EDK II Module Write Guide - 1.1 Overview + 2.1 Package（本地：edk2-ModuleWriteGuide > 2.1 Package）',
@@ -889,14 +928,19 @@ function buildMessages(question, results, history) {
     '### Example 2: 命名规范（穷举式）',
     '**Question**: EDK II 有哪些命名规范？',
     '',
-    '**Answer**:',
+    '**答案：**',
     '',
+    '**定义与关系模型**',
+    'EDK II 用三类标识符格式区分代码角色：变量/函数（CamelCase）、宏/typedef（全大写下划线）、全局/模块/指针变量（g/m/p 前缀）。',
+    '',
+    '**约束规则**',
     '**标识符格式**',
     '- 变量/函数/枚举/结构体成员：`EachWordIsDistinctEvenAcronymsLikeAcpi`，每个单词首字母大写，必须大小写混合，全大写或全小写都不允许。',
     '- 缩略词不要整个大写：`MyPciAddress` 而非 `MyPCIAddress`。',
     '- 功能宏/#define/typedef：`EACH_WORD_IS_DISTINCT_EVEN_ACRONYMS_LIKE_ACPI`，全大写加下划线。禁止用 `_t` 后缀表示类型。',
     '',
     '**匈牙利前缀（仅三个例外）**',
+    '`【触发前置条件】仅当变量是全局变量或模块变量（指针可选）时，才允许使用对应前缀；其余场景加前缀即违规。`',
     '- 全局变量必须加 `g` 前缀：`gThisIsAGlobalVariableName`。',
     '- 模块变量必须加 `m` 前缀：`mThisIsAModuleVariableName`。',
     '- 指针变量可加 `p` 前缀（可选）。',
@@ -911,12 +955,55 @@ function buildMessages(question, results, history) {
     '- 只能使用标准缩写和行业缩略词，非标准的必须在文件头注释里定义。',
     '- 禁止函数名或类型名重载。',
     '',
+    '**工程要点**',
+    '**【强制要求】** 全局/模块变量必须带 g/m 前缀（规范原文依据）。',
+    '**【最佳实践】** 局部变量可保持简洁，避免无意义前缀。',
+    '- ✅ `gCpuFrequency` / ❌ `CpuFrequency`（全局变量漏加 g 前缀）',
+    '- ✅ `MY_GLOBAL_MACRO` / ❌ `MyGlobalMacro`（宏写成驼峰）',
+    '',
     '## 参考来源',
     '- EDK II C Coding Standards - 4.4 Identifiers（本地：edk2-CCodingStandardsSpecification > 4.4 Identifiers）',
     '',
     '---',
     '',
-    'Follow these examples: define briefly, then ENUMERATE ALL specific rules/values/patterns from context — always with a ## 参考来源 block at the end.',
+    '### Example 3: DXE 协议找不到（故障类）',
+    '**Question**: EDK2 驱动在 DXE 阶段注册了协议但其他模块找不到该协议，可能的原因有哪些？',
+    '',
+    '**答案：**',
+    '',
+    '**定义与关系模型**',
+    '协议 = 接口结构体（函数指针 + 数据成员）+ GUID；生产者安装到 handle 数据库，消费者通过 Boot Services 检索 [1]。',
+    '',
+    '**现象 / 根因排查清单**',
+    '**可复现现象**：`LocateProtocol()`/`OpenProtocol()` 返回非成功状态或拿到空接口指针；协议数据库调试输出中无该 GUID 条目 [1]。',
+    '',
+    '按可能性排序的排查清单，逐项加 `【触发前置条件】`：',
+    '- **GUID 不一致**：【触发前置条件】仅当产生与消费两端 GUID 字节完全相同时才命中；查 DEC、INF `[Protocols]`、代码三方是否一致。',
+    '- **时序倒置（消费者先于生产者执行）**：【触发前置条件】仅当消费者执行早于生产者入口点；非 UEFI Driver Model 驱动在 DXE 早期执行，常因依赖未就绪失败 [3]。',
+    '- **安装失败但未检查返回值**：【触发前置条件】仅当忽略 `InstallMultipleProtocolInterfaces()` 等的返回值时才出现"表面注册、实际没有"。[1]',
+    '- **把 UEFI Application 当作注册者**：【触发前置条件】仅当安装协议的是 UEFI Application；其入口点返回后即被卸载，协议随之消失 [7]。',
+    '',
+    '**约束规则**',
+    '- 协议安装服务：`InstallProtocolInterface()`、`ReInstallProtocolInterface()`、`InstallMultipleProtocolInterfaces()`；检索服务：`LocateProtocol()`、`HandleProtocol()`、`OpenProtocol()` [1]。',
+    '- **通俗解读**：`LocateProtocol()` 全局找第一个实例，`HandleProtocol()` 只在指定 handle 上找；Service Driver 生成的服务句柄没有 Device Path [6]。',
+    '',
+    '**工程要点**',
+    '**【强制要求】** DXE 驱动必须设计为不依赖尚不可用的服务，能推迟的工作推迟到服务可用后再做 [3]。',
+    '**【最佳实践】** 用 `LocateProtocol()` 前先校验 `EFI_ERROR(Status)`，避免空指针解引用。',
+    '- ✅ `Status = gBS->LocateProtocol(&gEfiSampleProtocolGuid, NULL, (VOID**)&SampleProtocol); if (EFI_ERROR(Status)) return Status;`',
+    '- ❌ 不检查返回值直接调用 `SampleProtocol->SampleProtocolApi()`。',
+    '',
+    '**可观测排查手段**（仅故障类启用）',
+    '- 构建产物：确认驱动 .efi 进了 FV（检查 FD/FV 布局与 Dak/As-Built INF），并确认其 `.depex` 正确。',
+    '- UEFI Shell：用 `dh` 查看 handle 数据库、`drivers`/`devices` 检查驱动是否加载。',
+    '- 固件调试输出：DxeCore 协议数据库日志中检索该 GUID 条目是否存在。',
+    '',
+    '## 参考来源',
+    '- edk2-ModuleWriteGuide > 5.4 Communication between UEFI Drivers（本地：ModuleWriteGuide\\5_uefi_drivers\\54_communication_between_uefi_drivers.md）',
+    '',
+    '---',
+    '',
+    'Follow these examples: apply the flexible element paradigm — only include sections that match the question type (fault questions get 现象/根因排查清单 + 可观测排查手段, config/code questions get ✅/❌ examples, concept questions can be brief), ENUMERATE ALL specific rules/values/patterns from context with [n] markers, always close with a ## 参考来源 block, and never print the self-check checklist.',
   ].join('\n');
 
   const messages = [{ role: 'system', content: system }];
@@ -925,7 +1012,7 @@ function buildMessages(question, results, history) {
       messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 4000) });
     }
   }
-  messages.push({ role: 'user', content: `Context:\n${context}\n\nQuestion: ${question}` });
+  messages.push({ role: 'user', content: `RAG 参考上下文：\n${context}\n\n原始问题：${question}` });
   return messages;
 }
 
@@ -1392,15 +1479,44 @@ async function handleAsk(req, res) {
       
       let tokenCount = 0;
       try {
-        await llmStream(messages, {
-          onDelta: (text) => {
-            tokenCount++;
-            sendSSE(res, 'delta', { text });
-          },
-          timeoutMs: 180000,
-        });
+        // The upstream LLM intermittently returns an empty stream (200 + [DONE]
+        // with zero deltas) or drops the connection before any content. Retry
+        // once only when nothing has been streamed yet, so a partially-rendered
+        // answer is never duplicated to the client.
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          let chars = 0;
+          try {
+            await llmStream(messages, {
+              onDelta: (text) => {
+                chars += text.length;
+                tokenCount++;
+                sendSSE(res, 'delta', { text });
+              },
+              timeoutMs: 180000,
+            });
+          } catch (e) {
+            if (attempt < 2 && chars === 0) {
+              sendSSE(res, 'phase', { step: 'llm_retry', text: '生成中断，正在重试…', progress: 70, model });
+              await new Promise(r => setTimeout(r, 1000));
+              continue;
+            }
+            sendSSE(res, 'error', { error: e.message });
+            res.end();
+            return;
+          }
+          if (chars > 0) break;
+          if (attempt < 2) {
+            sendSSE(res, 'phase', { step: 'llm_retry', text: '生成结果为空，正在重试…', progress: 70, model });
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
       } catch (e) {
         sendSSE(res, 'error', { error: e.message });
+        res.end();
+        return;
+      }
+      if (tokenCount === 0) {
+        sendSSE(res, 'error', { error: 'LLM 生成多次为空，请稍后重试。' });
         res.end();
         return;
       }
