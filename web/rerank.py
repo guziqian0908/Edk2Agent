@@ -17,6 +17,13 @@ except ImportError:
     print(json.dumps({"error": "sentence_transformers not installed"}))
     sys.exit(1)
 
+try:
+    import torch
+    _device = os.environ.get("RERANK_DEVICE",
+                             "cuda" if torch.cuda.is_available() else "cpu")
+except Exception:
+    _device = os.environ.get("RERANK_DEVICE", "cpu")
+
 def main():
     if len(sys.argv) != 3:
         print(json.dumps({"error": "Usage: python rerank.py <query> <json_docs>"}))
@@ -40,7 +47,13 @@ def main():
         sys.exit(1)
     
     try:
-        model = CrossEncoder(str(model_path), max_length=512)
+        kwargs = dict(max_length=1024, device=_device, local_files_only=True)
+        if _device == "cuda":
+            try:
+                kwargs["precision"] = "float16"
+            except Exception:
+                pass
+        model = CrossEncoder(str(model_path), **kwargs)
     except Exception as e:
         print(json.dumps({"error": f"Failed to load model: {e}"}))
         sys.exit(1)
@@ -64,7 +77,8 @@ def main():
     
     # Rerank
     try:
-        scores = model.predict(pairs)
+        scores = model.predict(pairs, batch_size=32, convert_to_numpy=True,
+                               show_progress_bar=False)
     except Exception as e:
         print(json.dumps({"error": f"Reranking failed: {e}"}))
         sys.exit(1)

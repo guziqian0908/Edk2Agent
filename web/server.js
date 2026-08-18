@@ -24,6 +24,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 const WEB_DIR = __dirname;
@@ -38,6 +39,51 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function normalizeQuery(q) {
   return q.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+// ---- structured latency tracing (one JSON line per stage) ----
+function newTraceId() {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+// Deterministic short fingerprint of the (normalized) question, used to group
+// traces across requests of the same question. FNV-1a 32-bit, hex.
+function queryHash(q) {
+  const s = normalizeQuery(String(q || ''));
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+// Emit one JSON trace line per stage: {trace_id, stage, duration_ms,
+// timestamp, query_hash, status}. Any extra keys are appended as-is.
+// The line goes to stdout (visible in the terminal running server.js)
+// AND is appended to the shared trace.jsonl that the KB daemon also
+// writes to, so the full web->MCP chain can be inspected in one file.
+function traceFilePath() {
+  return process.env.EDK2_TRACE_FILE || path.join(DEFAULT_KB_DIR, 'trace.jsonl');
+}
+
+function emitTrace({ traceId, stage, durationMs, queryHash, status = 'ok', ...extra } = {}) {
+  const rec = {
+    trace_id: traceId,
+    stage,
+    duration_ms: Math.round(durationMs * 100) / 100,
+    timestamp: new Date().toISOString(),
+    query_hash: queryHash,
+    status,
+    ...extra,
+  };
+  const line = JSON.stringify(rec);
+  console.log(line);
+  try {
+    fs.appendFileSync(traceFilePath(), line + '\n');
+  } catch { /* never break the request because of trace logging */ }
 }
 
 function getCachedContext(query) {
@@ -148,6 +194,11 @@ function loadDotEnv() {
   }
 }
 loadDotEnv();
+
+// ---- LLM generation budget (env-tunable; defaults keep exhaustive answers) ----
+const LLM_MAX_TOKENS = parseInt(process.env.LLM_MAX_TOKENS || '8000', 10);
+const LLM_RETRY_MAX_TOKENS = parseInt(process.env.LLM_RETRY_MAX_TOKENS || '3000', 10);
+const LLM_STREAM_TIMEOUT_MS = parseInt(process.env.LLM_STREAM_TIMEOUT_MS || '180000', 10);
 
 // ---- rate limiting (per client IP, in-memory) ----
 const ASK_LIMIT = parseInt(process.env.RATE_LIMIT_ASK || '10', 10);      // /api/ask per window
@@ -1028,7 +1079,7 @@ function llmConfig() {
  * Stream LLM chat completions (OpenAI-compatible SSE).
  * Calls onDelta(text) for each content chunk; resolves on completion.
  */
-function llmStream(messages, { onDelta, timeoutMs = 180000 } = {}) {
+function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTokens = LLM_MAX_TOKENS } = {}) {
   return new Promise((resolve, reject) => {
     const { apiKey, baseUrl, model } = llmConfig();
     if (!apiKey || !baseUrl || !model) {
@@ -1037,7 +1088,7 @@ function llmStream(messages, { onDelta, timeoutMs = 180000 } = {}) {
     }
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const u = new URL(url);
-    const payload = { model, messages, temperature: 0, stream: true, max_tokens: 8000 };
+    const payload = { model, messages, temperature: 0, stream: true, max_tokens: maxTokens };
 
     const protocol = u.protocol === 'https:' ? https : http;
     const req = protocol.request({
@@ -1229,6 +1280,15 @@ async function handleAsk(req, res) {
     if (received > 1e6) req.destroy();
   });
   req.on('end', async () => {
+    const traceId = newTraceId();
+    const startedAt = Date.now();
+    let qh = '';
+    const finishTotal = (status, extra = {}) => {
+      emitTrace({
+        traceId, stage: 'http_total', durationMs: Date.now() - startedAt,
+        queryHash: qh, status, ...extra,
+      });
+    };
     try {
       // Buffer.concat + single decode preserves multi-byte UTF-8 characters
       // even when they are split across TCP chunks; naive string concat
@@ -1240,14 +1300,18 @@ async function handleAsk(req, res) {
       if (!question) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing question' }));
+        finishTotal('error', { error: 'missing_question' });
         return;
       }
+      qh = queryHash(question);
+      emitTrace({ traceId, stage: 'http_start', durationMs: 0, queryHash: qh, status: 'start' });
 
       const daemonUrl = await getHealthyDaemonUrl();
       if (!daemonUrl) {
         const st = readDaemonState();
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: `Daemon 未就绪：${(st && st.message) || '无法启动知识库服务，请检查 daemon 日志'}` }));
+        finishTotal('error', { error: 'daemon_unavailable' });
         return;
       }
       const url = daemonUrl;
@@ -1279,7 +1343,12 @@ async function handleAsk(req, res) {
           // query first (falls back to the original + keyword expansion on
           // translation failure).
           sendSSE(res, 'phase', { step: 'translate', text: '翻译检索查询…', progress: 15 });
+          const translateStart = Date.now();
           const translated = await translateToEnglish(question);
+          emitTrace({
+            traceId, stage: 'llm_translate', durationMs: Date.now() - translateStart,
+            queryHash: qh, status: 'ok',
+          });
           // Hybrid retrieval query: the faithful English translation provides
           // cross-lingual semantic recall (Chinese "排版/空白" -> English
           // "formatting/whitespace"), while the original keyword-expansion
@@ -1301,7 +1370,8 @@ async function handleAsk(req, res) {
           // docs, so the target chapter (e.g. ModuleWriteGuide 3.7.7) can fall
           // out of top_k. Run a second query restricted to the authoritative
           // tianocore-docs source and merge it back in below.
-          const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=35`, { timeoutMs: 120000 });
+          const searchStart = Date.now();
+          const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=35`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } });
           // Daemon clamps top_k to 20 and cross-lingual vector recall is weak:
           // a vague Chinese query ("排版/空白") ranks many unrelated Summary/
           // README chunks above the actual CCoding spec chapters. For coding-
@@ -1319,11 +1389,15 @@ async function handleAsk(req, res) {
                 '5.2.2.8 structure member 5.2.2.9 array subscripts 5.2.2.10 parentheses precedence 5.2.2.11 align continuation',
               ]
             : [];
-          const docsPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000 })
+          const docsPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } })
             .catch(() => null);
           const docsFocusPromises = docsFocusQueries.map(fq =>
-            httpJson(`${url}/search?query=${encodeURIComponent(fq)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000 }).catch(() => null));
+            httpJson(`${url}/search?query=${encodeURIComponent(fq)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
           const [mainResp, docsResp, ...docsFocusResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises]);
+          emitTrace({
+            traceId, stage: 'mcp_search', durationMs: Date.now() - searchStart,
+            queryHash: qh, status: 'ok', calls: 2 + docsFocusQueries.length,
+          });
           searchResp = mainResp;
           const docsResults = (docsResp && docsResp.body && docsResp.body.results) || [];
           const docsFocusResults = docsFocusResps.flatMap(r => (r && r.body && r.body.results) || []);
@@ -1369,6 +1443,7 @@ async function handleAsk(req, res) {
         } catch (e) {
           sendSSE(res, 'error', { error: `检索失败：${e.message}` });
           res.end();
+          finishTotal('error', { error: `search: ${e.message}` });
           return;
         }
         results = (searchResp.body && searchResp.body.results) || [];
@@ -1386,6 +1461,7 @@ async function handleAsk(req, res) {
         // Then fill remaining slots from rerank order.
         if (results.length > 10) {
           sendSSE(res, 'phase', { step: 'rerank', text: '重排序文档…', progress: 25 });
+          let rerankStart = Date.now();
           try {
             const rerankQuery = expandChineseQuery(question);
             // GUARANTEE: keep the top vector hits AND the top tianocore-docs
@@ -1435,6 +1511,10 @@ async function handleAsk(req, res) {
               if (!guardSeen.has(key)) { guardSeen.add(key); guarded.push(r); }
             }
             const reranked = await rerankDocuments(rerankQuery, results);
+            emitTrace({
+              traceId, stage: 'rerank', durationMs: Date.now() - rerankStart,
+              queryHash: qh, status: 'ok', docs: results.length,
+            });
             
             // Build merged list: start with guaranteed top hits
             const seen = new Set();
@@ -1454,6 +1534,10 @@ async function handleAsk(req, res) {
             }
             results = merged;
           } catch (e) {
+            emitTrace({
+              traceId, stage: 'rerank', durationMs: Date.now() - rerankStart,
+              queryHash: qh, status: 'error', error: e.message,
+            });
             // Continue with original results if reranking fails
           }
         }
@@ -1470,6 +1554,7 @@ async function handleAsk(req, res) {
       if (!apiKey || !baseUrl || !model) {
         sendSSE(res, 'error', { error: 'LLM not configured. Set LLM_API_KEY / LLM_BASE_URL / LLM_MODEL.' });
         res.end();
+        finishTotal('error', { error: 'llm_not_configured' });
         return;
       }
       sendSSE(res, 'phase', { step: 'llm_build', text: '构建提示词…', progress: 50, model });
@@ -1477,12 +1562,20 @@ async function handleAsk(req, res) {
       const messages = buildMessages(question, results, history);
       sendSSE(res, 'phase', { step: 'llm', text: '正在生成回答…', progress: 60, model });
       
+      const llmStart = Date.now();
       let tokenCount = 0;
       try {
         // The upstream LLM intermittently returns an empty stream (200 + [DONE]
         // with zero deltas) or drops the connection before any content. Retry
-        // once only when nothing has been streamed yet, so a partially-rendered
-        // answer is never duplicated to the client.
+        // only while nothing has been streamed yet, so a partially-rendered
+        // answer is never duplicated to the client. Later attempts use a
+        // progressively smaller max_tokens budget so a flaky upstream still
+        // yields SOME bounded answer instead of failing the whole request.
+        const attemptCaps = [
+          LLM_MAX_TOKENS,
+          LLM_RETRY_MAX_TOKENS,
+          Math.min(LLM_RETRY_MAX_TOKENS, 1500),
+        ];
         for (let attempt = 1; attempt <= 3; attempt++) {
           let chars = 0;
           try {
@@ -1492,37 +1585,62 @@ async function handleAsk(req, res) {
                 tokenCount++;
                 sendSSE(res, 'delta', { text });
               },
-              timeoutMs: 180000,
+              timeoutMs: attempt === 1 ? LLM_STREAM_TIMEOUT_MS : Math.max(60000, LLM_STREAM_TIMEOUT_MS / 2),
+              maxTokens: attemptCaps[attempt - 1],
             });
           } catch (e) {
-            if (attempt < 2 && chars === 0) {
+            if (attempt < 3 && chars === 0) {
               sendSSE(res, 'phase', { step: 'llm_retry', text: '生成中断，正在重试…', progress: 70, model });
               await new Promise(r => setTimeout(r, 1000));
               continue;
             }
+            emitTrace({
+              traceId, stage: 'llm_generate', durationMs: Date.now() - llmStart,
+              queryHash: qh, status: 'error', error: e.message, tokens: tokenCount,
+            });
             sendSSE(res, 'error', { error: e.message });
             res.end();
+            finishTotal('error', { error: e.message });
             return;
           }
           if (chars > 0) break;
-          if (attempt < 2) {
+          emitTrace({
+            traceId, stage: 'llm_empty_retry', durationMs: Date.now() - llmStart,
+            queryHash: qh, status: 'empty', attempt, maxTokens: attemptCaps[attempt - 1],
+          });
+          if (attempt < 3) {
             sendSSE(res, 'phase', { step: 'llm_retry', text: '生成结果为空，正在重试…', progress: 70, model });
             await new Promise(r => setTimeout(r, 1000));
           }
         }
       } catch (e) {
+        emitTrace({
+          traceId, stage: 'llm_generate', durationMs: Date.now() - llmStart,
+          queryHash: qh, status: 'error', error: e.message, tokens: tokenCount,
+        });
         sendSSE(res, 'error', { error: e.message });
         res.end();
+        finishTotal('error', { error: e.message });
         return;
       }
       if (tokenCount === 0) {
+        emitTrace({
+          traceId, stage: 'llm_generate', durationMs: Date.now() - llmStart,
+          queryHash: qh, status: 'empty', tokens: 0,
+        });
         sendSSE(res, 'error', { error: 'LLM 生成多次为空，请稍后重试。' });
         res.end();
+        finishTotal('error', { error: 'empty_generation' });
         return;
       }
+      emitTrace({
+        traceId, stage: 'llm_generate', durationMs: Date.now() - llmStart,
+        queryHash: qh, status: 'ok', tokens: tokenCount,
+      });
       sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model, tokens: tokenCount });
       sendSSE(res, 'done', { model, tokens: tokenCount, from_cache: fromCache });
       res.end();
+      finishTotal('ok', { tokens: tokenCount, from_cache: fromCache });
     } catch (e) {
       // try to send error as SSE if headers already sent
       if (res.headersSent) {
@@ -1532,6 +1650,7 @@ async function handleAsk(req, res) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: e.message }));
       }
+      finishTotal('error', { error: e.message });
     }
   });
 }

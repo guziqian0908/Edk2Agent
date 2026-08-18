@@ -30,6 +30,7 @@ import json
 import os
 import socket
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -39,6 +40,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from search_engine import SearchEngine
+from search_engine import trace_emit, trace_new_id, trace_query_hash
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_STATE_FILE = HERE / "daemon.json"
@@ -121,7 +123,21 @@ def build_fastmcp(engine: SearchEngine) -> FastMCP:
         """
         top_k = max(1, min(int(top_k), 20))
         src = None if source in ("", "all", "both") else source
-        return engine.search(query, top_k, src, rerank=False)
+        trace_id = trace_new_id()
+        qh = trace_query_hash(query)
+        _t = time.monotonic()
+        try:
+            results = engine.search(query, top_k, src, rerank=False,
+                                    trace_id=trace_id)
+            trace_emit(trace_id, "search_total",
+                       (time.monotonic() - _t) * 1000, qh,
+                       status="ok", results=len(results))
+        except Exception as e:
+            trace_emit(trace_id, "search_total",
+                       (time.monotonic() - _t) * 1000, qh,
+                       status="error", error=str(e))
+            raise
+        return results
 
     @mcp.tool()
     def get_kb_status() -> Dict[str, Any]:
@@ -217,7 +233,21 @@ Question: {question}
             top_k = 5
 
         src = None if source in ("", "all", "both") else source
-        results = engine.search(query.strip(), top_k, src, rerank=False)
+        query_text = query.strip()
+        trace_id = request.headers.get("x-trace-id") or trace_new_id()
+        qh = trace_query_hash(query_text)
+        _t = time.monotonic()
+        try:
+            results = engine.search(query_text, top_k, src, rerank=False,
+                                    trace_id=trace_id)
+            trace_emit(trace_id, "search_total",
+                       (time.monotonic() - _t) * 1000, qh,
+                       status="ok", results=len(results))
+        except Exception as e:
+            trace_emit(trace_id, "search_total",
+                       (time.monotonic() - _t) * 1000, qh,
+                       status="error", error=str(e))
+            raise
         return JSONResponse(_cors({"results": results}))
 
     return mcp

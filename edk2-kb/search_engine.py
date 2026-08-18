@@ -8,16 +8,67 @@ The index and vector model are loaded once and kept in memory, so repeated
 searches do not pay per-request model loading costs.
 """
 
+import hashlib
 import json
 import os
 import re
+import sys
 import threading
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = BASE_DIR / "data"
+
+# ------------------------------------------------------------------ #
+# Structured latency tracing (JSON lines). Written to a shared trace
+# file so the supervisor (which runs the MCP server with stdout/stderr
+# = DEVNULL) still captures the timings; also mirrored to stderr for
+# direct (non-supervised) runs. Kept dependency-free and synchronous
+# so the per-stage instrumentation overhead stays negligible (two
+# monotonic() reads + one file append per stage).
+# ------------------------------------------------------------------ #
+DEFAULT_TRACE_FILE = Path.home() / ".edk2-opencode" / "kb" / "trace.jsonl"
+TRACE_FILE = Path(os.environ.get("EDK2_TRACE_FILE", str(DEFAULT_TRACE_FILE)))
+_TRACE_LOCK = threading.Lock()
+
+def trace_new_id() -> str:
+    return uuid.uuid4().hex[:16]
+
+
+def trace_query_hash(query: str) -> str:
+    q = " ".join((query or "").strip().lower().split())
+    return hashlib.sha1(q.encode("utf-8", "ignore")).hexdigest()[:12]
+
+
+def trace_emit(trace_id: Optional[str], stage: str, duration_ms: float,
+               query_hash: str, status: str = "ok", **extra: Any) -> None:
+    record = {
+        "trace_id": trace_id or trace_new_id(),
+        "stage": stage,
+        "duration_ms": round(float(duration_ms), 2),
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+        "query_hash": query_hash,
+        "status": status,
+    }
+    for k, v in extra.items():
+        record[k] = v
+    line = json.dumps(record, ensure_ascii=False)
+    try:
+        with _TRACE_LOCK:
+            TRACE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(TRACE_FILE, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+    except Exception:
+        pass
+    try:
+        sys.stderr.write(line + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
 
 SOURCE_DISPLAY = {
     'tianocore-wiki': 'TianoCore Wiki (官网)',
@@ -84,6 +135,11 @@ RERANK_RRF_FALLBACK_TOPK = int(
 # embeddings blur, so BM25 hits are weighted higher than dense hits by default.
 # Set EDK2_BM25_WEIGHT=1 to equalize the two retrieval legs.
 BM25_WEIGHT = float(os.environ.get("EDK2_BM25_WEIGHT", "1.5"))
+
+# Hard cap on the candidate set handed to the reranker: retrieval keeps at
+# most this many candidates, so the expensive cross-encoder work is bounded
+# and both the JSON payload and the HTTP transfer stay small.
+MAX_CANDIDATES = int(os.environ.get("EDK2_MAX_CANDIDATES", "200"))
 
 
 def _minmax(values):
@@ -279,17 +335,36 @@ def _camel_split(word: str) -> List[str]:
     return re.findall(r'[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+', word)
 
 
-def _fts_query_expr(query: str) -> str:
-    """Build an FTS5 MATCH expression for a query.
+# FTS5 query shaping. Prefix wildcards ('token*') force a range scan per term
+# and, once OR-joined across many terms, turn the whole 70k-row corpus into a
+# scan -- measured at 85-180s for verbose merged queries. Instead the strict
+# query uses exact tokens (fast inverted-index lookups), groups the content
+# words into "topics" of up to _FTS_TOPIC_SIZE words (OR within a topic, since
+# they are paraphrases/alternatives), and returns each topic as an independent
+# sub-query so the caller can run them separately with their own LIMIT
+# (multi-topic -> several cheap sub-queries, merged top-k each).
+_FTS_MAX_TERMS = int(os.environ.get("EDK2_FTS_MAX_TERMS", "12"))
+_FTS_TOPIC_SIZE = int(os.environ.get("EDK2_FTS_TOPIC_SIZE", "3"))
+
+
+def _fts_query_exprs(query: str, relaxed: bool = False) -> List[str]:
+    """Build one or more FTS5 MATCH expressions for a query.
 
     FTS5's unicode61 tokenizer does NOT split camelCase identifiers
     (PcdDebugPrintErrorLevel -> one token 'pcddebugprinterrorlevel') but DOES
     split snake_case on '_'. To catch both, each whitespace-delimited word
-    becomes an OR of its whole-word prefix and (when it has >=2 camel sub-words)
-    an AND of the sub-word prefixes. Common English words are dropped so a
-    long natural-language query (e.g. "what are the requirements...") does not
-    require every trivial token to match. When more than 6 content words
-    remain, clauses are OR-joined to avoid zero-hit results on verbose queries.
+    becomes an OR of its exact whole-word form and (when it has >=2 camel
+    sub-words) an AND of the exact sub-words. Common English words are dropped
+    so a long natural-language query does not require every trivial token to
+    match. The term list is capped at _FTS_MAX_TERMS (the query is
+    relevance-ordered by the caller: translation first, then weighted keyword
+    expansions, so the most specific terms come first).
+
+    Strict mode returns the topic sub-queries (words within a topic are
+    OR-joined). Short queries (<= _FTS_TOPIC_SIZE words) collapse into a single
+    AND-ed expression. relaxed=True restores the legacy broad OR-join with
+    prefix wildcards, used only as a zero-hit fallback so a very verbose
+    query still returns candidates for the reranker.
 
     Non-ASCII words (Chinese, full-width punctuation) are dropped entirely:
     the FTS5 index is tokenized in English, so a Chinese character appended
@@ -303,19 +378,34 @@ def _fts_query_expr(query: str) -> str:
             continue
         if not re.search(r'[a-z]', wl):
             continue
-        inner = [wl + '*']
+        suffix = '*' if relaxed else ''
+        inner = [wl + suffix]
         subs = [p.lower() for p in _camel_split(w)
                 if len(p) >= 2 and p.lower() not in _FTS_STOPWORDS]
         if len(subs) >= 2:
-            inner.append('(' + ' AND '.join(s + '*' for s in subs) + ')')
+            inner.append('(' + ' AND '.join(s + suffix for s in subs) + ')')
         clauses.append('(' + ' OR '.join(inner) + ')')
     if not clauses:
+        return []
+    clauses = clauses[:_FTS_MAX_TERMS]
+    if relaxed:
+        return [' OR '.join(clauses)]
+    if len(clauses) <= _FTS_TOPIC_SIZE:
+        return [' AND '.join(clauses)]
+    return [
+        ' OR '.join(clauses[i:i + _FTS_TOPIC_SIZE])
+        for i in range(0, len(clauses), _FTS_TOPIC_SIZE)
+    ]
+
+
+def _fts_query_expr(query: str, relaxed: bool = False) -> str:
+    """Single-string view of _fts_query_exprs (all topics AND-ed)."""
+    exprs = _fts_query_exprs(query, relaxed=relaxed)
+    if not exprs:
         return ""
-    if len(clauses) <= 6:
-        return ' AND '.join(clauses)
-    # Verbose query: relax to a limited OR so BM25 still returns candidates,
-    # then let the reranker pick the relevant ones.
-    return ' OR '.join(clauses)
+    if len(exprs) == 1:
+        return exprs[0]
+    return ' AND '.join('(' + e + ')' for e in exprs)
 
 
 def _fts_tokens(query: str) -> List[str]:
@@ -410,6 +500,7 @@ class SearchEngine:
         self._lock = threading.RLock()
         self._ready = False
         self._load_error: Optional[str] = None
+        self._rerank_error: Optional[str] = None
         self._documents: List[Dict[str, Any]] = []
         self._collection = None
         self._client = None
@@ -533,7 +624,8 @@ class SearchEngine:
     def search(self, query: str, top_k: int = 5,
                source_filter: Optional[str] = None,
                rerank: bool = True,
-               rewrite: bool = True) -> List[Dict[str, Any]]:
+               rewrite: bool = True,
+               trace_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Search the knowledge base with hybrid retrieval.
 
         Dense vector search (ChromaDB) and keyword BM25 search (SQLite FTS5)
@@ -552,9 +644,18 @@ class SearchEngine:
             rewrite: When True (default), expand technical terms (and, for
                 Chinese-dominated queries, append English keyword hints)
                 before retrieval. Set False to compare baselines.
+            trace_id: Correlation id propagated from the caller (web service
+                X-Trace-Id header); a fresh one is generated when omitted.
         """
+        trace_id = trace_id or trace_new_id()
+        qh = trace_query_hash(query)
+
         # Rewrite query to expand technical terms
+        _t = time.monotonic()
         expanded_query = rewrite_query(query) if rewrite else query
+        trace_emit(trace_id, "query_rewrite",
+                   (time.monotonic() - _t) * 1000, qh,
+                   status="ok", rewritten=bool(rewrite))
 
         self.load()
         if self._collection is not None:
@@ -562,11 +663,18 @@ class SearchEngine:
             # query so each index contributes more diverse candidates.
             queries = list(dict.fromkeys([query, expanded_query]))
             groups: List[List[Dict[str, Any]]] = []
-            chroma_cands = top_k * 6
-            bm25_cands = top_k * 3
+            chroma_cands = min(top_k * 6, MAX_CANDIDATES)
+            bm25_cands = min(top_k * 3, MAX_CANDIDATES)
+            _chroma_ms = 0.0
+            _bm25_ms = 0.0
+            _t = time.monotonic()
             for q in queries:
+                _t0 = time.monotonic()
                 groups.append(self._search_chroma(q, chroma_cands, source_filter))
+                _chroma_ms += (time.monotonic() - _t0) * 1000
+                _t0 = time.monotonic()
                 groups.append(self._search_bm25(q, bm25_cands, source_filter))
+                _bm25_ms += (time.monotonic() - _t0) * 1000
             # Fusion: dense-first (chroma) ordering with BM25 supplements.
             # Pure reciprocal-rank fusion over both legs was measured to LOSE
             # reference hits on Chinese queries (24/62 vs 30/62 for chroma
@@ -574,15 +682,30 @@ class SearchEngine:
             # ranks. So dense results keep priority and BM25 only fills in
             # documents the dense leg missed (exact EDK2 identifiers, PCD/GUID
             # names the embeddings blur), never displacing dense hits.
-            candidates = self._fuse_dense_first(groups, top_k * 3)
+            candidates = self._fuse_dense_first(
+                groups, min(top_k * 3, MAX_CANDIDATES))
+            # BM25 candidates currently carry only pid+score; read their full
+            # chunk text now, for the surviving set only (deferred 回表).
+            self._attach_content(candidates)
+            _retrieval_ms = (time.monotonic() - _t) * 1000
+            trace_emit(trace_id, "chroma_vector", _chroma_ms, qh,
+                       status="ok", queries=len(queries))
+            trace_emit(trace_id, "bm25_fts", _bm25_ms, qh,
+                       status="ok", queries=len(queries))
+            trace_emit(trace_id, "hybrid_retrieval", _retrieval_ms, qh,
+                       status="ok", candidates=len(candidates))
 
             # Rerank any non-empty candidate list, so even out-of-scope
             # queries get a rerank_score/confidence label that tells the LLM
             # the knowledge base does not cover them.
             if rerank and candidates:
-                return _add_citation(
-                    self._rerank_results(query, candidates, top_k),
-                    RERANKER_MODEL)
+                _t = time.monotonic()
+                reranked = self._rerank_results(query, candidates, top_k)
+                trace_emit(trace_id, "rerank",
+                           (time.monotonic() - _t) * 1000, qh,
+                           status="error" if self._rerank_error else "ok",
+                           top_k=top_k)
+                return _add_citation(reranked, RERANKER_MODEL)
             # No-rerank path: collapse chunks that belong to the same document
             # (first/highest chunk wins) so the LLM/web UI does not see the
             # same page repeated across chunks.
@@ -599,9 +722,12 @@ class SearchEngine:
                 if len(results) >= top_k:
                     break
             return _add_citation(results, RERANKER_MODEL)
-        return _add_citation(
-            self._search_files(expanded_query, top_k, source_filter),
-            RERANKER_MODEL)
+        _t = time.monotonic()
+        results = self._search_files(expanded_query, top_k, source_filter)
+        trace_emit(trace_id, "file_search",
+                   (time.monotonic() - _t) * 1000, qh,
+                   status="ok", results=len(results))
+        return _add_citation(results, RERANKER_MODEL)
     
     def _rerank_results(self, query: str, candidates: List[Dict], 
                         top_k: int) -> List[Dict]:
@@ -615,6 +741,7 @@ class SearchEngine:
         Returns:
             Reranked top_k results
         """
+        self._rerank_error = None
         try:
             from sentence_transformers import CrossEncoder
             
@@ -702,6 +829,7 @@ class SearchEngine:
             
         except Exception as e:
             # If reranking fails, return original candidates
+            self._rerank_error = str(e)
             return candidates[:top_k]
 
     def _search_chroma(self, query: str, top_k: int,
@@ -827,60 +955,97 @@ class SearchEngine:
 
     def _search_bm25(self, query: str, top_k: int,
                      source_filter: Optional[str]) -> List[Dict[str, Any]]:
-        """Keyword search against the SQLite FTS5 index (BM25 ranking)."""
+        """Keyword search against the SQLite FTS5 index (BM25 ranking).
+
+        Only ``pid`` + BM25 score are selected here -- no ``snippet()`` call
+        and no per-row file read (avoiding the "go back to the table" cost that
+        used to read the full chunk file for every raw hit). A multi-topic
+        query is split into independent sub-queries (``_fts_query_exprs``), each
+        limited to top_k, and the merged pid set is deduplicated keeping the
+        best score per pid. The whole chunk content is attached later, after
+        dense+BM25 fusion (``_attach_content``), so only the candidates that
+        survive fusion pay for disk I/O. A zero-hit result falls back to the
+        legacy prefix-wildcard OR query so verbose queries still surface
+        candidates for the reranker.
+        """
         if not self._fts_available or self._fts_conn is None:
             return []
         import sqlite3
-        match_expr = _fts_query_expr(query)
-        if not match_expr:
-            return []
-        sql = (
-            "SELECT pid, source, title, url, file, repo, section, "
-            "bm25(docs), snippet(docs, 7, '[', ']', ' … ', 64) "
-            "FROM docs WHERE docs MATCH ?"
-        )
-        params: List[Any] = [match_expr]
-        if source_filter:
-            sql += " AND source = ?"
-            params.append(source_filter)
-        sql += " ORDER BY bm25(docs) LIMIT ?"
-        params.append(top_k)
-
-        try:
-            rows = self._fts_conn.execute(sql, params).fetchall()
-        except sqlite3.Error:
+        exprs = _fts_query_exprs(query)
+        if not exprs:
             return []
 
+        def _fetch(expr: str, limit: int) -> List[Any]:
+            sql = "SELECT pid, bm25(docs) FROM docs WHERE docs MATCH ?"
+            params: List[Any] = [expr]
+            if source_filter:
+                sql += " AND source = ?"
+                params.append(source_filter)
+            sql += " ORDER BY bm25(docs) LIMIT ?"
+            params.append(limit)
+            try:
+                return self._fts_conn.execute(sql, params).fetchall()
+            except sqlite3.Error:
+                return []
+
+        best: Dict[int, float] = {}
+        for expr in exprs:
+            for pid, rank in _fetch(expr, top_k):
+                # bm25() is negative; smaller (more negative) = better.
+                best[pid] = min(best.get(pid, 0.0), float(rank))
+
+        if not best:
+            relaxed_expr = _fts_query_expr(query, relaxed=True)
+            if relaxed_expr:
+                for pid, rank in _fetch(relaxed_expr, top_k):
+                    best[pid] = min(best.get(pid, 0.0), float(rank))
+
+        ordered = sorted(best.items(), key=lambda kv: kv[1])[:top_k]
         results: List[Dict[str, Any]] = []
-        # Full-text lookup: FTS stores a truncated snippet; attach the whole
-        # chunk text (held in self._documents[*].path) so the LLM sees the
-        # complete content, not a 64-token fragment.
-        for (pid, source, title, url, file_, repo, section,
-             rank, snip) in rows:
+        for pid, rank in ordered:
+            meta = (self._documents[pid]
+                    if 0 <= pid < len(self._documents) else {})
+            results.append({
+                '_pid': pid,
+                'score': round(-float(rank), 4),
+                'source': meta.get('source', 'unknown'),
+                'source_display': self._format_source(
+                    meta.get('source', 'unknown')),
+                'title': meta.get('title') or meta.get('file') or 'Unknown',
+                'url': meta.get('url', ''),
+                'file': meta.get('file', ''),
+                'section': meta.get('section', ''),
+                'snippet': '',
+                'content': '',
+                '_rrf_weight': BM25_WEIGHT,
+            })
+        return results
+
+    def _attach_content(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Attach full chunk text for candidates that do not carry it yet.
+
+        BM25 hits are now cheap pid+score rows; the full text file is read only
+        here, for the fused candidate set that actually survives retrieval, so
+        a verbose query never pays to read files the reranker would discard.
+        """
+        for it in items:
+            if it is None or it.get('content'):
+                continue
+            snip = it.get('snippet') or ''
+            pid = it.get('_pid')
             full_text = snip
             try:
-                if 0 <= pid < len(self._documents):
+                if pid is not None and 0 <= pid < len(self._documents):
                     p = self._documents[pid].get('path', '')
                     if p and os.path.exists(p):
                         with open(p, 'r', encoding='utf-8',
                                   errors='replace') as f:
                             full_text = f.read()
             except Exception:
-                full_text = snip
-            results.append({
-                '_pid': pid,
-                'score': round(-float(rank), 4),
-                'source': source,
-                'source_display': self._format_source(source),
-                'title': title or file_ or 'Unknown',
-                'url': url or '',
-                'file': file_ or '',
-                'section': section or '',
-                'snippet': full_text[:800],
-                'content': full_text,
-                '_rrf_weight': BM25_WEIGHT,
-            })
-        return results
+                pass
+            it['content'] = full_text
+            it['snippet'] = full_text[:800]
+        return items
 
     def _merge_rrf(self, ranked_groups: List[List[Dict[str, Any]]],
                    limit: int, keep_rrf: bool = False) -> List[Dict[str, Any]]:
