@@ -1,6 +1,6 @@
 # Edk2Agent（edk2-opencode）Wiki
 
-> 本文档面向"仅凭本 Wiki 即可从零复现环境搭建、知识库构建、服务部署与功能验证"的 AI 工程师与验收人员。所有命令、路径、指标均与 **v6.0.22**（`package.json` 版本号）严格对应，可直接对照执行。
+> 本文档面向"仅凭本 Wiki 即可从零复现环境搭建、知识库构建、服务部署与功能验证"的 AI 工程师与验收人员。所有命令、路径、指标均与 **v6.0.22**（`package.json` 版本号）严格对应，可直接对照执行。知识库已从最初的双数据源扩展为 **6 大数据源（82297 个分块）**，并提供三条搭建路径（`setup_kb` 一键重建 / `install_kb` 预构建包 / `--init-edk2-wiki` 原始终端命令）。
 
 ---
 
@@ -60,14 +60,18 @@
 以下从"输入资料"到"验证通过"的完整链路，供快速理解本项目全貌：
 
 ```
-① 输入资料收集（抓取官方文档）
-   ├─ TianoCore Wiki   → 289 个 HTML（全站离线副本）
-   └─ tianocore-docs   → 1309 个 Markdown（33 个规范仓库）
+① 输入资料收集（6 大数据源）
+   ├─ TianoCore Wiki   → 288 个 HTML（全站离线副本）
+   ├─ tianocore-docs   → 1797 个文本文件（33 个规范仓库）
+   ├─ uefi-specs       → 185 个 RST + 1 个 Shell PDF（4 部官方规范）
+   ├─ edk2-commits     → 36434 个提交（2006 至今完整 git log）
+   ├─ edk2-prs         → 15332 个 Pull Request（GitHub API）
+   └─ edk2-mdepkg      → MdePkg 源码（1982 个文件，排除 Library/）
             │
-② 清洗与分块（edk2-kb/fetchers/init_kb.py）
+② 清洗与分块（edk2-kb/fetchers/init_kb.py + add_mdepkg.py）
    ├─ HTML→Markdown 文本（html2text / BeautifulSoup+lxml）
    ├─ 跳过超大 print.html；丢弃 <100 字符噪音段
-   └─ 按标题层级切块 → 14819 个 .txt（chunk_size=800, overlap=100）
+   └─ 按标题层级切块 → 82297 个 .txt（chunk_size=800, overlap=100）
             │
 ③ 建索引（双路）
    ├─ 向量：ChromaDB（bge-m3 1024 维, cosine, batch=50）
@@ -136,7 +140,7 @@
 
 **一次查询的完整链路**：LLM → MCP `search_kb` → `SearchEngine.search()` → Chroma（向量 topN）+ FTS（全文 topN）→ RRF 融合 + β 加权 → 交叉编码器重排 → 置信度分级 + citation 组装 → 返回给 LLM 组织回答。
 
-### 1.4 迭代演进 v6.0.5 → v6.0.22
+### 1.4 迭代演进 v6.0.5 → v6.0.22（+ Web 回答服务增强）
 
 | 版本 | 目标 | 主要改动 | 收益 |
 |------|------|----------|------|
@@ -154,8 +158,10 @@
 | **6.0.20** | 多语（P1） | embedder 多语（bge-m3，1024 维全量重建） | 中文 Hit@5 12.5%→62.5% |
 | **6.0.21** | 精确度 | 去重 bug 修复 + β 融合 + RRF top2 保底 | 全局 Hit@5 →92.7% |
 | **6.0.22** | 健康修复 | 维度 probe 修复（`numpy` `or` 布尔歧义） | `/health` 不再误报 ChromaDB unavailable |
+| **6.0.23*** | Web 回答服务层增强（已合入 `main`） | ① **完整性强制令**：prompt 要求完整枚举所有规则/枚举值/API 签名，禁止省略概括；② **混合重排**：检索 `top_k` 25→35，rerank 后保顶 3 防关键块被挤出，再按重排序回填至 15；③ **元数据过滤** `pruneByMetadata`：检索结果在重排前置前被剪除标题/章节/文件无任何查询信号者（保底 floor=10、信号 <3 跳过）；④ **引用本地化**：参考来源由 gitbook 外链改为 `文件路径 > 章节` 本地定位，禁止拼造网址；⑤ **多轮对话**：`web/index.html` 携带 `prevResults`（上一轮检索结果）与历史，追问时跳过重复检索 | 枚举类问题完整性显著提升；关键命中块（如 4.4 Identifiers）不再被 reranker 挤出 top 3；明显无关知识块被前置过滤；回答参考来源全部指向本地文档，可离线追溯；多轮追问上下文连续 |
+| **6.0.24*** | 知识库扩容与一键重建 | ① **数据源 2→6**：新增 `uefi-specs`（UEFI/ACPI/PI/Shell 官方规范）、`edk2-commits`（完整提交历史）、`edk2-prs`（全部 PR）、`edk2-mdepkg`（MdePkg 源码）；② **`setup_kb.ps1/.sh` 一键重建**：`fetch_models.py`（本地模型）→ `fetch_specs.py` → `fetch_commits.py` → `fetch_prs.py` → `init_kb.py` → `add_mdepkg.py`；③ **`package_kb.py` + `install_kb.ps1/.sh` 预构建包**：kb-runtime / kb-full 分片（≤1.8GB）+ SHA-256 清单，免重建嵌入；④ 分块数 14819 → **82297** | 覆盖真实 EDK2 开发活动（代码/PR/提交/规范），问答域从纯文档扩展到工程实践 |
 
-> 版本发布节奏：tags `v6.0.4` ~ `v6.0.22` 已全部推送到 GitHub，`main` 分支 HEAD 即 v6.0.22。
+> 版本发布节奏：tags `v6.0.4` ~ `v6.0.22` 已全部推送到 GitHub，`main` 分支 HEAD 即 v6.0.22。`6.0.23*`（Web 回答服务）与 `6.0.24*`（数据源扩容 + 一键重建）为 main 分支上的未发版增强，改动集中在 `web/server.js`（LLM 回答编排层）、`edk2-kb/fetchers/` 与仓库根目录的 `setup_kb.*` / `install_kb.*` / `package_kb.py`。
 
 ---
 
@@ -169,7 +175,7 @@
 | Node.js | ≥ 18（推荐 20+） |
 | Python | ≥ 3.8，< 3.13（推荐 3.10/3.11）；需 `venv` + `pip` |
 | Git | ≥ 2.20（克隆与版本管理必需） |
-| 磁盘 | 仓库 + 依赖 ~1GB；知识库约 2GB（14819 个分块文件）；模型约 4.5GB；合计建议预留 ≥ 10GB |
+| 磁盘 | 仓库 + 依赖 ~1GB；知识库约 4GB（82297 个分块文件 + chroma_db 1.9GB）；模型约 4.5GB；合计建议预留 ≥ 15GB（`kb-full` 含原始源树再加 ~2GB） |
 | 内存 | ≥ 8GB（bge-m3 与 reranker 同时加载） |
 | 网络 | 首次构建知识库需联网抓取官方文档 + 下载模型；运行期可完全离线 |
 
@@ -218,43 +224,91 @@ npm install
 **下载方法（任选其一）：**
 
 ```powershell
-# 方法 A：huggingface-cli（网络直连可用时）
+# 方法 A：仓库自带脚本一键下载（推荐，幂等：已存在则跳过，--force 重下）
+python edk2-kb/fetchers/fetch_models.py
+
+# 方法 B：huggingface-cli（网络直连可用时）
 pip install -U huggingface_hub
 huggingface-cli download BAAI/bge-m3 --local-dir "$env:USERPROFILE\.edk2-opencode\models\bge-m3"
 huggingface-cli download BAAI/bge-reranker-v2-m3 --local-dir "$env:USERPROFILE\.edk2-opencode\models\bge-reranker-v2-m3"
 
-# 方法 B：镜像源 + 关闭 Xet（国内网络 / 镜像不支持 Xet 时）
+# 方法 C：镜像源 + 关闭 Xet（国内网络 / 镜像不支持 Xet 时）
 $env:HF_ENDPOINT = "https://hf-mirror.com"
 $env:HF_HUB_DISABLE_XET = "1"
 huggingface-cli download BAAI/bge-m3 --local-dir "$env:USERPROFILE\.edk2-opencode\models\bge-m3"
 ```
 
+> 模型目录可通过环境变量 `EDK2_MODELS_DIR` 覆盖（默认 `~/.edk2-opencode/models`），`fetch_models.py` 同样遵守该变量。
+
 > **坑点提示**：`bge-m3` 的 `pytorch_model.bin` 约 2.27GB，部分网络下 `huggingface-cli` 会卡在 Xet 协议上，务必设置 `HF_HUB_DISABLE_XET=1`；若仍失败可对 `hf-mirror.com/BAAI/bge-m3/resolve/main/pytorch_model.bin` 用支持断点续传的下载器（如 aria2 / wget）手动拉取。
 
 ### 2.5 初始化知识库
 
-**关键前提**：`init_kb.py` 默认嵌入模型是 `all-MiniLM-L6-v2`（384 维），而查询引擎默认是 `bge-m3`（1024 维）。**为保证检索质量（验收目标 92.7%），构建索引时必须显式指定 `EDK2_EMBEDDING_MODEL` 指向本地 bge-m3**，否则会出现维度不匹配（384 vs 1024）导致向量检索降级。
+**三条路径（任选其一）：**
+
+**路径 A：一键重建（`setup_kb`，推荐，覆盖全部 6 个数据源）**
+
+```powershell
+# Windows（仓库根目录）
+powershell -ExecutionPolicy Bypass -File setup_kb.ps1
+# 跳过慢速嵌入阶段（稍后补）：
+powershell -ExecutionPolicy Bypass -File setup_kb.ps1 -SkipEmbed
+
+# Linux / macOS
+bash setup_kb.sh            # 或 bash setup_kb.sh --skip-embed
+```
+
+一键脚本依次执行（每步产出见下方流程）：
+
+| 步骤 | 脚本 | 产出 |
+|------|------|------|
+| Python 依赖 | `pip install -r edk2-kb/requirements.txt` | 依赖 |
+| 本地模型 | `edk2-kb/fetchers/fetch_models.py` | `models/bge-m3` + `models/bge-reranker-v2-m3` |
+| UEFI 规范 | `edk2-kb/fetchers/fetch_specs.py` | `uefi-specs/{ACPI_6.5,PI_1.10,UEFI_2.11}/source/*.rst` + Shell PDF |
+| 提交历史 | `edk2-kb/fetchers/fetch_commits.py` | `edk2-commits/commits.txt`（2006 至今，blobless 克隆） |
+| PR 数据 | `edk2-kb/fetchers/fetch_prs.py` | `edk2-prs/prs.jsonl`（GitHub API，断点续传） |
+| Wiki+docs 建库 | `edk2-kb/fetchers/init_kb.py` | wiki 全站 + 33 个 docs 仓库 + 上述数据的分块与索引 |
+| MdePkg 源码 | `edk2-kb/fetchers/add_mdepkg.py`（缺失时自动稀疏克隆） | `edk2-mdepkg/` 分块 + FTS5 |
+
+**路径 B：预构建包（`install_kb`，免重建嵌入，秒级可用）**
+
+发布方用 `package_kb.py` 打包到 GitHub Release（`kb-runtime` 仅运行期数据 / `kb-full` 含原始源树，按 1.8GB 分片 + SHA-256 清单）；使用方下载校验解压：
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File install_kb.ps1
+# 可选参数：-Prefix kb-full -Tag vX.Y.Z -Overwrite -RepoDir <克隆仓库路径>
+# Linux / macOS
+bash install_kb.sh
+```
+
+运行期包仅含 `chroma_db/` + `fts_index.db` + `processed/`（约 2.2GB），解压到 `~/.edk2-opencode/kb/` 即用；模型仍需 `fetch_models.py` 补（约 1GB）。
+
+**路径 C：原始终端命令（`--init-edk2-wiki`，仅 wiki+docs 两数据源，旧路径）**
 
 ```powershell
 # 1) 先设环境变量，指向本地 bge-m3
 $env:EDK2_EMBEDDING_MODEL = "$env:USERPROFILE\.edk2-opencode\models\bge-m3"
 
-# 2) 首次构建知识库（自动创建 venv、安装 Python 依赖、抓取数据源、分块、建索引）
+# 2) 首次构建知识库
 npx edk2-opencode --init-edk2-wiki
 
-# 3) 后续增量更新（拉取最新数据并重建变更部分）
+# 3) 后续增量更新
 npx edk2-opencode --update
 ```
 
-`--init-edk2-wiki` 内部流程：
+**关键前提（三条路径通用）**：`init_kb.py` 默认嵌入模型是 `all-MiniLM-L6-v2`（384 维），而查询引擎默认是 `bge-m3`（1024 维）。**为保证检索质量（验收目标 92.7%），构建索引时必须显式指定 `EDK2_EMBEDDING_MODEL` 指向本地 bge-m3**，否则会出现维度不匹配（384 vs 1024）导致向量检索降级。`setup_kb` 不依赖该前提（`add_mdepkg.py --embed` 固定用 bge-m3）；仅路径 C 需要手动设置。
+
+路径 A/B 产出布局与流程（`init_kb.py` 内部）：
 
 ```
-1. 在用户数据目录创建 Python venv（~/.edk2-opencode/kb/venv）
+1. 在用户数据目录创建 Python venv（~/.edk2-opencode/kb/venv）或复用全局依赖
 2. pip install 依赖（chromadb / sentence-transformers / FlagEmbedding / beautifulsoup4 / html2text / lxml 等）
-3. 复制 edk2-kb/fetchers/init_kb.py 到用户 KB 目录并执行
-4. 抓取数据源 → 清洗 HTML → 分块 → 写入 processed txt
-5. 构建 ChromaDB 向量索引 + FTS5 全文索引
+3. 抓取数据源 → 清洗 HTML → 分块 → 写入 processed txt
+4. 构建 ChromaDB 向量索引 + FTS5 全文索引
 ```
+
+> 提示：`--skip-fts`（`add_mdepkg.py --skip-fts`）：daemon 运行时持有 `fts_index.db` 锁，需先 `daemon stop` 再重建；`fetch_prs.py` 无需认证（公共仓库），设置 `GITHUB_TOKEN` 可把限速从 60 提高到 5000 次/小时；各 fetch 脚本支持 `EDK2_KB_DATA` / `EDK2_MODELS_DIR` 覆盖默认路径。
 
 ### 2.6 daemon 守护进程管理
 
@@ -284,9 +338,13 @@ npx edk2-opencode --search "PcdDebugPrintErrorLevel"
 |------|------|------|
 | `EDK2_EMBEDDING_MODEL` | `BAAI/bge-m3`（推理）/ `all-MiniLM-L6-v2`（init_kb 默认） | 嵌入模型；**构建索引用本地 bge-m3 路径** |
 | `EDK2_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排模型（本地化） |
+| `EDK2_KB_DATA` | `~/.edk2-opencode/kb/data` | 知识库数据目录（fetch_* / add_mdepkg / package_kb 均遵守） |
+| `EDK2_MODELS_DIR` | `~/.edk2-opencode/models` | 模型目录（fetch_models / add_mdepkg 遵守） |
+| `GITHUB_TOKEN` | — | fetch_prs.py 的 GitHub API 令牌（提高限速至 5000/h） |
+| `EDK2_EMBEDDING_DEVICE` | `cpu` | 嵌入设备（init_kb） |
+| `EDK2_EMBEDDING_BATCH` | `50` | 嵌入批量（init_kb） |
 | `HF_ENDPOINT` | — | 下载镜像（如 `https://hf-mirror.com`） |
 | `HF_HUB_DISABLE_XET` | — | 设为 `1` 绕过 Xet 协议下载 |
-| `EDK2_DATA_DIR` | `~/.edk2-opencode/kb/data` | 知识库数据目录（如覆盖） |
 | `local_files_only` | `True` | 模型只从本地加载（内置） |
 
 ### 2.8 目录与数据布局
@@ -299,11 +357,15 @@ npx edk2-opencode --search "PcdDebugPrintErrorLevel"
 └── kb/
     ├── daemon.json                   # 当前端口 / PID
     ├── venv/                         # Python 虚拟环境
-    ├── fetchers/init_kb.py           # 构建脚本副本
+    ├── fetchers/                     # 构建脚本副本
     └── data/
-        ├── tianocore-wiki/           # 数据源：289 个 HTML 页面
-        ├── tianocore-docs/           # 数据源：1309 个 Markdown 文档
-        ├── processed/                # 处理后分块：14819 个 txt
+        ├── tianocore-wiki/           # 数据源①：288 个 HTML 页面
+        ├── tianocore-docs/           # 数据源②：33 个规范仓库（1797 文本文件）
+        ├── uefi-specs/               # 数据源③：ACPI_6.5/PI_1.10/UEFI_2.11 RST + Shell PDF
+        ├── edk2-commits/             # 数据源④：commits.txt（36434 提交）
+        ├── edk2-prs/                 # 数据源⑤：prs.jsonl（15332 PR）
+        ├── edk2-mdepkg/              # 数据源⑥：MdePkg 源码（1982 文件）
+        ├── processed/                # 处理后分块：82297 个 txt + documents.json
         ├── chroma_db/                # ChromaDB 持久化向量索引
         └── fts_index.db              # SQLite FTS5 全文索引
 ```
@@ -318,21 +380,29 @@ npx edk2-opencode --search "PcdDebugPrintErrorLevel"
 
 | 阶段 | 类型 | 数量 | 位置 | 说明 |
 |------|------|------|------|------|
-| **原始资料** | `.html` | 289 个 | `data/tianocore-wiki/` | TianoCore Wiki 全站离线副本（附 `.css`/`.js`/`.png`/`.svg` 等站点静态资源，不参与建索引） |
-| **原始资料** | `.md` | 1309 个 | `data/tianocore-docs/repos/` | 33 个 tianocore-docs 规范仓库的 Markdown 文档 |
-| **中间产物** | `.txt` | 14819 个 | `data/processed/` | 清洗 + 分块后的独立文本块（每块一个文件，带 6 个元数据字段） |
+| **原始资料** | `.html` | 288 个 | `data/tianocore-wiki/` | TianoCore Wiki 全站离线副本（附 `.css`/`.js`/`.png`/`.svg` 等站点静态资源，不参与建索引） |
+| **原始资料** | `.md`/`.txt`/`.html`/`.pdf` | 1797 个 | `data/tianocore-docs/repos/` | 33 个 tianocore-docs 规范仓库的文档 |
+| **原始资料** | `.rst`/`.pdf` | 185 + 1 个 | `data/uefi-specs/` | ACPI_6.5 / PI_1.10 / UEFI_2.11 的 RST 源 + UEFI_Shell_2_2 PDF |
+| **原始资料** | `commits.txt` | 36434 提交 | `data/edk2-commits/` | tianocore/edk2 完整提交历史（2006 至今） |
+| **原始资料** | `prs.jsonl` | 15332 PR | `data/edk2-prs/` | tianocore/edk2 全部 Pull Request |
+| **原始资料** | `.c`/`.h`/`.inf` 等 | 1982 个 | `data/edk2-mdepkg/MdePkg/` | MdePkg 源码（排除 `Library/`） |
+| **中间产物** | `.txt` | 82297 个 | `data/processed/` | 清洗 + 分块后的独立文本块（每块一个文件，带 6 个元数据字段） |
 | **检索索引** | `chroma_db/` | 1 套 | `data/chroma_db/` | ChromaDB 持久化向量索引（bge-m3，1024 维） |
 | **检索索引** | `fts_index.db` | 1 个 | `data/fts_index.db` | SQLite FTS5 全文索引（BM25） |
-| **其他** | `.json` | 若干 | `data/` 及各目录 | 站点元数据、来源信息等辅助文件，不参与检索 |
+| **其他** | `.json` | 若干 | `data/` 及各目录 | 站点元数据（metadata.json）、documents.json、来源信息等辅助文件，不参与检索 |
 
-> 即：**输入 = HTML + Markdown 两类原始资料**，统一处理为 `.txt` 分块后写入向量库与全文库。
+> 即：**输入 = HTML + Markdown/RST/源码/提交/PR 六类原始资料**，统一处理为 `.txt` 分块后写入向量库与全文库。
 
 ### 3.2 数据源清单
 
 | 数据源 | 存储目录 | 原始文件 | 说明 |
 |--------|----------|----------|------|
-| TianoCore Wiki（UEFI/EDK2 用户手册站点） | `data/tianocore-wiki/` | 289 个 HTML | 全站离线副本，`print.html` 单页可超 1.7GB（O(N²) 修复点） |
-| TianoCore Docs 仓库（edk2 规范/指南） | `data/tianocore-docs/` | 1309 个 Markdown | 33 个规范仓库（edk2-Specifications 系列、Edk2Workspace、UefiDriverWritersGuide、ModuleWriteGuide 等） |
+| TianoCore Wiki（UEFI/EDK2 用户手册站点） | `data/tianocore-wiki/` | 288 个 HTML | 全站离线副本，`print.html` 单页可超 1.7GB（O(N²) 修复点） |
+| TianoCore Docs 仓库（edk2 规范/指南） | `data/tianocore-docs/` | 1797 个文本文件 | 33 个规范仓库（edk2-Specifications 系列、Edk2Workspace、UefiDriverWritersGuide、ModuleWriteGuide 等） |
+| UEFI 官方规范 | `data/uefi-specs/` | 185 个 RST + 1 个 PDF | ACPI_6.5 / PI_1.10 / UEFI_2.11（Git 克隆）+ UEFI_Shell_2_2 PDF（`fetch_specs.py` 拉取，多 URL 回退） |
+| EDK2 提交历史 | `data/edk2-commits/` | 36434 个提交 | `commits.txt`：2006 年至今完整 `git log --all`（blobless 克隆） |
+| EDK2 Pull Request | `data/edk2-prs/` | 15332 个 PR | `prs.jsonl`：GitHub API 分页拉取，user/base/head 扁平化，断点续传 |
+| MdePkg 源码 | `data/edk2-mdepkg/` | 1982 个文件 | tianocore/edk2 的 MdePkg 子树（稀疏克隆），排除 `Library/` |
 
 ### 3.3 文档处理与分块规则
 
@@ -403,6 +473,8 @@ score = β · Chroma cosine 归一化得分 + (1 − β) · RRF 融合分
 
 ### 4.3 服务端点与 MCP 工具
 
+**RAG daemon 端点**（`edk2-kb/mcp_server.py`，动态端口写入 `daemon.json`）：
+
 | 端点/工具 | 说明 |
 |-----------|------|
 | `GET /health` | 健康检查（含 ChromaDB 可用性、索引状态、进程 PID）；健康判定窗口 60s |
@@ -413,6 +485,16 @@ score = β · Chroma cosine 归一化得分 + (1 − β) · RRF 融合分
 | `get_kb_status()` | MCP 工具：返回索引/服务状态 |
 | `get_kb_citation_guide()` | MCP 工具：返回 citation 格式指引 |
 | `POST /shutdown` | 优雅停机 |
+
+**Web 回答服务端点**（`web/server.js`，默认 `http://0.0.0.0:8080`，LLM 编排层）：
+
+| 端点 | 说明 |
+|------|------|
+| `POST /api/ask` | 提问 → daemon `/search`（top_k=35 + 按需 docs 定向查询）→ LLM 回答；支持 `history`（多轮）与 `prevResults`（上一轮检索上下文） |
+| `GET /api/status` | 转发 daemon `/health` + LLM 配置状态 |
+| `GET /healthz` | Web 服务存活探针 |
+
+**Web 服务环境变量**：`LLM_BASE_URL`（如 `https://open.bigmodel.cn/api/paas/v4`）、`LLM_API_KEY`、`LLM_MODEL`、`LLM_MAX_TOKENS`（默认 8000）、`PORT`（默认 8080）、`HOST`（默认 0.0.0.0）、`RATE_LIMIT_ASK`（默认 10 次/窗口）。前端 `web/index.html` 会把最近 10 轮历史存入 `localStorage`，并在追问时携带上一轮 `prevResults` 实现同主题多轮对话。
 
 ### 4.4 eval-query 命令与解读（含实操示例）
 
@@ -548,15 +630,17 @@ NOW  (hybrid + rerank, current)  top5
 | # | 核查项 | 通过标准 |
 |---|--------|----------|
 | 1 | 代码获取 | `git clone` 成功，`package.json` 版本 = 6.0.22 |
-| 2 | 模型本地化 | `~/.edk2-opencode/models/bge-m3/` 与 `bge-reranker-v2-m3/` 存在且可被加载 |
-| 3 | 知识库构建 | `--init-edk2-wiki`（设 `EDK2_EMBEDDING_MODEL`）后 `processed/` 有约 14819 个 txt；`chroma_db/`、`fts_index.db` 生成 |
-| 4 | 维度一致性 | 索引维度 = 1024（bge-m3）；`get_kb_status` 报告维度正确 |
-| 5 | daemon 启动 | `daemon start` 成功，`daemon status` 显示健康，`daemon.json` 有端口 |
-| 6 | 服务健康 | `GET /health` 返回 200，ChromaDB 状态可用（无 v6.0.22 前的误报 bug） |
-| 7 | HTTP 检索 | `GET /search?query=PcdDebugPrintErrorLevel` 返回带 confidence + citation 的结果 |
-| 8 | MCP 检索 | 任意 LLM 客户端经 MCP 调 `search_kb` 可拿到结果 |
-| 9 | 离线验证 | 断网后检索仍正常（`local_files_only=True`、默认禁 webfetch/websearch） |
-| 10 | 全量评测 | 重跑 330 条达到第 5.2 节指标 |
+| 2 | 模型本地化 | `~/.edk2-opencode/models/bge-m3/` 与 `bge-reranker-v2-m3/` 存在且可被加载（`fetch_models.py` 可一键补） |
+| 3 | 知识库构建（任一路径） | `setup_kb.ps1` / `setup_kb.sh` 完整跑通，或 `install_kb.ps1` / `install_kb.sh` 解压成功；`processed/` 有约 82297 个 txt；`chroma_db/`、`fts_index.db` 生成 |
+| 4 | 六数据源齐全 | `tianocore-wiki/`（288 HTML）、`tianocore-docs/`（33 仓库）、`uefi-specs/`、`edk2-commits/`（commits.txt）、`edk2-prs/`（prs.jsonl）、`edk2-mdepkg/`（MdePkg）均存在 |
+| 5 | 维度一致性 | 索引维度 = 1024（bge-m3）；`get_kb_status` 报告维度正确 |
+| 6 | daemon 启动 | `daemon start` 成功，`daemon status` 显示健康，`daemon.json` 有端口 |
+| 7 | 服务健康 | `GET /health` 返回 200，ChromaDB 状态可用（无 v6.0.22 前的误报 bug） |
+| 8 | HTTP 检索 | `GET /search?query=PcdDebugPrintErrorLevel` 返回带 confidence + citation 的结果 |
+| 9 | MCP 检索 | 任意 LLM 客户端经 MCP 调 `search_kb` 可拿到结果 |
+| 10 | 离线验证 | 断网后检索仍正常（`local_files_only=True`、默认禁 webfetch/websearch） |
+| 11 | Web 多轮（可选） | `node web/server.js` 后 `POST /api/ask` 返回回答；追问时携带 `prevResults`/`history` 可连续对话 |
+| 12 | 全量评测 | 重跑 330 条达到第 5.2 节指标 |
 
 ### 5.2 硬性验收指标
 
@@ -579,12 +663,16 @@ NOW  (hybrid + rerank, current)  top5
 | 现象 | 原因 | 解决 |
 |------|------|------|
 | `EBUSY` / 文件占用（Windows） | daemon 进程占用 npx/venv 文件 | **先 `npx edk2-opencode daemon stop`** 释放锁，再执行构建/更新命令 |
+| `fts_index.db` 被占用 / FTS 重建失败 | daemon 运行时持有 FTS 数据库锁 | 先 `daemon stop`，或 `add_mdepkg.py --skip-fts` 跳过 FTS 重建 |
 | 检索质量很差（Hit@5 明显低于验收值） | 索引用了 384 维默认模型，或 reranker 缺失 | 设 `EDK2_EMBEDDING_MODEL` 指向本地 bge-m3 后**全量重建**；补齐 reranker 模型目录 |
 | `/health` 报 ChromaDB unavailable 但检索正常 | 旧版本 numpy `or` 歧义 bug | 升级到 v6.0.22（用 `len()` 修复） |
-| 模型加载失败 / 卡住 | 模型未本地化 / 网络受限 Xet | `HF_HUB_DISABLE_XET=1` 或手动下载到 `models/` 目录 |
+| 模型加载失败 / 卡住 | 模型未本地化 / 网络受限 Xet | `HF_HUB_DISABLE_XET=1`、`hf-mirror.com` 镜像，或 `fetch_models.py` 一键下载 |
 | daemon 端口找不到 | 动态端口每次可能变化 | 以 `~/.edk2-opencode/kb/daemon.json` 为准，不要硬编码端口 |
 | 多实例冲突 | 多个 daemon 同时启动 | 单例锁 `opencode-edk2-agent.lock` 保证唯一；删除残留锁文件后重启 |
+| Shell 规范（UEFI_Shell_2_2 PDF）缺失 | uefi.org 对脚本 UA 返回 403；web.archive.org 可能不可达 | `fetch_specs.py` 已内置多 URL 回退，全部失败时仅跳过该 PDF（警告非致命）；可手动把 PDF 放到 `uefi-specs/Shell_2.2/source/` 后重跑 `init_kb.py` |
+| TianoCore Wiki 页面数偏少（< 全站约 380 页） | 站点极慢（searchindex.js ~9.86MB），爬虫 BFS 超时静默跳过孤儿页 | 属已知限制；缺失多为孤立技术页。如需全量，可改用 git 源仓库 `tianocore/tianocore-wiki.github.io`（mdBook 源，375 个 .md）作为数据源 |
+| docs 仓库没有更新 | 上游 33 个仓库默认分支均为 `main`，更新路径需 `git fetch --depth=1` + `reset --hard origin/main` | 重跑 `init_kb.py --update`（见 `clone_tianocore_docs`）；确认本地 `origin/main` 已拉到最新 |
 
 ---
 
-*Wiki 版本：v6.0.22 · 最后更新：2026-08-06 · 内容与 `D:\project-review-test\edk2-opencode-v3\` 源码逐命令核对*
+*Wiki 版本：v6.0.22（含 main 上 6.0.23*/6.0.24* 增强） · 最后更新：2026-08-19 · 内容与 `D:\project-review-test\edk2-opencode-v3\` 源码逐命令核对*
