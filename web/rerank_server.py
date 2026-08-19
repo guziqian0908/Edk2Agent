@@ -44,8 +44,12 @@ MODEL_PATH = Path.home() / ".edk2-opencode" / "models" / "bge-reranker-v2-m3"
 # Candidate budget: the coarse retrieval stage feeds at most this many docs
 # into the cross-encoder (fine rerank top-N on top of coarse top-M).
 MAX_DOCS = int(os.environ.get("RERANK_MAX_DOCS", "200"))
-# bge-reranker-v2-m3 supports long passages; 1024 is a safe default.
-RERANK_MAX_LENGTH = int(os.environ.get("RERANK_MAX_LENGTH", "1024"))
+# bge-reranker-v2-m3 supports long passages; 512 tokens is a safe default for
+# the web service's snippet payloads (the daemon caps snippets at ~800 chars,
+# ~400-500 tokens) and roughly HALVES the CPU cross-encoder cost per pair on a
+# single-threaded host. 1024 still available via RERANK_MAX_LENGTH if longer
+# passages need scoring.
+RERANK_MAX_LENGTH = int(os.environ.get("RERANK_MAX_LENGTH", "512"))
 # Chunked scoring for long texts: ~4 chars per token, 20% overlap.
 CHUNK_CHARS = RERANK_MAX_LENGTH * 4
 CHUNK_OVERLAP = CHUNK_CHARS // 5

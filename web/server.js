@@ -15,6 +15,15 @@
  *   LLM_API_KEY       OpenAI-compatible API key (required for LLM answers)
  *   LLM_BASE_URL      base URL, e.g. https://open.bigmodel.cn/api/paas/v4
  *   LLM_MODEL         model name, e.g. glm-4-flash
+ *   LLM_MAX_TOKENS    max answer tokens (default 4000; lower = faster)
+ *   LLM_TOTAL_BUDGET_MS  hard cap for the whole generate+retry loop (default 120 s)
+ *   LLM_FIRST_TOKEN_TIMEOUT_MS per-attempt first-token deadline (default 60 s)
+ *   ENABLE_RERANK     set 'false' to skip the BGE rerank stage entirely (default on)
+ *   RERANK_TIMEOUT_MS rerank HTTP timeout (default 60000 ms)
+ *   RERANK_CANDIDATES candidates scored by the reranker (default 16)
+ *   RERANK_SNIPPET_CHARS per-candidate text sent to the reranker (default 800)
+ *   ANSWER_CACHE_MAX    answer-cache LRU entries (default 300)
+ *   ANSWER_CACHE_TTL_MS answer-cache TTL ms (default 30 min)
  *   KB_DATA_DIR       override knowledge base root (default ~/.edk2-opencode/kb)
  */
 'use strict';
@@ -108,6 +117,64 @@ function setCachedContext(query, data) {
   contextCache.set(key, { data, timestamp: Date.now() });
 }
 
+// ---- answer cache: short-circuits the WHOLE pipeline on repeat questions ----
+// The dominant cost (LLM generation, ~64% of p50) is paid even when the
+// search/rerank stages are already cached. So the final answer is cached too
+// and, on a hit, replayed to the client as SSE deltas — the same event
+// sequence the real LLM stream produces, so the frontend needs no changes.
+//
+// Safety rules:
+//   * Only answers generated from a SELF-CONTAINED turn are stored (no
+//     history and no prevResults): such an answer depends solely on the
+//     question + retrieved docs, so replaying it under any later history is
+//     still correct for that exact question text.
+//   * Keyed by (model, normalized question) — switching models invalidates.
+//   * TTL (default 30 min) bounds staleness against KB updates; LRU caps
+//     memory. Client can force a fresh generation with {"fresh":true}.
+const answerCache = new Map();
+const ANSWER_CACHE_MAX = parseInt(process.env.ANSWER_CACHE_MAX || '300', 10);
+const ANSWER_CACHE_TTL_MS = parseInt(
+  process.env.ANSWER_CACHE_TTL_MS || String(30 * 60 * 1000), 10);
+
+function answerCacheKey(question, model) {
+  return `${model || '?'}|${normalizeQuery(question)}`;
+}
+
+function getCachedAnswer(question, model) {
+  const key = answerCacheKey(question, model);
+  const hit = answerCache.get(key);
+  if (hit && (Date.now() - hit.timestamp) < ANSWER_CACHE_TTL_MS) {
+    hit.hitCount = (hit.hitCount || 0) + 1;
+    return hit;
+  }
+  answerCache.delete(key);
+  return null;
+}
+
+function setCachedAnswer(question, model, data) {
+  const key = answerCacheKey(question, model);
+  if (answerCache.size >= ANSWER_CACHE_MAX) {
+    const oldestKey = answerCache.keys().next().value;
+    answerCache.delete(oldestKey);
+  }
+  answerCache.set(key, { ...data, timestamp: Date.now(), hitCount: 0 });
+}
+
+// Replay a cached answer as the same SSE stream a live LLM call emits:
+// phase(cache_hit) -> results -> phase(llm) -> delta* -> phase(llm_done) -> done.
+function replayCachedAnswer(res, cached) {
+  sendSSE(res, 'phase', { step: 'cache_hit', text: '命中历史回答，直接返回…', progress: 10 });
+  sendSSE(res, 'results', { results: (cached.results || []).slice(0, 10), daemon: null, from_cache: true });
+  sendSSE(res, 'phase', { step: 'llm', text: '正在生成回答…', progress: 60, model: cached.model });
+  const answer = cached.answer || '';
+  const CHUNK = 64;
+  for (let i = 0; i < answer.length; i += CHUNK) {
+    sendSSE(res, 'delta', { text: answer.slice(i, i + CHUNK) });
+  }
+  sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model: cached.model, tokens: cached.tokens || 0, from_cache: true });
+  sendSSE(res, 'done', { model: cached.model, tokens: cached.tokens || 0, from_cache: true });
+}
+
 // Rerank documents using BGE-reranker-v2-m3
 function rerankDocuments(query, docs) {
   return new Promise((resolve, reject) => {
@@ -124,7 +191,7 @@ function rerankDocuments(query, docs) {
     const slim = (docs || []).map((d) => ({
       title: d.title || '',
       section: d.section || '',
-      snippet: String(d.snippet || d.content || '').slice(0, 1200),
+      snippet: String(d.snippet || d.content || '').slice(0, RERANK_SNIPPET_CHARS),
       score: d.score || 0,
       source: d.source || '',
       url: d.url || '',
@@ -142,7 +209,7 @@ function rerankDocuments(query, docs) {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
       },
-      timeout: 60000,
+      timeout: RERANK_TIMEOUT_MS,
     }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
@@ -195,10 +262,39 @@ function loadDotEnv() {
 }
 loadDotEnv();
 
-// ---- LLM generation budget (env-tunable; defaults keep exhaustive answers) ----
-const LLM_MAX_TOKENS = parseInt(process.env.LLM_MAX_TOKENS || '8000', 10);
+// ---- LLM generation budget (env-tunable; defaults balance exhaustiveness and latency) ----
+const LLM_MAX_TOKENS = parseInt(process.env.LLM_MAX_TOKENS || '4000', 10);
 const LLM_RETRY_MAX_TOKENS = parseInt(process.env.LLM_RETRY_MAX_TOKENS || '3000', 10);
 const LLM_STREAM_TIMEOUT_MS = parseInt(process.env.LLM_STREAM_TIMEOUT_MS || '180000', 10);
+// Hard cap for the WHOLE generate+retry loop. The upstream can stream an
+// empty response until its timeout fires, so without this a single flaky
+// request could otherwise burn 3 attempts x LLM_STREAM_TIMEOUT_MS (~360s)
+// and blow up P99. Each attempt's timeout is also clamped to the remaining
+// budget.
+const LLM_TOTAL_BUDGET_MS = parseInt(process.env.LLM_TOTAL_BUDGET_MS || '120000', 10);
+// Per-attempt deadline for the FIRST token: guards against an upstream that
+// keeps the connection open during a very long prefill and never sends a
+// token. Default 60s (generous: current prefill is ~26s with the full prompt).
+const LLM_FIRST_TOKEN_TIMEOUT_MS = parseInt(
+  process.env.LLM_FIRST_TOKEN_TIMEOUT_MS || '60000', 10);
+
+// ---- rerank control (env-tunable) ----
+// The BGE cross-encoder on CPU costs ~14-19s per request and sits directly in
+// front of the first LLM token. ENABLE_RERANK=false skips it entirely (the
+// fused dense-first + docs merge order is used instead); RERANK_TIMEOUT_MS
+// bounds a hung rerank service (falls back to the retrieval order). Skipping
+// is a latency-vs-ordering trade-off, so it is opt-in.
+const ENABLE_RERANK = process.env.ENABLE_RERANK !== 'false';
+const RERANK_TIMEOUT_MS = parseInt(process.env.RERANK_TIMEOUT_MS || '60000', 10);
+// Rerank cost control: the single-threaded CPU cross-encoder takes ~1s per
+// (query, snippet) pair at 1024-token max_length, so the payload size is the
+// main latency lever. RERANK_CANDIDATES caps how many candidates get scored;
+// RERANK_SNIPPET_CHARS caps each candidate's text. Both were reduced from the
+// original 20 / 1200 after measuring 17-18s rerank on 20 pairs (~46% of total
+// request time). Keep them env-tunable so operators can trade cost vs. the
+// reranker seeing more of each chunk.
+const RERANK_CANDIDATES = parseInt(process.env.RERANK_CANDIDATES || '16', 10);
+const RERANK_SNIPPET_CHARS = parseInt(process.env.RERANK_SNIPPET_CHARS || '800', 10);
 
 // ---- rate limiting (per client IP, in-memory) ----
 const ASK_LIMIT = parseInt(process.env.RATE_LIMIT_ASK || '10', 10);      // /api/ask per window
@@ -650,6 +746,15 @@ function chunkKey(r) {
   return r.url || r.file || r.title || r.section || (r._pid != null ? String(r._pid) : '') || '';
 }
 
+// Stable citation id for a retrieved chunk. Rerank can reorder the display
+// while the LLM is already streaming, so the LLM must cite by an id that is
+// independent of position: a short sha1 of the chunk identity. Deterministic
+// across turns (the client sends the same identity fields back as prevResults).
+function stableCid(r) {
+  const base = chunkKey(r) || ('content:' + String(r.content || r.snippet || '').slice(0, 200));
+  return 'c' + crypto.createHash('sha1').update(base).digest('hex').slice(0, 8);
+}
+
 // Local reference for a retrieved chunk. All retrieval is served from the
 // local offline knowledge base, so citations point at the on-disk document
 // (file path + section) instead of a web URL: `file > section`.
@@ -840,7 +945,7 @@ function sanitizePrevResults(raw) {
   for (const r of raw.slice(0, 10)) {
     if (!r || typeof r !== 'object') continue;
     const item = {};
-    for (const k of ['source', 'source_display', 'title', 'url', 'file', 'section', 'type']) {
+    for (const k of ['source', 'source_display', 'title', 'url', 'file', 'section', 'type', 'cid']) {
       if (typeof r[k] === 'string') item[k] = r[k].slice(0, 500);
     }
     const content = typeof r.content === 'string' ? r.content : (typeof r.snippet === 'string' ? r.snippet : '');
@@ -851,7 +956,7 @@ function sanitizePrevResults(raw) {
   return out;
 }
 
-function buildMessages(question, results, history, prevResults) {
+function buildMessages(question, results, history, prevResults, opts = {}) {
   const ctx = aggregateContextEnhanced(results);
   const prevCtx = aggregateContextEnhanced(prevResults || []);
   // Deduplicate previous-turn entries against the current ones so the same
@@ -871,8 +976,8 @@ function buildMessages(question, results, history, prevResults) {
   // when the previous turn's results are present they are reserved a share so
   // follow-up questions ("那它的定义呢？") can still reference the most
   // recent turn's retrieved material.
-  const MAX_CTX_CHARS = 34000;
-  const CUR_BUDGET = prevEntries.length ? 24000 : MAX_CTX_CHARS;
+  const MAX_CTX_CHARS = opts.maxCtxChars || 34000;
+  const CUR_BUDGET = prevEntries.length ? Math.round(MAX_CTX_CHARS * 0.7) : MAX_CTX_CHARS;
   let ctxChars = 0;
   const ctxCapped = [];
   for (const r of ctx) {
@@ -901,11 +1006,12 @@ function buildMessages(question, results, history, prevResults) {
     intentGuidance = '\n\n**Question Intent**: The user wants examples. Prioritize showing complete, working code/config examples with explanations.';
   }
   
-  const context = ctxCapped.map((r, i) => {
+  const context = ctxCapped.map((r) => {
     const ref = localRef(r);
     const tag = r.prev ? '[上一轮检索] ' : '';
+    const cid = r.cid || stableCid(r);
     return (
-      `[${i + 1}] ${tag}${r.title}\n` +
+      `[${cid}] ${tag}${r.title}\n` +
       (r.type ? `Type: ${r.type}\n` : '') +
       (r.source ? `Source: ${r.source}\n` : '') +
       (ref ? `Local: ${ref}\n` : '') +
@@ -933,10 +1039,15 @@ function buildMessages(question, results, history, prevResults) {
     '',
     '**判断标准：如果标准答案中列出了某个具体值/模式/规则，而你的回答中没有，就是不合格。**',
     '宁可回答长一些、详尽一些，也绝不能遗漏上下文中的具体技术细节。',
+    '同时避免自我重复、无信息量的铺垫和把同一规则在多个章节反复改写；一次性完整给出要点并保证有结尾。',
+    '',
+    '## 引用规则（稳定编号，禁止位置序号）',
+    '',
+    '每个上下文条目以其稳定编号开头，格式为 `[cXXXXXXXX]`（小写 `c` + 8 位小写十六进制，如 `[c1a2b3c4]`）。在回答中引用资料时，在相关论断后附上对应条目的稳定编号，例如：`...[c1a2b3c4]`。编号与展示顺序无关，是永久的。禁止使用 `[1][2]` 这类位置序号，也禁止编造上下文中不存在的编号。',
     '',
     '## 多轮对话上下文（上一轮检索）',
     '',
-    '上下文中标记为【上一轮检索】的条目来自最近一轮对话的检索结果，用于衔接前一轮的内容。当用户用代词或指代（如"那它的定义呢？"、"为什么会这样？"）追问上一轮的内容时，优先从这些【上一轮检索】条目中引用并展开，仍用 [n] 标记引用。不要编造上一轮检索中不存在的内容。',
+    '上下文中标记为【上一轮检索】的条目来自最近一轮对话的检索结果，用于衔接前一轮的内容。当用户用代词或指代（如"那它的定义呢？"、"为什么会这样？"）追问上一轮的内容时，优先从这些【上一轮检索】条目中引用并展开，仍用稳定编号标记引用。不要编造上一轮检索中不存在的内容。',
     '',
     '## 输出范式：柔性要素，禁止刚性填空',
     '',
@@ -946,11 +1057,11 @@ function buildMessages(question, results, history, prevResults) {
     '',
     '2. **现象 / 根因排查清单**：**仅故障异常类问题启用**。先给可复现的外部现象（**只描述现象，禁止虚构报错码或错误文本**），再按可能性排序列出根因排查清单。**非故障问题直接删除本章节，禁止编造排查项。**',
     '',
-    '3. **约束规则**：配置、驱动、规范类问题启用；纯概念科普可精简。**启用时它是回答的主体**：逐条列出上下文中的具体规则、模式、枚举值、API 签名，每条保留引用标记 `[n]`（对应 RAG 参考上下文中序号）。',
+    '3. **约束规则**：配置、驱动、规范类问题启用；纯概念科普可精简。**启用时它是回答的主体**：逐条列出上下文中的具体规则、模式、枚举值、API 签名，每条保留引用标记（上下文条目的稳定编号 `[cXXXXXXXX]`）。',
     '   - 对枚举类型（如 MODULE_TYPE）：必须列出所有取值及其含义。',
     '   - 对流程/机制：按顺序完整描述每个步骤。',
     '   - **消除无条件绝对化表述**：关键规则补上 `【触发前置条件】仅当XXX满足，才会发生该行为，否则不生效。`',
-    '   - **晦涩规则双轨表达**：复杂构建/驱动规则保留 `[n]` 引用后，另起一行附"通俗解读"，说明实际开发场景含义。',
+    '   - **晦涩规则双轨表达**：复杂构建/驱动规则保留稳定引用标记后，另起一行附"通俗解读"，说明实际开发场景含义。',
     '   - 事实性信息（章节号、签名、阈值）与上下文完全一致，禁止虚构。',
     '',
     '4. **工程要点（【强制要求】/【最佳实践】）**：技术类问题优先保留。',
@@ -970,11 +1081,11 @@ function buildMessages(question, results, history, prevResults) {
     '',
     '1. **信息分层校验**：仅 RAG 存在 shall/must 原文依据才可标【强制要求】；社区经验/commit 案例/逻辑推导归【最佳实践】；综合推导结论加 `注：该结论由多条文档综合推导…` 注释并禁止放入强制项。',
     '2. **补全触发前置条件**：消除无条件绝对化表述；关键规则补 `【触发前置条件】仅当XXX满足，才会发生该行为，否则不生效。`',
-    '3. **晦涩规则双轨表达**：复杂构建/驱动规则保留引用标记 `[n]`，附加通俗解读说明实际开发场景含义。',
+    '3. **晦涩规则双轨表达**：复杂构建/驱动规则保留稳定引用标记，附加通俗解读说明实际开发场景含义。',
     '4. **API 与实操建议校验**：核对 API、宏、元数据段名拼写，杜绝笔误；推导得到的实操建议加注"建议/工程推断"提醒；与参考上下文矛盾的错误建议直接删除。',
     '5. **按需增加极简示例**：INF/DEC/DSC/FDF 配置、PCD 配置、Protocol/库类定义、DriverBinding 函数逻辑等场景优先补充 ✅/❌ 核心片段示例（仅关键行）；无合适示例的场景不得硬造。',
     '6. **故障类补充可观测排查手段**：仅故障异常类问题给出构建产物（As-Built INF / map / build log）、UEFI Shell 命令、SCT 测试等手段；**只描述现象，禁止虚构错误码**。',
-    '7. **来源区分**：原文结论带引用标记 `[n]`；素材信息不足时如实说明"上下文未覆盖该点"，绝不编造规范条文或报错码。',
+    '7. **来源区分**：原文结论带稳定引用标记；素材信息不足时如实说明"上下文未覆盖该点"，绝不编造规范条文或报错码。',
     '',
     '## 输出自检（模型内部完成后在心里校验，禁止打印过程）',
     '- 只启用与问题类型匹配的要素，未匹配章节直接舍弃；无素材时不编造填充。',
@@ -985,6 +1096,7 @@ function buildMessages(question, results, history, prevResults) {
     '- 故障问题提供可观测排查手段。',
     '- API、标识符无笔误，实操建议与参考上下文无冲突。',
     '- 推导内容有注释，无虚构报错、规范条文。',
+    '- 表述紧凑无冗余铺垫，且具体细节零遗漏。',
     '',
     '## 措辞红线',
     '- 措辞用固件专业表述：**必须、禁止、红线、强制**。',
@@ -994,6 +1106,7 @@ function buildMessages(question, results, history, prevResults) {
     '## 长度与密度',
     '- **完整性优先于简洁性**。回答可以长，但不能遗漏上下文中的具体技术细节。',
     '- 去除无信息量的铺垫句，但具体规则/枚举/模式必须完整保留。',
+    '- **表述紧凑**：在完整保留所有具体规则、枚举值、API 签名、错误码的前提下，用最紧凑的句式表达，删除重复强调、格式化铺垫和空泛过渡句。同一信息只表达一次。目标：同等内容用更少的字数。',
     '',
     '## Output format examples (Few-shot)',
     '',
@@ -1099,7 +1212,7 @@ function buildMessages(question, results, history, prevResults) {
     '',
     '---',
     '',
-    'Follow these examples: apply the flexible element paradigm — only include sections that match the question type (fault questions get 现象/根因排查清单 + 可观测排查手段, config/code questions get ✅/❌ examples, concept questions can be brief), ENUMERATE ALL specific rules/values/patterns from context with [n] markers, always close with a ## 参考来源 block, and never print the self-check checklist.',
+    'Follow these examples: apply the flexible element paradigm — only include sections that match the question type (fault questions get 现象/根因排查清单 + 可观测排查手段, config/code questions get ✅/❌ examples, concept questions can be brief), ENUMERATE ALL specific rules/values/patterns from context with stable [cXXXXXXXX] citation markers, always close with a ## 参考来源 block, and never print the self-check checklist.',
   ].join('\n');
 
   const messages = [{ role: 'system', content: system }];
@@ -1110,6 +1223,9 @@ function buildMessages(question, results, history, prevResults) {
   }
   messages.push({ role: 'user', content: `RAG 参考上下文：\n${context}\n\n原始问题：${question}` });
   messages.prevCount = ctxCapped.filter(r => r.prev).length;
+  messages.ctxCount = ctxCapped.length;
+  messages.ctxChars = ctxChars;
+  messages.systemChars = system.length;
   return messages;
 }
 
@@ -1125,7 +1241,7 @@ function llmConfig() {
  * Stream LLM chat completions (OpenAI-compatible SSE).
  * Calls onDelta(text) for each content chunk; resolves on completion.
  */
-function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTokens = LLM_MAX_TOKENS } = {}) {
+function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTokens = LLM_MAX_TOKENS, firstTokenMs = 0 } = {}) {
   return new Promise((resolve, reject) => {
     const { apiKey, baseUrl, model } = llmConfig();
     if (!apiKey || !baseUrl || !model) {
@@ -1137,6 +1253,14 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
     const payload = { model, messages, temperature: 0, stream: true, max_tokens: maxTokens };
 
     const protocol = u.protocol === 'https:' ? https : http;
+    // The socket `timeout` option does NOT fire while the upstream sits in
+    // prefill (it may keep the connection idle and never send a byte until
+    // the first token). A separate first-token deadline aborts such hung
+    // prefill so a single attempt cannot burn the whole generation budget.
+    let firstTokenTimer = null;
+    const clearFirstToken = () => {
+      if (firstTokenTimer) { clearTimeout(firstTokenTimer); firstTokenTimer = null; }
+    };
     const req = protocol.request({
       hostname: u.hostname,
       port: u.port || (u.protocol === 'https:' ? 443 : 80),
@@ -1177,17 +1301,26 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
           try {
             const j = JSON.parse(data);
             const delta = j.choices && j.choices[0] && j.choices[0].delta;
-            if (delta && delta.content) onDelta(delta.content);
+            if (delta && delta.content) {
+              clearFirstToken();
+              onDelta(delta.content);
+            }
           } catch { /* ignore malformed chunk */ }
         }
       });
       res.on('end', () => {
+        clearFirstToken();
         resolve();
       });
-      res.on('error', reject);
+      res.on('error', (e) => { clearFirstToken(); reject(e); });
     });
-    req.on('error', reject);
+    req.on('error', (e) => { clearFirstToken(); reject(e); });
     req.on('timeout', () => req.destroy(new Error('timeout')));
+    if (firstTokenMs > 0) {
+      firstTokenTimer = setTimeout(() => {
+        req.destroy(new Error(`LLM no first token within ${firstTokenMs}ms`));
+      }, firstTokenMs);
+    }
     req.write(JSON.stringify(payload));
     req.end();
   });
@@ -1195,15 +1328,17 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
 
 // Non-streaming single LLM completion. Used to translate a Chinese question
 // into an English retrieval query (cross-lingual vector recall is weak, so a
-// faithful English query ranks the authoritative spec chapters far better).
-// Falls back to the input text on any failure so search never breaks.
-async function llmComplete(messages, { timeoutMs = 60000 } = {}) {
+// faithful English query ranks the authoritative spec chapters far better),
+// and as a final non-streaming fallback when the streaming answer path keeps
+// returning empty streams. Falls back to the input text on any failure so
+// search never breaks.
+async function llmComplete(messages, { timeoutMs = 60000, maxTokens = 300 } = {}) {
   return new Promise((resolve) => {
     const { apiKey, baseUrl, model } = llmConfig();
     if (!apiKey || !baseUrl || !model) return resolve('');
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const u = new URL(url);
-    const payload = { model, messages, temperature: 0, max_tokens: 300 };
+    const payload = { model, messages, temperature: 0, max_tokens: maxTokens };
     const protocol = u.protocol === 'https:' ? https : http;
     const req = protocol.request({
       hostname: u.hostname,
@@ -1247,6 +1382,13 @@ async function translateToEnglish(question) {
   const key = normalizeQuery(question);
   const hit = translationCache.get(key);
   if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.text;
+  // The corpus is English-only: a question that is already pure ASCII (English
+  // phrasing, EDK2 identifiers, error codes) is used verbatim, skipping a full
+  // LLM round-trip (~2s) that would only rephrase it.
+  if (/^[\x00-\x7F\s]+$/.test(question) && /[a-zA-Z]{3,}/.test(question)) {
+    translationCache.set(key, { text: question, timestamp: Date.now() });
+    return question;
+  }
   const text = await llmComplete([
     {
       role: 'system',
@@ -1353,6 +1495,27 @@ async function handleAsk(req, res) {
       qh = queryHash(question);
       emitTrace({ traceId, stage: 'http_start', durationMs: 0, queryHash: qh, status: 'start' });
 
+      // Answer-cache short-circuit: a repeated (self-contained) question skips
+      // the daemon, search, rerank AND the LLM entirely — replayed as SSE.
+      const cachedAnswer = parsed.fresh !== true ? getCachedAnswer(question, llmConfig().model) : null;
+      if (cachedAnswer) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        const cacheStart = Date.now();
+        replayCachedAnswer(res, cachedAnswer);
+        res.end();
+        emitTrace({
+          traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
+          queryHash: qh, status: 'ok', hit: true, hits: cachedAnswer.hitCount,
+        });
+        finishTotal('ok', { tokens: cachedAnswer.tokens || 0, from_cache: true, answer_cache: true });
+        return;
+      }
+
       const daemonUrl = await getHealthyDaemonUrl();
       if (!daemonUrl) {
         const st = readDaemonState();
@@ -1398,19 +1561,31 @@ async function handleAsk(req, res) {
           });
           // Hybrid retrieval query: the faithful English translation provides
           // cross-lingual semantic recall (Chinese "排版/空白" -> English
-          // "formatting/whitespace"), while the original keyword-expansion
-          // terms keep precise EDK2 anchors (LNK2001, error 4000, PCD...) that
-          // pure translation dilutes. Merge, dedup, cap length.
+          // "formatting/whitespace"), while the keyword-expansion terms keep
+          // precise EDK2 anchors (LNK2001, error 4000, PCD...) that pure
+          // translation dilutes. Merge, dedup, cap length.
+          //
+          // Non-ASCII (CJK) tokens are dropped from the tail: the corpus is
+          // English-only, so they add no recall AND push the daemon search into
+          // a ~3x slower path (verified: same query 1488ms with CJK vs 416ms
+          // English-only on the docs source). The English translation + anchors
+          // preserve top-20 recall (15-18/20 overlap in probes).
           const translatedQ = (translated && translated !== question) ? translated : '';
           const expanded = expandChineseQuery(question);
           const seen = new Set(translatedQ.toLowerCase().split(/\s+/).filter(Boolean));
           const tail = expanded.split(/\s+/).filter(t => {
             const l = t.toLowerCase();
             if (seen.has(l)) return false;
+            if (/[^\x00-\x7F]/.test(t)) return false;
             seen.add(l);
             return true;
           });
-          const searchQuery = [translatedQ, tail.join(' ')].filter(Boolean).join(' ').slice(0, 500);
+          const engQuery = [translatedQ, tail.join(' ')].filter(Boolean).join(' ').slice(0, 300);
+          // Main search: if nothing English is available (translation failed and
+          // no expansion rule matched), fall back to the raw question so the
+          // search still runs. Docs search: English-only; skipped when empty.
+          const searchQuery = engQuery || question;
+          const docsQuery = engQuery || null;
           // Parallel dual-source retrieval. The knowledge base is dominated by
           // tianocore/edk2 commit records (36k+ chunks): for build/error/commit
           // topics their "Fix ... build error" subjects outrank the real spec
@@ -1424,7 +1599,9 @@ async function handleAsk(req, res) {
           // README chunks above the actual CCoding spec chapters. For coding-
           // style topics fire two focused English docs queries (chapter locator
           // + concrete rule phrases) so 5.2.1/5.2.2/5.2.3 sub-chunks survive.
-          const isStyleTopic = /spacing|formatting|indentation|排版|空白|缩进|风格|style|vertical|horizontal|coding.?standard|编码规范/i.test(searchQuery);
+          // Test the ORIGINAL question + translation + expansion (not just the
+          // CJK-free searchQuery) so Chinese style triggers still fire.
+          const isStyleTopic = /spacing|formatting|indentation|排版|空白|缩进|风格|style|vertical|horizontal|coding.?standard|编码规范/i.test([question, translatedQ, expanded].join(' '));
           const docsFocusQueries = isStyleTopic
             ? [
                 'C Coding Standards 5.2 Spacing Vertical Spacing blank lines Horizontal Spacing indentation File Heading section rules',
@@ -1436,8 +1613,10 @@ async function handleAsk(req, res) {
                 '5.2.2.8 structure member 5.2.2.9 array subscripts 5.2.2.10 parentheses precedence 5.2.2.11 align continuation',
               ]
             : [];
-          const docsPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } })
-            .catch(() => null);
+          const docsPromise = docsQuery
+            ? httpJson(`${url}/search?query=${encodeURIComponent(docsQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } })
+              .catch(() => null)
+            : Promise.resolve(null);
           const docsFocusPromises = docsFocusQueries.map(fq =>
             httpJson(`${url}/search?query=${encodeURIComponent(fq)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
           const [mainResp, docsResp, ...docsFocusResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises]);
@@ -1502,14 +1681,26 @@ async function handleAsk(req, res) {
         // BEFORE the expensive rerank stage sees them.
         results = pruneByMetadata(question, results);
         
+        // Assign every result a stable citation id (sha1 of the chunk identity)
+        // BEFORE any parallel rerank can reorder things, so the LLM cites by an
+        // id that stays valid regardless of display order.
+        for (const r of results) { r.cid = r.cid || stableCid(r); }
+        
         // 1.5) Rerank results using BGE-reranker. Use a HYBRID approach:
         // GUARANTEE top 3 from vector search survive (the reranker often
         // demotes key chunks like "4.4 Hungarian Prefixes" from #1 to #8).
         // Then fill remaining slots from rerank order.
-        if (results.length > 10) {
-          sendSSE(res, 'phase', { step: 'rerank', text: '重排序文档…', progress: 25 });
-          let rerankStart = Date.now();
-          try {
+        //
+        // Runs IN PARALLEL with the LLM stream (fire-and-forget): the LLM
+        // context uses the fused retrieval order with stable [cid] markers, so
+        // the first token is no longer blocked by the ~6-9s CPU rerank. When
+        // rerank finishes, a second results event reorders the on-screen source
+        // list; citations stay correct because they key on stable cids, not
+        // positions. Disable via ENABLE_RERANK=false.
+        if (results.length > 10 && ENABLE_RERANK) {
+          sendSSE(res, 'phase', { step: 'rerank', text: '后台重排序文档…', progress: 25 });
+          const rerankStart = Date.now();
+          const doRerank = (async () => {
             const rerankQuery = expandChineseQuery(question);
             // GUARANTEE: keep the top vector hits AND the top tianocore-docs
             // chunk for the query. The BGE reranker often ranks generic commit
@@ -1557,11 +1748,7 @@ async function handleAsk(req, res) {
               const key = (r.file || '') + '|' + (r.section || '') + '|' + (r.title || '');
               if (!guardSeen.has(key)) { guardSeen.add(key); guarded.push(r); }
             }
-            const reranked = await rerankDocuments(rerankQuery, results);
-            emitTrace({
-              traceId, stage: 'rerank', durationMs: Date.now() - rerankStart,
-              queryHash: qh, status: 'ok', docs: results.length,
-            });
+            const reranked = await rerankDocuments(rerankQuery, results.slice(0, RERANK_CANDIDATES));
             
             // Build merged list: start with guaranteed top hits
             const seen = new Set();
@@ -1576,24 +1763,42 @@ async function handleAsk(req, res) {
               const key = (r.file || '') + '|' + (r.section || '') + '|' + (r.title || '');
               if (!seen.has(key) && key !== '||') {
                 seen.add(key);
+                r.cid = r.cid || stableCid(r);
                 merged.push(r);
               }
             }
-            results = merged;
-          } catch (e) {
+            return merged;
+          })();
+          doRerank.then((merged) => {
+            emitTrace({
+              traceId, stage: 'rerank', durationMs: Date.now() - rerankStart,
+              queryHash: qh, status: 'ok', docs: results.length,
+            });
+            if (!res.writableEnded && merged && merged.length) {
+              sendSSE(res, 'results', { results: merged.slice(0, 15), daemon: url, from_cache: false, reranked: true });
+            }
+          }).catch((e) => {
             emitTrace({
               traceId, stage: 'rerank', durationMs: Date.now() - rerankStart,
               queryHash: qh, status: 'error', error: e.message,
             });
-            // Continue with original results if reranking fails
-          }
+            // Continue with the fused order already streamed to the client.
+          });
+        } else if (results.length > 10 && !ENABLE_RERANK) {
+          emitTrace({
+            traceId, stage: 'rerank', durationMs: 0, queryHash: qh,
+            status: 'skipped', reason: 'ENABLE_RERANK=false',
+          });
         }
         
         // Cache the results
         setCachedContext(question, results);
         sendSSE(res, 'phase', { step: 'cache_stored', text: '结果已缓存', progress: 30 });
       }
-      sendSSE(res, 'results', { results: results.slice(0, 10), daemon: url, from_cache: fromCache });
+      // Both cache-hit and fresh paths converge here. Ensure a stable cid for
+      // every result so the on-screen [cid] anchors always resolve.
+      for (const r of results) { r.cid = r.cid || stableCid(r); }
+      sendSSE(res, 'results', { results: results.slice(0, 15), daemon: url, from_cache: fromCache });
 
       // 2) stream LLM answer
       sendSSE(res, 'phase', { step: 'llm_init', text: '初始化LLM…', progress: 40 });
@@ -1607,6 +1812,13 @@ async function handleAsk(req, res) {
       sendSSE(res, 'phase', { step: 'llm_build', text: '构建提示词…', progress: 50, model });
       
       const messages = buildMessages(question, results, history, prevResults);
+      const inputChars = messages.reduce(
+        (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+      emitTrace({
+        traceId, stage: 'llm_prompt', durationMs: 0, queryHash: qh,
+        inputChars, systemChars: messages.systemChars,
+        ctxChars: messages.ctxChars, ctxCount: messages.ctxCount,
+      });
       emitTrace({
         traceId, stage: 'prev_context', durationMs: 0, queryHash: qh,
         hasPrev: prevResults.length, prevCount: messages.prevCount || 0,
@@ -1615,6 +1827,8 @@ async function handleAsk(req, res) {
       
       const llmStart = Date.now();
       let tokenCount = 0;
+      let fullAnswer = '';
+      let firstTokenAt = null;
       try {
         // The upstream LLM intermittently returns an empty stream (200 + [DONE]
         // with zero deltas) or drops the connection before any content. Retry
@@ -1622,25 +1836,64 @@ async function handleAsk(req, res) {
         // answer is never duplicated to the client. Later attempts use a
         // progressively smaller max_tokens budget so a flaky upstream still
         // yields SOME bounded answer instead of failing the whole request.
+        // The whole retry loop is additionally capped by LLM_TOTAL_BUDGET_MS so
+        // an upstream that streams empty responses until its timeout cannot
+        // blow a single query up to 3 attempts x LLM_STREAM_TIMEOUT_MS.
         const attemptCaps = [
           LLM_MAX_TOKENS,
           LLM_RETRY_MAX_TOKENS,
           Math.min(LLM_RETRY_MAX_TOKENS, 1500),
         ];
+        // On empty retries the RAG context budget is progressively shrunk as
+        // well: a very large input makes prefill slow AND correlates with the
+        // upstream's empty-stream failures, so later attempts retry with a
+        // tighter context that prefills faster and is far more likely to
+        // actually yield content (a shorter answer beats a hard error).
+        const attemptCtxCaps = [undefined, 12000, 6000];
         for (let attempt = 1; attempt <= 3; attempt++) {
+          const remainingBudget = LLM_TOTAL_BUDGET_MS - (Date.now() - llmStart);
+          if (remainingBudget <= 0) break;
           let chars = 0;
+          let lastCtxChars = 0;
           try {
+            const messages = buildMessages(question, results, history, prevResults,
+              attemptCtxCaps[attempt - 1] ? { maxCtxChars: attemptCtxCaps[attempt - 1] } : {});
+            lastCtxChars = messages.ctxChars;
+            const inputChars = messages.reduce(
+              (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+            emitTrace({
+              traceId, stage: 'llm_prompt', durationMs: 0, queryHash: qh,
+              attempt, inputChars, systemChars: messages.systemChars,
+              ctxChars: messages.ctxChars, ctxCount: messages.ctxCount,
+            });
+            if (attempt === 1) {
+              emitTrace({
+                traceId, stage: 'prev_context', durationMs: 0, queryHash: qh,
+                hasPrev: prevResults.length, prevCount: messages.prevCount || 0,
+              });
+            }
             await llmStream(messages, {
               onDelta: (text) => {
+                if (firstTokenAt === null) {
+                  firstTokenAt = Date.now();
+                  emitTrace({
+                    traceId, stage: 'llm_first_token', durationMs: firstTokenAt - llmStart,
+                    queryHash: qh, status: 'ok',
+                  });
+                }
                 chars += text.length;
                 tokenCount++;
+                fullAnswer += text;
                 sendSSE(res, 'delta', { text });
               },
-              timeoutMs: attempt === 1 ? LLM_STREAM_TIMEOUT_MS : Math.max(60000, LLM_STREAM_TIMEOUT_MS / 2),
+              timeoutMs: Math.min(
+                attempt === 1 ? LLM_STREAM_TIMEOUT_MS : Math.max(60000, LLM_STREAM_TIMEOUT_MS / 2),
+                remainingBudget),
+              firstTokenMs: Math.min(LLM_FIRST_TOKEN_TIMEOUT_MS, remainingBudget),
               maxTokens: attemptCaps[attempt - 1],
             });
           } catch (e) {
-            if (attempt < 3 && chars === 0) {
+            if (attempt < 3 && chars === 0 && (Date.now() - llmStart) < LLM_TOTAL_BUDGET_MS) {
               sendSSE(res, 'phase', { step: 'llm_retry', text: '生成中断，正在重试…', progress: 70, model });
               await new Promise(r => setTimeout(r, 1000));
               continue;
@@ -1658,8 +1911,9 @@ async function handleAsk(req, res) {
           emitTrace({
             traceId, stage: 'llm_empty_retry', durationMs: Date.now() - llmStart,
             queryHash: qh, status: 'empty', attempt, maxTokens: attemptCaps[attempt - 1],
+            ctxChars: lastCtxChars,
           });
-          if (attempt < 3) {
+          if (attempt < 3 && (Date.now() - llmStart) < LLM_TOTAL_BUDGET_MS) {
             sendSSE(res, 'phase', { step: 'llm_retry', text: '生成结果为空，正在重试…', progress: 70, model });
             await new Promise(r => setTimeout(r, 1000));
           }
@@ -1674,12 +1928,50 @@ async function handleAsk(req, res) {
         finishTotal('error', { error: e.message });
         return;
       }
+      // Final fallback: the streaming pipeline (POST + SSE) intermittently
+      // returns a 200 with zero deltas while the non-streaming pipeline on the
+      // same endpoint keeps working (verified: the answer path streams empty
+      // for hours while a stream:false request succeeds in ~2s). So when every
+      // streaming attempt came back empty, try ONE non-streaming completion
+      // with a tight context before giving up. The result is delivered as a
+      // single delta.
+      if (tokenCount === 0 && (Date.now() - llmStart) < LLM_TOTAL_BUDGET_MS) {
+        sendSSE(res, 'phase', { step: 'llm_retry', text: '改用非流式生成…', progress: 75, model });
+        const fbMessages = buildMessages(question, results, history, prevResults, { maxCtxChars: 6000 });
+        const fbInputChars = fbMessages.reduce(
+          (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+        emitTrace({
+          traceId, stage: 'llm_prompt', durationMs: 0, queryHash: qh,
+          attempt: 4, nonStream: true, inputChars: fbInputChars,
+          systemChars: fbMessages.systemChars, ctxChars: fbMessages.ctxChars,
+          ctxCount: fbMessages.ctxCount,
+        });
+        const fbStart = Date.now();
+        const fbText = await llmComplete(fbMessages, {
+          timeoutMs: Math.min(60000, LLM_TOTAL_BUDGET_MS - (Date.now() - llmStart)),
+          maxTokens: LLM_RETRY_MAX_TOKENS,
+        });
+        if (fbText) {
+          fullAnswer = fbText;
+          tokenCount = Math.max(1, Math.ceil(fbText.length / 4));
+          sendSSE(res, 'delta', { text: fbText });
+          emitTrace({
+            traceId, stage: 'llm_fallback', durationMs: Date.now() - fbStart,
+            queryHash: qh, status: 'ok', tokens: tokenCount,
+          });
+        } else {
+          emitTrace({
+            traceId, stage: 'llm_fallback', durationMs: Date.now() - fbStart,
+            queryHash: qh, status: 'empty',
+          });
+        }
+      }
       if (tokenCount === 0) {
         emitTrace({
           traceId, stage: 'llm_generate', durationMs: Date.now() - llmStart,
           queryHash: qh, status: 'empty', tokens: 0,
         });
-        sendSSE(res, 'error', { error: 'LLM 生成多次为空，请稍后重试。' });
+        sendSSE(res, 'error', { error: 'LLM 生成多次为空或超出生成预算，请稍后重试。' });
         res.end();
         finishTotal('error', { error: 'empty_generation' });
         return;
@@ -1689,6 +1981,20 @@ async function handleAsk(req, res) {
         queryHash: qh, status: 'ok', tokens: tokenCount,
       });
       sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model, tokens: tokenCount });
+      // Store the completed self-contained answer for future replays.
+      const selfContained = !history.length && !prevResults.length && parsed.fresh !== true;
+      if (selfContained && fullAnswer) {
+        setCachedAnswer(question, model, {
+          answer: fullAnswer,
+          results: results.slice(0, 10),
+          tokens: tokenCount,
+          model,
+        });
+        emitTrace({
+          traceId, stage: 'answer_cache', durationMs: 0, queryHash: qh,
+          status: 'ok', hit: false, tokens: tokenCount,
+        });
+      }
       sendSSE(res, 'done', { model, tokens: tokenCount, from_cache: fromCache });
       res.end();
       finishTotal('ok', { tokens: tokenCount, from_cache: fromCache });

@@ -110,6 +110,10 @@
   .result .src { font-size: 12px; color: var(--muted); }
   .result .snippet { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
   .result .link { font-size: 12px; color: var(--accent); word-break: break-all; }
+  .result .cid { font-size: 11px; color: #64748b; font-family: ui-monospace, Consolas, monospace; background: rgba(148,163,184,.12); padding: 1px 5px; border-radius: 4px; }
+  a.cite { color: var(--accent); font-weight: 600; text-decoration: underline dotted; cursor: pointer; text-decoration-color: rgba(56,189,248,.5); }
+  .result.flash { background: rgba(56,189,248,.15); box-shadow: inset 3px 0 0 var(--accent); }
+  html { scroll-behavior: smooth; }
 
   .error { color: #fca5a5; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); padding: 12px; border-radius: 10px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
   .typing { color: var(--muted); font-size: 13px; padding: 6px 2px; }
@@ -194,6 +198,14 @@ function mdInline(s) {
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
   s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  // stable [cid] citation anchors -> jump to the matching source card
+  s = s.replace(/\[(c[a-f0-9]{6,12})\]/gi, (m, cid) => {
+    const lc = 'c' + cid.slice(1).toLowerCase();
+    const e = currentSourcesMap[lc];
+    if (!e) return m; // unknown id: leave as plain text
+    const label = e.title || e.file || e.section || lc;
+    return '<a href="#src-' + lc + '" class="cite" data-cid="' + lc + '" title="' + esc(String(label)) + '">[' + lc + ']</a>';
+  });
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => '<code>' + esc(codes[+i]) + '</code>');
   return s;
@@ -347,45 +359,69 @@ function addAssistantTurn() {
   return body;
 }
 
+// Per-turn source list state. Rerank completes AFTER the LLM stream starts and
+// arrives as a second 'results' event, so renderResultsInto replaces the list
+// in place: the panel keeps its collapse state, and [cid] anchors in the answer
+// keep resolving because they key on the stable cid, not display position.
 function renderResultsInto(body, results) {
-  const wrap = document.createElement('div');
-  const n = (results || []).length;
+  if (!body._sourcesState) body._sourcesState = { titleEl: null, listEl: null };
+  const st = body._sourcesState;
+  const entries = (results || []).filter(r => r && (r.cid || r.title || r.file || r.section));
+  const n = entries.length;
   const has = n > 0;
-  const title = document.createElement('div');
-  title.className = 'results-title';
-  title.style.cursor = 'pointer';
-  title.style.userSelect = 'none';
-  title.textContent = has ? '检索结果（Top ' + n + '） ▸' : '未检索到结果';
-  title.addEventListener('click', () => {
-    const collapsed = list.style.display === 'none';
-    list.style.display = collapsed ? '' : 'none';
-    title.textContent = (has ? '检索结果（Top ' + n + '） ' : '未检索到结果 ') +
-      (collapsed ? '▾' : '▸');
-  });
-  wrap.appendChild(title);
-  const list = document.createElement('div');
-  list.style.display = 'none';
-  (results || []).forEach((r, i) => {
+
+  // Rebuild the shared cid->entry map used by mdInline anchors. A cid the LLM
+  // cited but that rerank dropped simply renders as plain text (no dangling
+  // link): this map only covers what is on screen.
+  currentSourcesMap = {};
+  for (const e of entries) if (e.cid) currentSourcesMap[e.cid] = e;
+
+  const titleText = has ? '检索结果（Top ' + n + '）' : '未检索到结果';
+  if (!st.titleEl) {
+    st.titleEl = document.createElement('div');
+    st.titleEl.className = 'results-title';
+    st.titleEl.style.cursor = 'pointer';
+    st.titleEl.style.userSelect = 'none';
+    body.appendChild(st.titleEl);
+    st.listEl = document.createElement('div');
+    st.listEl.className = 'results-list';
+    st.listEl.style.display = 'none';
+    body.appendChild(st.listEl);
+    st.titleEl.addEventListener('click', () => {
+      const collapsed = st.listEl.style.display === 'none';
+      st.listEl.style.display = collapsed ? '' : 'none';
+      const cnt = st.listEl.childElementCount;
+      st.titleEl.textContent = (cnt ? '检索结果（Top ' + cnt + '）' : '未检索到结果') + (collapsed ? ' ▾' : ' ▸');
+    });
+  }
+  const collapsed = st.listEl.style.display === 'none';
+  st.titleEl.textContent = titleText + (collapsed ? ' ▸' : ' ▾');
+  st.listEl.innerHTML = '';
+  entries.forEach((r, i) => {
+    const cid = r.cid || '';
     const url = r.url || '';
     const snippet = r.snippet || '';
     const t = r.title || r.section || r.file || '(无标题)';
     const div = document.createElement('div');
     div.className = 'result';
+    if (cid) div.id = 'src-' + cid;
     div.innerHTML =
-      '<div class="meta"><span class="num">[' + (i+1) + ']</span>' + renderConf(r.confidence) +
+      '<div class="meta"><span class="num">[' + (i + 1) + ']</span>' + renderConf(r.confidence) +
+      (cid ? '<code class="cid">' + cid + '</code>' : '') +
       '<span class="src">' + esc(r.source_display || r.source || '') + '</span></div>' +
       '<div class="title">' + esc(t) + '</div>' +
       (r.section ? '<div class="src">' + esc(r.section) + '</div>' : '') +
       (snippet ? '<div class="snippet">' + esc(snippet.substring(0, 300)) + (snippet.length > 300 ? '…' : '') + '</div>' : '') +
       (url ? '<div class="link"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a></div>' : '');
-    list.appendChild(div);
+    st.listEl.appendChild(div);
   });
-  wrap.appendChild(list);
-  body.appendChild(wrap);
+  // Mirror the current display list for the next turn's prevResults.
+  lastResults = entries;
   scrollBottom();
 }
 
 let lastResults = [];
+let currentSourcesMap = {};
 
 async function refreshStatus() {
   try {
@@ -488,8 +524,7 @@ async function ask(question) {
         if (type === 'phase') {
           answerDiv.innerHTML = '<div class="typing"><span class="spinner"></span>' + esc(d.text || '处理中…') + '</div>';
         } else if (type === 'results') {
-          lastResults = (d.results || []).slice(0, 10);
-          renderResultsInto(body, d.results, d.daemon);
+          renderResultsInto(body, d.results || []);
           resultsAppended = true;
         } else if (type === 'delta') {
           answerText += d.text || '';
@@ -545,6 +580,29 @@ el('q').addEventListener('keydown', (e) => {
     const q = el('q').value.trim();
     if (q) { el('q').value = ''; ask(q); }
   }
+});
+
+// Clicking a [cid] citation anchor expands the source panel (if collapsed) and
+// highlights + scrolls to the matching source card.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest ? e.target.closest('a.cite') : null;
+  if (!a) return;
+  e.preventDefault();
+  const cid = a.getAttribute('data-cid');
+  if (!cid) return;
+  const item = document.getElementById('src-' + cid);
+  if (!item) return;
+  const list = item.closest('.results-list');
+  if (list && list.style.display === 'none') {
+    list.style.display = '';
+    const title = list.previousElementSibling;
+    if (title && title.classList.contains('results-title')) {
+      title.textContent = title.textContent.replace(/▸$/, '▾');
+    }
+  }
+  item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  item.classList.add('flash');
+  setTimeout(() => item.classList.remove('flash'), 1500);
 });
 
 refreshStatus();
