@@ -8,3 +8,6 @@ node_modules/
 *.log
 # LLM API key test scripts (must not be committed)
 web/test_*.js
+# Knowledge base data (built locally, ~800MB+; see setup_kb.ps1/.sh)
+edk2-kb/data/
+data/

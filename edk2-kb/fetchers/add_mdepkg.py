@@ -17,17 +17,22 @@ text files, documents.json and the FTS5 index are updated.
 
 import argparse
 import json
+import os
 import sqlite3
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-KB_DATA = Path(r"D:\project-review-test\.edk2-opencode\kb\data")
+KB_DATA = Path(os.environ.get(
+    "EDK2_KB_DATA", str(Path.home() / ".edk2-opencode" / "kb" / "data")))
 SRC = KB_DATA / "edk2-mdepkg" / "MdePkg"
 PROCESSED = KB_DATA / "processed"
 FTS_DB = KB_DATA / "fts_index.db"
 CHROMA_DIR = KB_DATA / "chroma_db"
-BGE_M3 = Path(r"D:\project-review-test\.edk2-opencode\models\bge-m3")
+BGE_M3 = Path(os.environ.get(
+    "EDK2_MODELS_DIR",
+    str(Path.home() / ".edk2-opencode" / "models"))) / "bge-m3"
 
 DOC_INDEX = PROCESSED / "documents.json"
 SOURCE = "edk2-mdepkg"
@@ -67,10 +72,44 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
     return chunks if chunks else [{"text": text, "position": f"0-{len(text)}"}]
 
 
-def process():
-    if not SRC.exists():
-        print(f"ERROR: {SRC} not found", file=sys.stderr)
+def run(cmd, cwd=None):
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                       errors="replace")
+    if r.returncode != 0:
+        raise RuntimeError(f"command failed: {' '.join(cmd)}\n"
+                          f"{r.stderr[-2000:]}")
+    return r
+
+
+def ensure_src():
+    """Sparse-clone the MdePkg subtree from tianocore/edk2 if missing."""
+    if SRC.exists():
+        return
+    clone = KB_DATA / "edk2-mdepkg"
+    print(f"MdePkg source not found at {SRC} - "
+          f"sparse-cloning {REPO_URL} ...")
+    clone.mkdir(parents=True, exist_ok=True)
+    try:
+        if not (clone / ".git").exists():
+            run(["git", "init"], cwd=clone)
+            run(["git", "remote", "add", "origin", REPO_URL], cwd=clone)
+            run(["git", "fetch", "--depth", "1",
+                 "--filter=blob:none", "origin", "main"], cwd=clone)
+        if not (clone / ".git" / "info" / "sparse-checkout").exists():
+            run(["git", "sparse-checkout", "init", "--cone"], cwd=clone)
+        run(["git", "sparse-checkout", "set", "MdePkg"], cwd=clone)
+        run(["git", "checkout", "FETCH_HEAD"], cwd=clone)
+    except RuntimeError as e:
+        print(f"ERROR: sparse clone failed: {e}", file=sys.stderr)
         sys.exit(1)
+    if not SRC.exists():
+        print(f"ERROR: {SRC} still missing after clone", file=sys.stderr)
+        sys.exit(1)
+    print(f"[ok] MdePkg source ready at {SRC}")
+
+
+def process():
+    ensure_src()
 
     with open(DOC_INDEX, "r", encoding="utf-8") as f:
         documents = json.load(f)

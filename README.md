@@ -88,6 +88,37 @@ npx edk2-opencode --search "PCD"
 npx edk2-opencode --search "INF file syntax"
 ```
 
+### 6. 从零重建知识库（他人下载后使用）
+
+知识库的**数据不在仓库里**，但仓库代码可完整重建（`~/.edk2-opencode/kb/data/`）。
+按以下步骤，别人克隆本仓库后即可一键构建：
+
+```bash
+# Windows
+powershell -ExecutionPolicy Bypass -File setup_kb.ps1
+# Linux / macOS
+bash setup_kb.sh
+```
+
+一键脚本依次完成：
+
+| 步骤 | 脚本 | 产出 |
+|------|------|------|
+| Python 依赖 | `pip install -r edk2-kb/requirements.txt` | venv/全局依赖 |
+| 本地模型 | `edk2-kb/fetchers/fetch_models.py` | `~/.edk2-opencode/models/bge-m3` + `bge-reranker-v2-m3` |
+| UEFI 规范 | `edk2-kb/fetchers/fetch_specs.py` | `uefi-specs/{ACPI_6.5,PI_1.10,UEFI_2.11}/source/*.rst` + Shell PDF |
+| 提交历史 | `edk2-kb/fetchers/fetch_commits.py` | `edk2-commits/commits.txt`（完整历史，blobless 克隆） |
+| PR 数据 | `edk2-kb/fetchers/fetch_prs.py` | `edk2-prs/prs.jsonl`（GitHub API，可断点续传） |
+| Wiki + docs 建库 | `edk2-kb/fetchers/init_kb.py` | wiki 全站 + tianocore-docs 33 仓库 + 上述数据的分块与索引 |
+| MdePkg 源码 | `edk2-kb/fetchers/add_mdepkg.py`（缺失时自动稀疏克隆） | `edk2-mdepkg/` 分块 + FTS5 |
+
+> 提示：
+> - 首次全量嵌入 bge-m3（CPU）较慢，约数小时；可用 `setup_kb.ps1 -SkipEmbed` /
+>   `setup_kb.sh --skip-embed` 先跳过，稍后再补 `add_mdepkg.py --embed`。
+> - `fetch_prs.py` 无需认证（公共仓库），设置 `GITHUB_TOKEN` 可把限速从 60 提高到 5000 次/小时。
+> - `--skip-fts`：daemon 运行时持锁 fts_index.db，需先 `daemon stop` 再重建。
+> - 各 fetch 脚本支持 `EDK2_KB_DATA` / `EDK2_MODELS_DIR` 环境变量覆盖默认路径。
+
 ## 命令说明
 
 | 命令 | 说明 |
