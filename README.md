@@ -119,6 +119,32 @@ bash setup_kb.sh
 > - `--skip-fts`：daemon 运行时持锁 fts_index.db，需先 `daemon stop` 再重建。
 > - 各 fetch 脚本支持 `EDK2_KB_DATA` / `EDK2_MODELS_DIR` 环境变量覆盖默认路径。
 
+### 7. 直接使用预构建知识库（下载即用，免重建嵌入）
+
+不想等待数小时重建时，可发布/安装打包好的知识库（数据不在仓库，但在
+GitHub Release 上发布）。打包产物按 1.8GB 分片（GitHub 单文件 ≤2GB 限制），
+带 SHA-256 清单：
+
+```bash
+# 发布方：把已建好的 KB 打成包（kb-runtime 仅运行期数据；--with-sources 含原始源）
+python edk2-kb/fetchers/package_kb.py                # 或 --with-sources
+gh release create kb-runtime ~/.edk2-opencode/releases/kb-runtime.* \
+    --title "KB runtime package" --notes "..."
+
+# 使用方：下载、校验、解压到 ~/.edk2-opencode/kb/（Windows）
+powershell -ExecutionPolicy Bypass -File install_kb.ps1
+# Linux / macOS
+bash install_kb.sh
+
+# 仍需本地模型（~1GB，只在 ~/.edk2-opencode/models/ 缺省时下载）
+python edk2-kb/fetchers/fetch_models.py
+# 启动
+node bin/edk2-opencode.js daemon start
+```
+
+运行期包仅含 `chroma_db/` + `fts_index.db` + `processed/`（约 2.2GB），
+解压即用；`kb-full` 还包含原始源树，可用于后续增量重建。
+
 ## 命令说明
 
 | 命令 | 说明 |
