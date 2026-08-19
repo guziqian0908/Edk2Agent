@@ -170,6 +170,11 @@ const EXAMPLES = [
   'Smm base2 protocol',
 ];
 
+// How many previous turns carry their retrieval results into the prompt. Must
+// match MAX_PREV_TURNS on the server (web/server.js) — the stack keeps exactly
+// this many snapshots, newest first.
+const MAX_PREV_TURNS = 3;
+
 function el(id) { return document.getElementById(id); }
 
 function setStatus(text, cls) {
@@ -415,13 +420,31 @@ function renderResultsInto(body, results) {
       (url ? '<div class="link"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a></div>' : '');
     st.listEl.appendChild(div);
   });
-  // Mirror the current display list for the next turn's prevResults.
+  // Mirror the current display list for the next turn's prevResults (multi-turn
+  // recency stack: the newest turn is pushed to the front with turn = 1, and
+  // older turns keep their increasing distance).
+  const snapshot = entries.map(e => ({
+    cid: e.cid || '',
+    title: e.title || '',
+    source: e.source || '',
+    source_display: e.source_display || '',
+    url: e.url || '',
+    file: e.file || '',
+    section: e.section || '',
+    type: e.type || '',
+    snippet: e.snippet || '',
+    content: e.content || e.snippet || '',
+  }));
+  turnStack = turnStack.map(t => ({ turn: t.turn + 1, results: t.results }));
+  turnStack.unshift({ turn: 1, results: snapshot });
+  if (turnStack.length > MAX_PREV_TURNS) turnStack.length = MAX_PREV_TURNS;
   lastResults = entries;
   scrollBottom();
 }
 
 let lastResults = [];
 let currentSourcesMap = {};
+let turnStack = [];
 
 async function refreshStatus() {
   try {
@@ -453,9 +476,10 @@ async function ask(question) {
   btn.disabled = true;
   let history = [];
   try { history = JSON.parse(localStorage.getItem('kb_history') || '[]'); } catch { history = []; }
-  // Send the most recent turn's retrieved documents so the server can base the
-  // answer on the previous turn's reference context (multi-turn continuity).
-  const prevResults = lastResults.slice();
+  // Send the recency-stacked previous-turn retrieval results so the server can
+  // base the answer on multi-turn context: the most recent turn (turn=1) has
+  // the highest share, older turns fade by PREV_DECAY.
+  const prevResults = turnStack.map(t => ({ turn: t.turn, results: t.results }));
 
   const card = document.createElement('div');
   card.className = 'card';

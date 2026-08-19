@@ -302,6 +302,12 @@ const STATUS_LIMIT = parseInt(process.env.RATE_LIMIT_STATUS || '60', 10); // /ap
 const RATE_WINDOW_MS = 60 * 1000;
 const rateBuckets = new Map();
 
+// ---- multi-turn context (recency-decayed previous-turn results) ----
+const MAX_PREV_TURNS = parseInt(process.env.MAX_PREV_TURNS || '3', 10);   // how many
+// previous turns carry their retrieval results into the prompt
+const PREV_DECAY = parseFloat(process.env.PREV_DECAY || '0.5');           // weight of
+// turn n = PREV_DECAY^(n-1)  (1.0, 0.5, 0.25, ...)
+
 function clientIp(req) {
   const cf = req.headers['cf-connecting-ip'];
   if (cf) return String(cf).trim();
@@ -940,7 +946,28 @@ function aggregateContextEnhanced(results) {
 function sanitizePrevResults(raw) {
   // Client-supplied previous-turn results: whitelist string fields only so a
   // compromised/malformed payload can never inject objects into the prompt.
+  // Two accepted shapes:
+  //   1) multi-turn:  [{ turn: 1, results: [result, ...] }, { turn: 2, ... }]
+  //   2) legacy flat: [result, result, ...]  (treated as the single most
+  //                    recent turn, turn = 1)
   if (!Array.isArray(raw)) return [];
+  const isMultiTurn = raw.length > 0 && raw.every((x) =>
+    x && typeof x === 'object' && Array.isArray(x.results));
+  if (!isMultiTurn) {
+    const items = sanitizeResultList(raw);
+    return items.length ? [{ turn: 1, results: items }] : [];
+  }
+  const out = [];
+  for (const t of raw.slice(0, MAX_PREV_TURNS)) {
+    if (!t || typeof t !== 'object' || !Array.isArray(t.results)) continue;
+    const turn = Number.isFinite(t.turn) ? Math.max(1, Math.floor(t.turn)) : 1;
+    const items = sanitizeResultList(t.results);
+    if (items.length) out.push({ turn, results: items });
+  }
+  return out;
+}
+
+function sanitizeResultList(raw) {
   const out = [];
   for (const r of raw.slice(0, 10)) {
     if (!r || typeof r !== 'object') continue;
@@ -958,24 +985,31 @@ function sanitizePrevResults(raw) {
 
 function buildMessages(question, results, history, prevResults, opts = {}) {
   const ctx = aggregateContextEnhanced(results);
-  const prevCtx = aggregateContextEnhanced(prevResults || []);
-  // Deduplicate previous-turn entries against the current ones so the same
-  // chunk is never presented twice.
+  // prevResults is now a multi-turn list: [{ turn, results }]. Each previous
+  // turn's entries are deduplicated against the current ones AND against every
+  // closer turn, so the same chunk is never presented twice and no turn can
+  // hoard the budget.
   const seenKeys = new Set(ctx.map(r => chunkKey(r)));
+  const prevTurns = (prevResults || []).slice()
+    .sort((a, b) => (a.turn || 1) - (b.turn || 1)); // closest turn first
   const prevEntries = [];
-  for (const p of prevCtx) {
-    const key = chunkKey(p);
-    if (seenKeys.has(key)) continue;
-    seenKeys.add(key);
-    prevEntries.push({ ...p, prev: true });
+  for (const t of prevTurns) {
+    const turn = Math.max(1, Math.floor(t.turn || 1));
+    const entries = aggregateContextEnhanced(t.results || []);
+    for (const p of entries) {
+      const key = chunkKey(p);
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      prevEntries.push({ ...p, prev: true, prevTurn: turn });
+    }
   }
 
   // Cap the total context budget: PDF dumps and 6000-char spec chunks can
   // otherwise push the prompt past the model context window, which makes the
   // flash model return an empty stream. Current-turn entries win the budget;
-  // when the previous turn's results are present they are reserved a share so
-  // follow-up questions ("那它的定义呢？") can still reference the most
-  // recent turn's retrieved material.
+  // previous turns share the remainder weighted by recency (turn 1 = closest,
+  // weight PREV_DECAY^(turn-1)), so the most recent turn's retrieved material
+  // is always the most represented and older turns fade out.
   const MAX_CTX_CHARS = opts.maxCtxChars || 34000;
   const CUR_BUDGET = prevEntries.length ? Math.round(MAX_CTX_CHARS * 0.7) : MAX_CTX_CHARS;
   let ctxChars = 0;
@@ -986,11 +1020,26 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     ctxCapped.push(r);
     ctxChars += entryChars;
   }
+  // Previous turns: group by distance, allocate each turn a share of the
+  // remaining budget proportional to its decayed weight.
+  const prevBudget = MAX_CTX_CHARS - ctxChars;
+  const byTurn = new Map();
   for (const r of prevEntries) {
-    const entryChars = 40 + (r.title || '').length + (r.section || '').length + (r.body || '').length;
-    if (ctxChars + entryChars > MAX_CTX_CHARS && ctxCapped.length > 0) break;
-    ctxCapped.push(r);
-    ctxChars += entryChars;
+    if (!byTurn.has(r.prevTurn)) byTurn.set(r.prevTurn, []);
+    byTurn.get(r.prevTurn).push(r);
+  }
+  const turns = [...byTurn.keys()].sort((a, b) => a - b);
+  const weightSum = turns.reduce((s, n) => s + Math.pow(PREV_DECAY, n - 1), 0);
+  for (const n of turns) {
+    const share = Math.round(prevBudget * (Math.pow(PREV_DECAY, n - 1) / weightSum));
+    let used = 0;
+    for (const r of byTurn.get(n)) {
+      const entryChars = 40 + (r.title || '').length + (r.section || '').length + (r.body || '').length;
+      if (used + entryChars > share && used > 0) break;
+      ctxCapped.push(r);
+      ctxChars += entryChars;
+      used += entryChars;
+    }
   }
   const intent = classifyQuestion(question);
   
@@ -1008,7 +1057,9 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
   
   const context = ctxCapped.map((r) => {
     const ref = localRef(r);
-    const tag = r.prev ? '[上一轮检索] ' : '';
+    const tag = r.prev
+      ? (r.prevTurn === 1 ? '[上一轮检索] ' : '[前' + r.prevTurn + '轮检索] ')
+      : '';
     const cid = r.cid || stableCid(r);
     return (
       `[${cid}] ${tag}${r.title}\n` +
