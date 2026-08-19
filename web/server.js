@@ -832,16 +832,56 @@ function aggregateContextEnhanced(results) {
   return out;
 }
 
-function buildMessages(question, results, history) {
+function sanitizePrevResults(raw) {
+  // Client-supplied previous-turn results: whitelist string fields only so a
+  // compromised/malformed payload can never inject objects into the prompt.
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw.slice(0, 10)) {
+    if (!r || typeof r !== 'object') continue;
+    const item = {};
+    for (const k of ['source', 'source_display', 'title', 'url', 'file', 'section', 'type']) {
+      if (typeof r[k] === 'string') item[k] = r[k].slice(0, 500);
+    }
+    const content = typeof r.content === 'string' ? r.content : (typeof r.snippet === 'string' ? r.snippet : '');
+    if (content) item.content = content.slice(0, 8000);
+    if (!item.title && !item.file && !item.content) continue;
+    out.push(item);
+  }
+  return out;
+}
+
+function buildMessages(question, results, history, prevResults) {
   const ctx = aggregateContextEnhanced(results);
+  const prevCtx = aggregateContextEnhanced(prevResults || []);
+  // Deduplicate previous-turn entries against the current ones so the same
+  // chunk is never presented twice.
+  const seenKeys = new Set(ctx.map(r => chunkKey(r)));
+  const prevEntries = [];
+  for (const p of prevCtx) {
+    const key = chunkKey(p);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    prevEntries.push({ ...p, prev: true });
+  }
+
   // Cap the total context budget: PDF dumps and 6000-char spec chunks can
   // otherwise push the prompt past the model context window, which makes the
-  // flash model return an empty stream. Entries arrive in priority order, so
-  // only the lowest-priority tail is dropped.
+  // flash model return an empty stream. Current-turn entries win the budget;
+  // when the previous turn's results are present they are reserved a share so
+  // follow-up questions ("那它的定义呢？") can still reference the most
+  // recent turn's retrieved material.
   const MAX_CTX_CHARS = 34000;
+  const CUR_BUDGET = prevEntries.length ? 24000 : MAX_CTX_CHARS;
   let ctxChars = 0;
   const ctxCapped = [];
   for (const r of ctx) {
+    const entryChars = 40 + (r.title || '').length + (r.section || '').length + (r.body || '').length;
+    if (ctxChars + entryChars > CUR_BUDGET && ctxCapped.length > 0) break;
+    ctxCapped.push(r);
+    ctxChars += entryChars;
+  }
+  for (const r of prevEntries) {
     const entryChars = 40 + (r.title || '').length + (r.section || '').length + (r.body || '').length;
     if (ctxChars + entryChars > MAX_CTX_CHARS && ctxCapped.length > 0) break;
     ctxCapped.push(r);
@@ -863,8 +903,9 @@ function buildMessages(question, results, history) {
   
   const context = ctxCapped.map((r, i) => {
     const ref = localRef(r);
+    const tag = r.prev ? '[上一轮检索] ' : '';
     return (
-      `[${i + 1}] ${r.title}\n` +
+      `[${i + 1}] ${tag}${r.title}\n` +
       (r.type ? `Type: ${r.type}\n` : '') +
       (r.source ? `Source: ${r.source}\n` : '') +
       (ref ? `Local: ${ref}\n` : '') +
@@ -892,6 +933,10 @@ function buildMessages(question, results, history) {
     '',
     '**判断标准：如果标准答案中列出了某个具体值/模式/规则，而你的回答中没有，就是不合格。**',
     '宁可回答长一些、详尽一些，也绝不能遗漏上下文中的具体技术细节。',
+    '',
+    '## 多轮对话上下文（上一轮检索）',
+    '',
+    '上下文中标记为【上一轮检索】的条目来自最近一轮对话的检索结果，用于衔接前一轮的内容。当用户用代词或指代（如"那它的定义呢？"、"为什么会这样？"）追问上一轮的内容时，优先从这些【上一轮检索】条目中引用并展开，仍用 [n] 标记引用。不要编造上一轮检索中不存在的内容。',
     '',
     '## 输出范式：柔性要素，禁止刚性填空',
     '',
@@ -1064,6 +1109,7 @@ function buildMessages(question, results, history) {
     }
   }
   messages.push({ role: 'user', content: `RAG 参考上下文：\n${context}\n\n原始问题：${question}` });
+  messages.prevCount = ctxCapped.filter(r => r.prev).length;
   return messages;
 }
 
@@ -1213,12 +1259,12 @@ async function translateToEnglish(question) {
   return result;
 }
 
-async function llmAnswer(question, results, history) {
+async function llmAnswer(question, results, history, prevResults) {
   const { apiKey, baseUrl, model } = llmConfig();
   if (!apiKey || !baseUrl || !model) {
     return { error: 'LLM not configured. Set LLM_API_KEY / LLM_BASE_URL / LLM_MODEL.' };
   }
-  const messages = buildMessages(question, results, history);
+  const messages = buildMessages(question, results, history, prevResults);
 
   const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
   const resp = await httpJson(url, {
@@ -1297,6 +1343,7 @@ async function handleAsk(req, res) {
       const parsed = JSON.parse(body || '{}');
       const question = (parsed.question || '').trim();
       const history = Array.isArray(parsed.history) ? parsed.history.slice(-10) : [];
+      const prevResults = sanitizePrevResults(parsed.prevResults);
       if (!question) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing question' }));
@@ -1559,7 +1606,11 @@ async function handleAsk(req, res) {
       }
       sendSSE(res, 'phase', { step: 'llm_build', text: '构建提示词…', progress: 50, model });
       
-      const messages = buildMessages(question, results, history);
+      const messages = buildMessages(question, results, history, prevResults);
+      emitTrace({
+        traceId, stage: 'prev_context', durationMs: 0, queryHash: qh,
+        hasPrev: prevResults.length, prevCount: messages.prevCount || 0,
+      });
       sendSSE(res, 'phase', { step: 'llm', text: '正在生成回答…', progress: 60, model });
       
       const llmStart = Date.now();

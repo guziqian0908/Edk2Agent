@@ -72,6 +72,25 @@ TIANOCORE_DOCS_REPOS = [
 META_FILE = WIKI_DIR / "metadata.json"
 DOCS_META_FILE = DOCS_DIR / "metadata.json"
 
+# Text-bearing file types we index from the tianocore-docs repos. Binary-only
+# formats (png/jpg/css/js/zip/fonts) are skipped, as are chm help archives.
+TEXT_EXTENSIONS = {'.md', '.txt', '.html', '.htm', '.pdf'}
+
+# Directories that only hold build scaffolding or template files with no
+# document content (Jinja/GitBook layouts, generated sites, node deps).
+SKIP_DIR_PARTS = ('_layouts', '_includes', '_site', 'node_modules', '.git')
+
+# File names that are licensing/process boilerplate rather than content.
+_SKIP_NAME_PATTERNS = re.compile(
+    r'^(license|licence|contribut|notice|copying|copyright|readme|authors'
+    r'|maintainers|changelog|release_notes|code_of_conduct|security)\b',
+    re.IGNORECASE,
+)
+
+# Doxygen API pages are indexed but carry heavy per-page chrome; cap chunking
+# noise by treating them like any other html once main content is extracted.
+_DOXYGEN_CONTENT_SELECTORS = ('div.contents', 'div.textblock')
+
 session = requests.Session()
 session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -387,10 +406,31 @@ def clone_tianocore_docs() -> Dict:
             except Exception as e:
                 log(f"Git clone failed for {repo_name}: {e}", "ERROR")
     
-    md_files = sorted(REPOS_DIR.glob('**/*.md'))
-    log(f"Found {len(md_files)} markdown files across {len(repo_dirs)} repos")
-    
-    meta['files'] = [str(f.relative_to(REPOS_DIR)) for f in md_files]
+    text_files: List[Path] = []
+    skipped = 0
+    for candidate in sorted(REPOS_DIR.rglob('*')):
+        if not candidate.is_file():
+            continue
+        if any(part in SKIP_DIR_PARTS for part in candidate.parts):
+            continue
+        if candidate.suffix.lower() not in TEXT_EXTENSIONS:
+            continue
+        if candidate.suffix.lower() in ('.txt',):
+            stem_lower = candidate.stem.lower()
+            if _SKIP_NAME_PATTERNS.match(stem_lower):
+                skipped += 1
+                continue
+        text_files.append(candidate)
+
+    log(f"Found {len(text_files)} text-bearing files across "
+        f"{len(repo_dirs)} repos "
+        f"({len([f for f in text_files if f.suffix.lower() == '.md'])} markdown, "
+        f"{len([f for f in text_files if f.suffix.lower() == '.pdf'])} pdf, "
+        f"{len([f for f in text_files if f.suffix.lower() in ('.html', '.htm')])} html, "
+        f"{len([f for f in text_files if f.suffix.lower() == '.txt'])} txt); "
+        f"skipped {skipped} boilerplate text files")
+
+    meta['files'] = [str(f.relative_to(REPOS_DIR)) for f in text_files]
     meta['last_update'] = datetime.now().isoformat()
     
     with open(DOCS_META_FILE, 'w', encoding='utf-8') as f:
@@ -416,11 +456,14 @@ def extract_html_content(html_path: Path) -> str:
                          'header', 'iframe', 'noscript', 'form']):
             tag.decompose()
         
-        # Try to find main content area
-        main_content = (soup.find('main') or 
-                        soup.find('article') or 
+        # Try to find main content area (Doxygen pages use div.contents /
+        # div.textblock instead of the semantic tags above).
+        main_content = (soup.find('main') or
+                        soup.find('article') or
                         soup.find('div', class_='content') or
                         soup.find('div', class_='documentation') or
+                        soup.select_one('div.contents') or
+                        soup.select_one('div.textblock') or
                         soup.body)
         
         if not main_content:
@@ -462,11 +505,55 @@ def extract_html_content(html_path: Path) -> str:
         return ""
 
 
+def extract_pdf_content(pdf_path: Path) -> str:
+    """Extract text from a PDF using PyMuPDF.
+
+    Pages are separated by a blank line so downstream chunking keeps page
+    boundaries visible. Returns an empty string on any failure.
+    """
+    try:
+        import pymupdf
+    except ImportError:
+        log("PyMuPDF not available, skipping PDF", "ERROR")
+        return ""
+
+    try:
+        pages_text = []
+        with pymupdf.open(pdf_path) as doc:
+            for page in doc:
+                text = page.get_text().strip()
+                if text:
+                    pages_text.append(text)
+        return '\n\n'.join(pages_text)
+    except Exception as e:
+        log(f"Failed to extract PDF {pdf_path.name}: {e}", "WARNING")
+        return ""
+
+
 _MARKDOWN_HEADING_RE = re.compile(r'^(#{1,6})\s+(.*)$')
 _HEADING_LEVELS = ('h1', 'h2', 'h3', 'h4', 'h5', 'h6')
 
 
-def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[Dict]:
+def _is_valid_content(content: str, min_len: int = 100) -> bool:
+    """Return True when the extracted text is a real document, not a stub.
+
+    Filters out placeholder/boilerplate fragments from Doxygen or mdbook
+    (e.g. '{{ book.title }}', bare templates) and near-empty extractions.
+    """
+    if not content or len(content) < min_len:
+        return False
+    stripped = content.strip()
+    if not stripped:
+        return False
+    # Placeholder tokens that indicate a template, not real content.
+    template_markers = ('{{ book.title }}', '{{#summary', 'Page content goes here',
+                        'TEASER', 'This page is intentionally blank')
+    if any(m in stripped for m in template_markers) and len(stripped) < 1200:
+        return False
+    return True
+
+
+def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[Dict]:
     """Split text into overlapping chunks for better retrieval.
 
     Args:
@@ -482,14 +569,14 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[Dic
 
     chunks = []
     start = 0
-    min_chunk_size = 200  # Minimum chunk size
+    min_chunk_size = 300  # Minimum chunk size
 
     while start < len(text):
         end = min(start + chunk_size, len(text))
 
-        # Try to break at sentence boundary (look back 150 chars)
+        # Try to break at paragraph/newline boundary (look back 250 chars)
         if end < len(text):
-            search_start = max(start, end - 150)
+            search_start = max(start, end - 250)
             last_period = text.rfind('.', search_start, end)
             last_newline = text.rfind('\n', search_start, end)
             break_point = max(last_period, last_newline)
@@ -515,8 +602,8 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[Dic
     return chunks if chunks else [{'text': text, 'position': f"0-{len(text)}"}]
 
 
-def _split_long_text(text: str, chunk_size: int = 800,
-                     overlap: int = 100, min_chunk_size: int = 150) -> List[str]:
+def _split_long_text(text: str, chunk_size: int = 2000,
+                     overlap: int = 200, min_chunk_size: int = 300) -> List[str]:
     """Split an over-long section body at sentence boundaries."""
     if len(text) <= chunk_size:
         return [text]
@@ -525,7 +612,7 @@ def _split_long_text(text: str, chunk_size: int = 800,
     while start < len(text):
         end = min(start + chunk_size, len(text))
         if end < len(text):
-            search_start = max(start, end - 160)
+            search_start = max(start, end - 260)
             # Prefer the last paragraph break, then the last sentence break.
             last_nl = text.rfind('\n', search_start, end)
             last_period = text.rfind('.', search_start, end)
@@ -542,8 +629,35 @@ def _split_long_text(text: str, chunk_size: int = 800,
     return parts if parts else [text]
 
 
-def chunk_text_structured(text: str, chunk_size: int = 800,
-                          overlap: int = 100) -> List[Dict]:
+_RST_UNDERLINE_CHARS = '=-~^"`+*:'
+
+def rst_to_markdown_headings(text: str) -> str:
+    """Convert reStructuredText section headings to markdown ``#`` headings.
+
+    RST titles are written as a bare line followed by an underline of a single
+    punctuation character (``=`` for h1, ``-`` h2, ``~`` h3, ``^`` h4, ...).
+    ``chunk_text_structured`` only understands markdown headings, so convert
+    them so spec chapters keep their section path during chunking. Directive
+    lines (``.. foo::``) and blank leading space are dropped as boilerplate.
+    """
+    lines = text.split('\n')
+    out: List[str] = []
+    for i, line in enumerate(lines):
+        # An underline is a run (>=2) of one punctuation char.
+        if re.fullmatch(r'([=\-~^"`+*:])\1+', line):
+            if i > 0:
+                title = lines[i - 1].strip()
+                if title and not title.startswith('.. ') and not title.startswith('#'):
+                    out[-1] = '#' * 4 + ' ' + title
+            continue
+        if line.lstrip().startswith('.. '):
+            continue
+        out.append(line)
+    return '\n'.join(out)
+
+
+def chunk_text_structured(text: str, chunk_size: int = 2000,
+                          overlap: int = 200) -> List[Dict]:
     """Split text into chunks that respect the markdown heading hierarchy.
 
     Each chunk keeps its section path (the chain of headings that contains
@@ -635,11 +749,11 @@ def process_documents() -> int:
             # Use improved HTML extraction
             content = extract_html_content(page_path)
             
-            if len(content) > 100:
+            if _is_valid_content(content):
                 # Chunk the document for better retrieval, keeping section
                 # headings so each chunk retains its document context.
-                chunks = chunk_text_structured(content, chunk_size=800,
-                                               overlap=100)
+                chunks = chunk_text_structured(content, chunk_size=2000,
+                                               overlap=200)
 
                 for chunk_idx, chunk in enumerate(chunks):
                     doc_file = PROCESSED_DIR / f"wiki_{len(documents)}.txt"
@@ -673,25 +787,32 @@ def process_documents() -> int:
         log(f"Processing {len(docs_meta.get('files', []))} docs files...")
         
         for rel_path in tqdm(docs_meta.get('files', []), desc="Processing docs"):
-            md_file = repos_dir / rel_path
-            if not md_file.exists():
+            doc_file = repos_dir / rel_path
+            if not doc_file.exists():
                 continue
-            
+
+            suffix = doc_file.suffix.lower()
+
             try:
-                with open(md_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                if len(content) > 100:
+                if suffix == '.pdf':
+                    content = extract_pdf_content(doc_file)
+                elif suffix in ('.html', '.htm'):
+                    content = extract_html_content(doc_file)
+                else:
+                    with open(doc_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+
+                if _is_valid_content(content, min_len=150):
                     repo_name = rel_path.split(os.sep)[0] if os.sep in rel_path else "docs"
 
                     # Chunk the document for better retrieval, keeping section
                     # headings so each chunk retains its document context.
-                    chunks = chunk_text_structured(content, chunk_size=800,
-                                                   overlap=100)
+                    chunks = chunk_text_structured(content, chunk_size=2000,
+                                                   overlap=200)
 
                     for chunk_idx, chunk in enumerate(chunks):
-                        doc_file = PROCESSED_DIR / f"docs_{len(documents)}.txt"
-                        with open(doc_file, 'w', encoding='utf-8') as f:
+                        out_file = PROCESSED_DIR / f"docs_{len(documents)}.txt"
+                        with open(out_file, 'w', encoding='utf-8') as f:
                             f.write(f"File: {rel_path}\n")
                             f.write(f"Repo: {repo_name}\n")
                             f.write(f"Source: tianocore-docs\n")
@@ -701,7 +822,7 @@ def process_documents() -> int:
                             f.write(chunk['text'])
 
                         documents.append({
-                            'path': str(doc_file),
+                            'path': str(out_file),
                             'source': 'tianocore-docs',
                             'repo': repo_name,
                             'file': rel_path,
@@ -712,6 +833,210 @@ def process_documents() -> int:
             except Exception:
                 continue
     
+    # ------------------------------------------------------------------ #
+    # uefi.org spec sources (official UEFI Forum RST releases + PDF specs)
+    # ------------------------------------------------------------------ #
+    specs_dir = DATA_DIR / "uefi-specs"
+    if specs_dir.exists():
+        # RST sources: official UEFI Forum release repositories keep their
+        # chapters as .rst files under <version>/source/.
+        spec_files = sorted(specs_dir.glob('*/source/*.rst'))
+        log(f"Processing {len(spec_files)} uefi.org spec RST files...")
+        for rst_file in tqdm(spec_files, desc="Processing uefi-specs"):
+            version = rst_file.parts[-3]
+            try:
+                with open(rst_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = rst_to_markdown_headings(f.read())
+
+                if _is_valid_content(content, min_len=150):
+                    chunks = chunk_text_structured(content, chunk_size=2000,
+                                                   overlap=200)
+                    rel_path = f"{version}/source/{rst_file.name}"
+                    for chunk_idx, chunk in enumerate(chunks):
+                        out_file = PROCESSED_DIR / f"spec_{len(documents)}.txt"
+                        with open(out_file, 'w', encoding='utf-8') as f:
+                            f.write(f"Title: {version} - {rst_file.stem}\n")
+                            f.write(f"File: {rel_path}\n")
+                            f.write(f"Repo: {version}\n")
+                            f.write(f"Source: uefi-specs\n")
+                            f.write(f"Chunk: {chunk_idx+1}/{len(chunks)}\n")
+                            f.write(f"Section: {chunk.get('section', '')}\n")
+                            f.write(f"Position: {chunk.get('position', '')}\n\n")
+                            f.write(chunk['text'])
+
+                        documents.append({
+                            'path': str(out_file),
+                            'source': 'uefi-specs',
+                            'repo': version,
+                            'file': rel_path,
+                            'section': chunk.get('section', ''),
+                            'chunk_idx': chunk_idx,
+                            'total_chunks': len(chunks)
+                        })
+            except Exception:
+                continue
+
+        # PDF spec files: a few UEFI specs (e.g. UEFI Shell) only ship as a
+        # single PDF placed at <version>/source/*.pdf. Extract per-page text
+        # so they participate in retrieval like the RST releases.
+        pdf_files = sorted(specs_dir.glob('*/source/*.pdf'))
+        log(f"Processing {len(pdf_files)} uefi.org spec PDF files...")
+        for pdf_file in tqdm(pdf_files, desc="Processing uefi-specs PDF"):
+            version = pdf_file.parts[-3]
+            try:
+                content = extract_pdf_content(pdf_file)
+                if not _is_valid_content(content, min_len=150):
+                    log(f"Skipping empty PDF: {pdf_file.name}", "WARNING")
+                    continue
+                chunks = chunk_text_structured(content, chunk_size=2000,
+                                               overlap=200)
+                rel_path = f"{version}/source/{pdf_file.name}"
+                for chunk_idx, chunk in enumerate(chunks):
+                    out_file = PROCESSED_DIR / f"spec_{len(documents)}.txt"
+                    with open(out_file, 'w', encoding='utf-8') as f:
+                        f.write(f"Title: {version} - {pdf_file.stem}\n")
+                        f.write(f"File: {rel_path}\n")
+                        f.write(f"Repo: {version}\n")
+                        f.write(f"Source: uefi-specs\n")
+                        f.write(f"Chunk: {chunk_idx+1}/{len(chunks)}\n")
+                        f.write(f"Section: {chunk.get('section', '')}\n")
+                        f.write(f"Position: {chunk.get('position', '')}\n\n")
+                        f.write(chunk['text'])
+
+                    documents.append({
+                        'path': str(out_file),
+                        'source': 'uefi-specs',
+                        'repo': version,
+                        'file': rel_path,
+                        'section': chunk.get('section', ''),
+                        'chunk_idx': chunk_idx,
+                        'total_chunks': len(chunks)
+                    })
+            except Exception as e:
+                log(f"Failed to process PDF {pdf_file.name}: {e}", "WARNING")
+
+    # ------------------------------------------------------------------ #
+    # tianocore/edk2 pull request data (GitHub API JSONL)
+    # ------------------------------------------------------------------ #
+    prs_file = DATA_DIR / "edk2-prs" / "prs.jsonl"
+    if prs_file.exists():
+        log("Processing tianocore/edk2 pull requests...")
+        with open(prs_file, 'r', encoding='utf-8') as f:
+            pr_lines = [l for l in f if l.strip()]
+        for line in tqdm(pr_lines, desc="Processing edk2-prs"):
+            try:
+                pr = json.loads(line)
+                number = pr.get('number', '')
+                title = pr.get('title', '')
+                text = (f"PR #{number}: {title}\n"
+                        f"State: {pr.get('state', '')}\n"
+                        f"URL: {pr.get('html_url', '')}\n"
+                        f"Opened: {pr.get('created_at', '')}\n"
+                        f"Closed: {pr.get('closed_at', '')}\n"
+                        f"Merged: {pr.get('merged_at', '')}\n"
+                        f"Author: {pr.get('user', '')}\n"
+                        f"Base: {pr.get('base', '')} <- Head: {pr.get('head', '')}\n"
+                        f"Description:\n{pr.get('body', '') or ''}")
+                if not _is_valid_content(text, min_len=150):
+                    continue
+                chunks = chunk_text_structured(text, chunk_size=2000,
+                                               overlap=200)
+                for chunk_idx, chunk in enumerate(chunks):
+                    out_file = PROCESSED_DIR / f"pr_{len(documents)}.txt"
+                    with open(out_file, 'w', encoding='utf-8') as f:
+                        f.write(f"Title: PR #{number}: {title}\n")
+                        f.write(f"URL: {pr.get('html_url', '')}\n")
+                        f.write(f"File: PR#{number}\n")
+                        f.write(f"Repo: tianocore/edk2\n")
+                        f.write(f"Source: edk2-prs\n")
+                        f.write(f"Chunk: {chunk_idx+1}/{len(chunks)}\n\n")
+                        f.write(chunk['text'])
+
+                    documents.append({
+                        'path': str(out_file),
+                        'source': 'edk2-prs',
+                        'repo': 'tianocore/edk2',
+                        'file': f"PR#{number}",
+                        'url': pr.get('html_url', ''),
+                        'section': f"PR {number}",
+                        'chunk_idx': chunk_idx,
+                        'total_chunks': len(chunks)
+                    })
+            except Exception:
+                continue
+
+    # ------------------------------------------------------------------ #
+    # tianocore/edk2 commit log (git log export)
+    # ------------------------------------------------------------------ #
+    commits_file = DATA_DIR / "edk2-commits" / "commits.txt"
+    if commits_file.exists():
+        log("Processing tianocore/edk2 commit log...")
+        blocks = []
+        with open(commits_file, 'r', encoding='utf-8', errors='ignore') as f:
+            current = []
+            for line in f:
+                if line.strip() == '---END-COMMIT---':
+                    if current:
+                        blocks.append('\n'.join(current))
+                        current = []
+                else:
+                    current.append(line.rstrip('\n'))
+            if current:
+                blocks.append('\n'.join(current))
+
+        log(f"Parsed {len(blocks)} commit entries...")
+        for block in tqdm(blocks, desc="Processing edk2-commits"):
+            try:
+                commit_hash = author = date = subject = body = ''
+                body_parts = []
+                in_body = False
+                for line in block.split('\n'):
+                    if line.startswith('COMMIT: '):
+                        commit_hash = line[len('COMMIT: '):]
+                    elif line.startswith('AUTHOR: '):
+                        author = line[len('AUTHOR: '):]
+                    elif line.startswith('DATE: '):
+                        date = line[len('DATE: '):]
+                    elif line.startswith('SUBJECT: '):
+                        subject = line[len('SUBJECT: '):]
+                    elif line == 'BODY:':
+                        in_body = True
+                    elif in_body:
+                        body_parts.append(line)
+                body = '\n'.join(body_parts).strip()
+
+                text = (f"Commit {commit_hash} by {author} on {date}\n"
+                        f"Subject: {subject}\n"
+                        f"URL: https://github.com/tianocore/edk2/commit/{commit_hash}\n\n"
+                        f"{body}")
+                if not subject or not _is_valid_content(text, min_len=150):
+                    continue
+                chunks = chunk_text_structured(text, chunk_size=2000,
+                                               overlap=200)
+                for chunk_idx, chunk in enumerate(chunks):
+                    out_file = PROCESSED_DIR / f"commit_{len(documents)}.txt"
+                    with open(out_file, 'w', encoding='utf-8') as f:
+                        f.write(f"Title: {subject}\n")
+                        f.write(f"URL: https://github.com/tianocore/edk2/commit/{commit_hash}\n")
+                        f.write(f"File: {commit_hash}\n")
+                        f.write(f"Repo: tianocore/edk2\n")
+                        f.write(f"Source: edk2-commits\n")
+                        f.write(f"Chunk: {chunk_idx+1}/{len(chunks)}\n\n")
+                        f.write(chunk['text'])
+
+                    documents.append({
+                        'path': str(out_file),
+                        'source': 'edk2-commits',
+                        'repo': 'tianocore/edk2',
+                        'file': commit_hash,
+                        'url': f"https://github.com/tianocore/edk2/commit/{commit_hash}",
+                        'section': subject,
+                        'chunk_idx': chunk_idx,
+                        'total_chunks': len(chunks)
+                    })
+            except Exception:
+                continue
+
     doc_index = PROCESSED_DIR / 'documents.json'
     with open(doc_index, 'w', encoding='utf-8') as f:
         json.dump(documents, f, indent=2, ensure_ascii=False)
@@ -773,7 +1098,10 @@ def build_chroma_index() -> int:
     
     log(f"Indexing {len(documents)} documents...")
     
-    batch_size = 50  # Smaller batch for better embedding quality
+    # Smaller batches keep peak memory bounded (large embedding models like
+    # bge-m3 can exhaust RAM during upsert). Default 50; lower it to ~8-16 on
+    # memory-constrained machines via EDK2_EMBEDDING_BATCH.
+    batch_size = int(os.environ.get("EDK2_EMBEDDING_BATCH", "50"))
     indexed = 0
     
     for i in tqdm(range(0, len(documents), batch_size), desc="Building index"):

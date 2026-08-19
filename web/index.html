@@ -385,6 +385,8 @@ function renderResultsInto(body, results) {
   scrollBottom();
 }
 
+let lastResults = [];
+
 async function refreshStatus() {
   try {
     const r = await fetch('/api/status');
@@ -415,6 +417,9 @@ async function ask(question) {
   btn.disabled = true;
   let history = [];
   try { history = JSON.parse(localStorage.getItem('kb_history') || '[]'); } catch { history = []; }
+  // Send the most recent turn's retrieved documents so the server can base the
+  // answer on the previous turn's reference context (multi-turn continuity).
+  const prevResults = lastResults.slice();
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -432,7 +437,7 @@ async function ask(question) {
     const r = await fetch('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({ question, history, prevResults }),
       signal: ctrl.signal,
     });
     if (r.status === 429) {
@@ -483,6 +488,7 @@ async function ask(question) {
         if (type === 'phase') {
           answerDiv.innerHTML = '<div class="typing"><span class="spinner"></span>' + esc(d.text || '处理中…') + '</div>';
         } else if (type === 'results') {
+          lastResults = (d.results || []).slice(0, 10);
           renderResultsInto(body, d.results, d.daemon);
           resultsAppended = true;
         } else if (type === 'delta') {
