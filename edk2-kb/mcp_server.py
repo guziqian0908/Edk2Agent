@@ -250,6 +250,31 @@ Question: {question}
             raise
         return JSONResponse(_cors({"results": results}))
 
+    @mcp.custom_route("/embed", methods=["GET", "POST"])
+    async def embed(request: Request) -> JSONResponse:
+        """Embed a query with the same bge-m3 model used for retrieval.
+
+        Returns {"embedding": [...]} (1024 floats, L2-normalized). Used by the
+        web service to power the semantic answer cache. Degrades to 500 if the
+        embedding model is unavailable so the caller can fall back to exact
+        matching / live generation.
+        """
+        if request.method == "POST":
+            try:
+                body = await request.json()
+            except Exception:
+                body = {}
+            query = body.get("query", "")
+        else:
+            query = request.query_params.get("query", "")
+        if not query or not query.strip():
+            return JSONResponse(_cors({"error": "Missing query parameter"}), 400)
+        try:
+            vec = engine.embed_query(query.strip())
+        except Exception as e:
+            return JSONResponse(_cors({"error": f"embed failed: {e}"}), 500)
+        return JSONResponse(_cors({"embedding": vec}))
+
     return mcp
 
 

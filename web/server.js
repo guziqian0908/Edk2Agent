@@ -15,7 +15,7 @@
  *   LLM_API_KEY       OpenAI-compatible API key (required for LLM answers)
  *   LLM_BASE_URL      base URL, e.g. https://open.bigmodel.cn/api/paas/v4
  *   LLM_MODEL         model name, e.g. glm-4-flash
- *   LLM_MAX_TOKENS    max answer tokens (default 4000; lower = faster)
+ *   LLM_MAX_TOKENS    max answer tokens (default 1600; lower = faster; one pass covers most answers, continuation handles the rest)
  *   LLM_TOTAL_BUDGET_MS  hard cap for the whole generate+retry loop (default 120 s)
  *   LLM_FIRST_TOKEN_TIMEOUT_MS per-attempt first-token deadline (default 60 s)
  *   ENABLE_RERANK     set 'false' to skip the BGE rerank stage entirely (default on)
@@ -24,6 +24,11 @@
  *   RERANK_SNIPPET_CHARS per-candidate text sent to the reranker (default 800)
  *   ANSWER_CACHE_MAX    answer-cache LRU entries (default 300)
  *   ANSWER_CACHE_TTL_MS answer-cache TTL ms (default 30 min)
+ *   RERANK_ADAPTIVE_SKIP set 'false' to disable confidence-based rerank skip
+ *                         (default on: skip cross-encoder when retrieval already
+ *                         pinned an authoritative #1 chunk)
+ *   SEMANTIC_CACHE     set 'false' to disable semantic (embedding) answer cache
+ *   SEMANTIC_CACHE_THRESHOLD cosine similarity to reuse a cached answer (0.93)
  *   KB_DATA_DIR       override knowledge base root (default ~/.edk2-opencode/kb)
  */
 'use strict';
@@ -160,19 +165,93 @@ function setCachedAnswer(question, model, data) {
   answerCache.set(key, { ...data, timestamp: Date.now(), hitCount: 0 });
 }
 
+// Semantic answer cache (doc P1 / 3): on top of the exact (model+normalized
+// question) cache, a near-paraphrase query whose bge-m3 embedding is within
+// SEMANTIC_CACHE_THRESHOLD cosine of a stored question reuses the stored answer.
+// Zero hardware — it reuses the daemon's local /embed endpoint. The KB is a
+// static doc corpus, so staleness risk is low; the threshold (0.93) is kept
+// strict and the feature is fully disableable (SEMANTIC_CACHE=false).
+const SEMANTIC_CACHE = process.env.SEMANTIC_CACHE !== 'false';
+const SEMANTIC_CACHE_THRESHOLD = parseFloat(
+  process.env.SEMANTIC_CACHE_THRESHOLD || '0.93');
+
+// Embed a query via the daemon's /embed endpoint (bge-m3, L2-normalized).
+// Returns null on any failure so callers degrade to exact match / live gen.
+async function embedQuery(text, daemonUrl) {
+  try {
+    const u = normalizeDaemonUrl(daemonUrl || getDaemonUrl() || '');
+    if (!u) return null;
+    const r = await httpJson(
+      `${u}/embed?query=${encodeURIComponent(String(text || '').slice(0, 300))}`,
+      { timeoutMs: 20000 });
+    if (r.status >= 200 && r.status < 300 && Array.isArray(r.body.embedding)) {
+      return r.body.embedding;
+    }
+  } catch { /* daemon/embed unavailable -> degrade */ }
+  return null;
+}
+
+// Look up a semantic (paraphrase) cache hit. Returns
+// { cached, similarity } or null. Embeddings from bge-m3 with
+// normalize_embeddings=True are unit vectors, so cosine == dot product.
+async function getSemanticCachedAnswer(question, model, daemonUrl) {
+  if (!SEMANTIC_CACHE) return null;
+  const vec = await embedQuery(question, daemonUrl);
+  if (!vec || !vec.length) return null;
+  let best = null;
+  let bestSim = SEMANTIC_CACHE_THRESHOLD;
+  const now = Date.now();
+  for (const hit of answerCache.values()) {
+    if (hit.model && hit.model !== model) continue;
+    if (now - hit.timestamp >= ANSWER_CACHE_TTL_MS) continue;
+    const e = hit.queryEmbedding;
+    if (!Array.isArray(e) || e.length !== vec.length) continue;
+    let dot = 0;
+    for (let i = 0; i < e.length; i++) dot += e[i] * vec[i];
+    if (dot > bestSim) { bestSim = dot; best = hit; }
+  }
+  if (best) return { cached: best, similarity: bestSim };
+  return null;
+}
+
+// Store an answer for exact-match reuse and, in the background, attach the
+// query embedding so the semantic cache can match future paraphrases. The
+// embedding is computed asynchronously so it never delays the final `done`
+// event; embedding failure is non-fatal (exact-match reuse still works).
+function storeAnswerCache(question, model, data, daemonUrl) {
+  const key = answerCacheKey(question, model);
+  if (answerCache.size >= ANSWER_CACHE_MAX) {
+    const oldestKey = answerCache.keys().next().value;
+    answerCache.delete(oldestKey);
+  }
+  const entry = { ...data, queryEmbedding: null, timestamp: Date.now(), hitCount: 0 };
+  answerCache.set(key, entry);
+  if (SEMANTIC_CACHE && daemonUrl) {
+    embedQuery(question, daemonUrl)
+      .then((embedding) => { if (embedding) entry.queryEmbedding = embedding; })
+      .catch(() => {});
+  }
+  return entry;
+}
+
 // Replay a cached answer as the same SSE stream a live LLM call emits:
 // phase(cache_hit) -> results -> phase(llm) -> delta* -> phase(llm_done) -> done.
-function replayCachedAnswer(res, cached) {
-  sendSSE(res, 'phase', { step: 'cache_hit', text: '命中历史回答，直接返回…', progress: 10 });
-  sendSSE(res, 'results', { results: (cached.results || []).slice(0, 10), daemon: null, from_cache: true });
-  sendSSE(res, 'phase', { step: 'llm', text: '正在生成回答…', progress: 60, model: cached.model });
+function replayCachedAnswer(res, cached, semantic = false) {
+  sendSSE(res, 'phase', {
+    step: 'cache_hit',
+    text: semantic ? '命中语义缓存（近义问法），直接返回…' : '命中历史回答，直接返回…',
+    progress: 10,
+    semantic,
+  });
+  sendSSE(res, 'results', { results: (cached.results || []).slice(0, 10), daemon: null, from_cache: true, semantic });
+  sendSSE(res, 'phase', { step: 'llm', text: '正在生成回答…', progress: 60, model: cached.model, semantic });
   const answer = cached.answer || '';
   const CHUNK = 64;
   for (let i = 0; i < answer.length; i += CHUNK) {
     sendSSE(res, 'delta', { text: answer.slice(i, i + CHUNK) });
   }
-  sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model: cached.model, tokens: cached.tokens || 0, from_cache: true });
-  sendSSE(res, 'done', { model: cached.model, tokens: cached.tokens || 0, from_cache: true });
+  sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic });
+  sendSSE(res, 'done', { model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic });
 }
 
 // Rerank documents using BGE-reranker-v2-m3
@@ -243,6 +322,33 @@ function rerankDocuments(query, docs) {
   });
 }
 
+// Adaptive rerank skip (doc P0 / 1a): when the fused retrieval order has already
+// pinned an authoritative spec/docs chunk as the clear #1 with a strong
+// query-signal match, the cross-encoder rerank cannot improve the answer — the
+// LLM context is built from the fused order regardless of rerank — and only
+// costs CPU plus delays the final on-screen source-list ordering. Skip it.
+//
+// Conservative by design: a vague query (few metadata signals) or a non-
+// authoritative #1 (e.g. a commit subject outranking the spec chapter) still
+// goes through the full rerank. Gated by RERANK_ADAPTIVE_SKIP.
+const RERANK_ADAPTIVE_SKIP = process.env.RERANK_ADAPTIVE_SKIP !== 'false';
+function shouldSkipRerank(query, results) {
+  if (!RERANK_ADAPTIVE_SKIP || !ENABLE_RERANK) return false;
+  if (!Array.isArray(results) || results.length <= 10) return false;
+  const top = results[0];
+  if (!isAuthoritativeDocs(top)) return false;
+  const signals = metadataSignals(query);
+  if (signals.identifiers.length + signals.words.length < PRUNE_MIN_SIGNALS) {
+    return false; // too vague for a confident skip
+  }
+  const meta = [top.title, top.section, top.file, top.url]
+    .filter(Boolean).join(' ').toLowerCase();
+  let hits = 0;
+  for (const id of signals.identifiers) if (meta.includes(id.toLowerCase())) hits += 2;
+  for (const w of signals.words) if (meta.includes(w)) hits += 1;
+  return hits >= 1;
+}
+
 // Minimal .env loader (no external dependency). Only sets variables that are
 // not already present in the environment, so shell-set values win.
 function loadDotEnv() {
@@ -263,8 +369,8 @@ function loadDotEnv() {
 loadDotEnv();
 
 // ---- LLM generation budget (env-tunable; defaults balance exhaustiveness and latency) ----
-const LLM_MAX_TOKENS = parseInt(process.env.LLM_MAX_TOKENS || '4000', 10);
-const LLM_RETRY_MAX_TOKENS = parseInt(process.env.LLM_RETRY_MAX_TOKENS || '3000', 10);
+const LLM_MAX_TOKENS = parseInt(process.env.LLM_MAX_TOKENS || '1600', 10);
+const LLM_RETRY_MAX_TOKENS = parseInt(process.env.LLM_RETRY_MAX_TOKENS || '2000', 10);
 const LLM_STREAM_TIMEOUT_MS = parseInt(process.env.LLM_STREAM_TIMEOUT_MS || '180000', 10);
 // Hard cap for the WHOLE generate+retry loop. The upstream can stream an
 // empty response until its timeout fires, so without this a single flaky
@@ -682,15 +788,6 @@ function pruneByMetadata(query, results) {
   // wording ("排版和空白有哪些规定？") must not let a metadata-signal miss
   // (e.g. rule sub-chunks like "5.2.1.1 There shall be only one statement on
   // a line" carry no "spacing/formatting" token in their heading) drop them.
-  const isAuthoritativeDocs = (r) => {
-    const src = String(r.source_display || r.source || r.repo || '').toLowerCase();
-    const file = String(r.file || '').toLowerCase();
-    if (/(edk2-commits|edk2-prs|commit_|pr_)/.test(file)) return false;
-    return src.includes('tianocore-docs') || src.includes('tianocore-doc') ||
-           src.includes('spec') || src.includes('guide') ||
-           /^edk2-/.test(file);
-  };
-
   const scored = results.map((r) => {
     const meta = metaOf(r);
     let hits = 0;
@@ -714,6 +811,18 @@ function pruneByMetadata(query, results) {
   for (let i = 0; i < results.length && keep.size < PRUNE_FLOOR; i++) keep.add(i);
 
   return results.filter((_, i) => keep.has(i));
+}
+
+// Whether a retrieved chunk comes from an authoritative doc source (spec /
+// guide / tianocore-docs repo) rather than commit/PR noise. Module-level so it
+// can be reused by both pruneByMetadata and the adaptive-rerank-skip check.
+function isAuthoritativeDocs(r) {
+  const src = String(r.source_display || r.source || r.repo || '').toLowerCase();
+  const file = String(r.file || '').toLowerCase();
+  if (/(edk2-commits|edk2-prs|commit_|pr_)/.test(file)) return false;
+  return src.includes('tianocore-docs') || src.includes('tianocore-doc') ||
+         src.includes('spec') || src.includes('guide') ||
+         /^edk2-/.test(file);
 }
 
 // Classify question intent to optimize retrieval and answering strategy
@@ -742,6 +851,66 @@ function classifyQuestion(question) {
   if (/启动|boot|pei|dxe/.test(q)) return 'what';
   
   return 'general';
+}
+
+// Query routing (doc 2a): turn the intent label into a retrieval/rerank
+// strategy, not just a prompt hint. Three tiers:
+//   simple   - short factual/enumerative, single concept -> small recall +
+//              rerank skipped (fast path, ~hundreds of ms)
+//   standard - default hybrid retrieval + adaptive rerank (current behavior)
+//   complex  - comparison / multi-hop / reasoning -> wider recall + rerank
+//              forced on (quality over latency)
+// Conservative: only clearly-simple or clearly-complex queries leave the
+// standard tier, so recall is never silently shrunk for ambiguous questions.
+function routeQuery(question) {
+  const q = String(question || '').trim();
+  if (!q) return 'standard';
+
+  // Complex: explicit comparison / multi-hop / reasoning signals.
+  if (/(比较|区别|差异|对比|compare|difference|vs\.?| versus |各自|分别.*和|和.*分别|为什么|原理|工作机制|底层|根因|root\s*cause|如何.*实现)/i.test(q)) {
+    return 'complex';
+  }
+  // Multiple sub-questions (>=2 question marks) imply multi-part reasoning.
+  if ((q.match(/[?？]/g) || []).length >= 2) return 'complex';
+
+  const cls = classifyQuestion(q);
+  const short = q.length <= 22; // a single focused lookup
+
+  // Simple factual / enumerative, short and without how-to/error framing.
+  if (short && (cls === 'what' || cls === 'format' || cls === 'list' || cls === 'example')) {
+    return 'simple';
+  }
+  // Short, an EDK2 identifier but no actionable verb -> direct lookup.
+  if (short && cls !== 'howto' && cls !== 'error' && cls !== 'general') {
+    return 'simple';
+  }
+  // Very short and dominated by a single EDK2 identifier (e.g. "PcdLib 是什么").
+  const ids = (q.toLowerCase().match(/[a-z][a-z0-9_]{3,}/g) || []);
+  if (short && ids.length <= 2 && cls !== 'howto' && cls !== 'error') {
+    return 'simple';
+  }
+  return 'standard';
+}
+
+// Chit-chat / meta routing (doc 2b): questions that are NOT knowledge-base
+// queries (greetings, thanks, "what can you do") bypass retrieval AND the LLM
+// entirely and get a fixed, instant answer. Deliberately conservative: it only
+// fires when the text is short AND contains no EDK2 technical signal, so a real
+// question like "你好，PCD 是什么" still goes through the full pipeline.
+const CHITCHAT_ANSWER =
+  '我是 EDK2 / TianoCore 固件开发问答助手，基于本地知识库（EDK II 规范、编码标准、' +
+  '贡献流程等）回答。请直接提出你的 EDK2 技术问题，例如：PCD 有哪些类型？INF 文件怎么写？' +
+  '如何提交补丁？如何编写 UEFI 驱动？';
+
+function isChitChat(question) {
+  const q = String(question || '').trim().toLowerCase();
+  if (q.length > 24) return false;
+  // Any EDK2 technical term -> treat as a real question, never chit-chat.
+  if (/[a-z]{2,}/.test(q) && /(edk|uefi|pcd|inf|dsc|dec|fdf|sm[mn]|driver|protocol|module|boot|dxe|pei|guid|build|commit|patch|spec|hii|tianocore|固件|编码|命名|规范|驱动|协议|模块|启动|提交|补丁)/.test(q)) {
+    return false;
+  }
+  return /^(你好|您好|hi|hello|hey|嗨|在吗|在么|早上好|下午好|晚上好|谢谢|感谢|多谢|再见|拜拜|bye|你是谁|你是?什么|你叫什么|你能?做什么|你能?帮我|怎么用你|如何使用你|介绍下?你|介绍一下你)/i.test(q)
+    || /^(谢谢|感谢|多谢|再见|拜拜)/i.test(q);
 }
 
 // Daemon results carry a numeric _pid that uniquely identifies a chunk even
@@ -1010,7 +1179,7 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
   // previous turns share the remainder weighted by recency (turn 1 = closest,
   // weight PREV_DECAY^(turn-1)), so the most recent turn's retrieved material
   // is always the most represented and older turns fade out.
-  const MAX_CTX_CHARS = opts.maxCtxChars || 34000;
+  const MAX_CTX_CHARS = opts.maxCtxChars || 8000;
   const CUR_BUDGET = prevEntries.length ? Math.round(MAX_CTX_CHARS * 0.7) : MAX_CTX_CHARS;
   let ctxChars = 0;
   const ctxCapped = [];
@@ -1072,25 +1241,27 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
   }).join('\n');
 
   const system = [
-    'You are an EDK2/TianoCore firmware development expert. You answer strictly and exhaustively from the retrieved EDK2/TianoCore documentation context.',
+    // PREFIX-CACHE INVARIANT (DeepSeek Context Caching on Disk, automatic):
+    // The content below the intent guidance is large and constant; it is kept
+    // FIRST so it forms a stable prompt prefix reused across every request
+    // (~thousands of tokens => cache hits). Do NOT insert per-request variable
+    // content here. The variable RAG context + question go last (user message).
+    'You are an EDK2/TianoCore firmware development expert. You answer strictly from the retrieved EDK2/TianoCore documentation context.',
     intentGuidance,
     '',
-    '## !! 完整性强制令 (COMPLETENESS MANDATE) !!',
+    '## 回答要求（简洁优先）',
     '',
-    '这是最高优先级规则，覆盖下面所有风格指引：',
+    '严格依据检索上下文作答，回答要紧凑、直接，去除无信息量的铺垫与重复；同等内容用更少的字数表达。',
+    '配置/规范类问题列出关键规则与枚举值（带稳定编号）；故障类给根因排查清单与可观测手段；概念类点到本质即可，不必铺陈。',
+    '上下文未覆盖的点如实说明，绝不虚构规范条文、报错码或 API 签名。',
     '',
-    '**当上下文文档中包含以下任何内容时，你必须在回答中完整枚举，禁止省略或概括：**',
-    '- 具体的规则条目（如命名规则的每一条）',
-    '- 具体的枚举值（如 MODULE_TYPE 的所有取值、PCD 的所有类型）',
-    '- 具体的 API/函数名和参数签名',
-    '- 具体的错误码和报错信息文本',
-    '- 具体的格式模式（如 CamelCase 的具体格式示例 `EachWordIsDistinct`、宏格式 `EACH_WORD_UPPER`）',
-    '- 具体的前缀/后缀规则（如匈牙利命名的 g/m/p 前缀）',
-    '- 具体的步骤列表或检查清单',
+    '## 证据约束（最高优先级，必须遵守）',
     '',
-    '**判断标准：如果标准答案中列出了某个具体值/模式/规则，而你的回答中没有，就是不合格。**',
-    '宁可回答长一些、详尽一些，也绝不能遗漏上下文中的具体技术细节。',
-    '同时避免自我重复、无信息量的铺垫和把同一规则在多个章节反复改写；一次性完整给出要点并保证有结尾。',
+    '1. **只基于上下文作答**：只能使用用户消息中"RAG 参考上下文"条目里的内容。若答案不能完全由上下文支撑，明确写"根据现有资料无法确认XXX"，并给出可追问的补充信息；绝不编造规范条文、报错码、API 签名、章节号或数据。',
+    '2. **冲突处理**：不同上下文相互冲突时，分别列出各方并说明冲突所在，不要自行捏合或偏向一方。',
+    '3. **逐条引用**：每条事实性陈述后标注来源编号 `[cXXXXXXXX]`（即上下文条目开头的稳定编号）。只允许引用上下文中真实存在的编号，禁止发明编号、禁止用 `[1]` 这类位置序号。',
+    '4. **切题即止**：回答长度以切题所需为最短，用要点式输出。禁止穷举所有规则/枚举值、禁止自我重复、禁止堆砌与问题无关的上下文内容；对枚举类型只列出上下文里有依据的取值。',
+    '5. **诚实降级**：检索覆盖不足时明确说明"资料覆盖不足"，不要猜测硬答。',
     '',
     '## 引用规则（稳定编号，禁止位置序号）',
     '',
@@ -1109,8 +1280,8 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     '2. **现象 / 根因排查清单**：**仅故障异常类问题启用**。先给可复现的外部现象（**只描述现象，禁止虚构报错码或错误文本**），再按可能性排序列出根因排查清单。**非故障问题直接删除本章节，禁止编造排查项。**',
     '',
     '3. **约束规则**：配置、驱动、规范类问题启用；纯概念科普可精简。**启用时它是回答的主体**：逐条列出上下文中的具体规则、模式、枚举值、API 签名，每条保留引用标记（上下文条目的稳定编号 `[cXXXXXXXX]`）。',
-    '   - 对枚举类型（如 MODULE_TYPE）：必须列出所有取值及其含义。',
-    '   - 对流程/机制：按顺序完整描述每个步骤。',
+    '   - 对枚举类型（如 MODULE_TYPE）：只列出上下文里有依据的取值及其含义。',
+    '   - 对流程/机制：按顺序描述上下文覆盖的步骤，未覆盖的不臆造。',
     '   - **消除无条件绝对化表述**：关键规则补上 `【触发前置条件】仅当XXX满足，才会发生该行为，否则不生效。`',
     '   - **晦涩规则双轨表达**：复杂构建/驱动规则保留稳定引用标记后，另起一行附"通俗解读"，说明实际开发场景含义。',
     '   - 事实性信息（章节号、签名、阈值）与上下文完全一致，禁止虚构。',
@@ -1128,38 +1299,7 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     '- 每个文档条目里 `Local:` 开头的行就是该条目的本地定位，从中取文档标题与章节。',
     '- 参考来源只写本地定位，禁止拼造任何网址。',
     '',
-    '## 强制优化任务（全部执行，不可跳过）',
-    '',
-    '1. **信息分层校验**：仅 RAG 存在 shall/must 原文依据才可标【强制要求】；社区经验/commit 案例/逻辑推导归【最佳实践】；综合推导结论加 `注：该结论由多条文档综合推导…` 注释并禁止放入强制项。',
-    '2. **补全触发前置条件**：消除无条件绝对化表述；关键规则补 `【触发前置条件】仅当XXX满足，才会发生该行为，否则不生效。`',
-    '3. **晦涩规则双轨表达**：复杂构建/驱动规则保留稳定引用标记，附加通俗解读说明实际开发场景含义。',
-    '4. **API 与实操建议校验**：核对 API、宏、元数据段名拼写，杜绝笔误；推导得到的实操建议加注"建议/工程推断"提醒；与参考上下文矛盾的错误建议直接删除。',
-    '5. **按需增加极简示例**：INF/DEC/DSC/FDF 配置、PCD 配置、Protocol/库类定义、DriverBinding 函数逻辑等场景优先补充 ✅/❌ 核心片段示例（仅关键行）；无合适示例的场景不得硬造。',
-    '6. **故障类补充可观测排查手段**：仅故障异常类问题给出构建产物（As-Built INF / map / build log）、UEFI Shell 命令、SCT 测试等手段；**只描述现象，禁止虚构错误码**。',
-    '7. **来源区分**：原文结论带稳定引用标记；素材信息不足时如实说明"上下文未覆盖该点"，绝不编造规范条文或报错码。',
-    '',
-    '## 输出自检（模型内部完成后在心里校验，禁止打印过程）',
-    '- 只启用与问题类型匹配的要素，未匹配章节直接舍弃；无素材时不编造填充。',
-    '- 无绝对化表述，关键规则带触发前置条件。',
-    '- 【强制要求】全部有规范原文依据，工程推论不混入强制。',
-    '- 复杂规则配通俗解读。',
-    '- 配置/代码类题目已补正误示例（概念题不强求）。',
-    '- 故障问题提供可观测排查手段。',
-    '- API、标识符无笔误，实操建议与参考上下文无冲突。',
-    '- 推导内容有注释，无虚构报错、规范条文。',
-    '- 表述紧凑无冗余铺垫，且具体细节零遗漏。',
-    '',
-    '## 措辞红线',
-    '- 措辞用固件专业表述：**必须、禁止、红线、强制**。',
-    '- 上下文信息不足时明确声明，绝不虚构。',
-    '- 关键数据必须与上下文完全一致。',
-    '',
-    '## 长度与密度',
-    '- **完整性优先于简洁性**。回答可以长，但不能遗漏上下文中的具体技术细节。',
-    '- 去除无信息量的铺垫句，但具体规则/枚举/模式必须完整保留。',
-    '- **表述紧凑**：在完整保留所有具体规则、枚举值、API 签名、错误码的前提下，用最紧凑的句式表达，删除重复强调、格式化铺垫和空泛过渡句。同一信息只表达一次。目标：同等内容用更少的字数。',
-    '',
-    '## Output format examples (Few-shot)',
+    '## 示例（仅示范结构与引用写法，不是穷举模板）',
     '',
     '### Example 1: 模块/包/平台关系',
     '**Question**: EDK2中模块（Module）、包（Package）和平台（Platform）是什么关系？',
@@ -1185,85 +1325,7 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     '',
     '---',
     '',
-    '### Example 2: 命名规范（穷举式）',
-    '**Question**: EDK II 有哪些命名规范？',
-    '',
-    '**答案：**',
-    '',
-    '**定义与关系模型**',
-    'EDK II 用三类标识符格式区分代码角色：变量/函数（CamelCase）、宏/typedef（全大写下划线）、全局/模块/指针变量（g/m/p 前缀）。',
-    '',
-    '**约束规则**',
-    '**标识符格式**',
-    '- 变量/函数/枚举/结构体成员：`EachWordIsDistinctEvenAcronymsLikeAcpi`，每个单词首字母大写，必须大小写混合，全大写或全小写都不允许。',
-    '- 缩略词不要整个大写：`MyPciAddress` 而非 `MyPCIAddress`。',
-    '- 功能宏/#define/typedef：`EACH_WORD_IS_DISTINCT_EVEN_ACRONYMS_LIKE_ACPI`，全大写加下划线。禁止用 `_t` 后缀表示类型。',
-    '',
-    '**匈牙利前缀（仅三个例外）**',
-    '`【触发前置条件】仅当变量是全局变量或模块变量（指针可选）时，才允许使用对应前缀；其余场景加前缀即违规。`',
-    '- 全局变量必须加 `g` 前缀：`gThisIsAGlobalVariableName`。',
-    '- 模块变量必须加 `m` 前缀：`mThisIsAModuleVariableName`。',
-    '- 指针变量可加 `p` 前缀（可选）。',
-    '- 匈牙利命名法在其他情况禁止使用。',
-    '',
-    '**其他约束**',
-    '- 名字长度不限，建议 10~30 字符，不依赖超过 31 字符的区分度。',
-    '- 文件名不能以数字开头，每个头文件名必须唯一。',
-    '- 禁止使用 C 关键字或标准头文件中已声明的符号作为内部符号。',
-    '- 外部符号名不得以下划线开头。',
-    '- 新建全局实体不要再用 `EFI_` 前缀；`DXE_` 和 `PEI_` 前缀分别保留给 DXE 和 PEI 驱动。',
-    '- 只能使用标准缩写和行业缩略词，非标准的必须在文件头注释里定义。',
-    '- 禁止函数名或类型名重载。',
-    '',
-    '**工程要点**',
-    '**【强制要求】** 全局/模块变量必须带 g/m 前缀（规范原文依据）。',
-    '**【最佳实践】** 局部变量可保持简洁，避免无意义前缀。',
-    '- ✅ `gCpuFrequency` / ❌ `CpuFrequency`（全局变量漏加 g 前缀）',
-    '- ✅ `MY_GLOBAL_MACRO` / ❌ `MyGlobalMacro`（宏写成驼峰）',
-    '',
-    '## 参考来源',
-    '- EDK II C Coding Standards - 4.4 Identifiers（本地：edk2-CCodingStandardsSpecification > 4.4 Identifiers）',
-    '',
-    '---',
-    '',
-    '### Example 3: DXE 协议找不到（故障类）',
-    '**Question**: EDK2 驱动在 DXE 阶段注册了协议但其他模块找不到该协议，可能的原因有哪些？',
-    '',
-    '**答案：**',
-    '',
-    '**定义与关系模型**',
-    '协议 = 接口结构体（函数指针 + 数据成员）+ GUID；生产者安装到 handle 数据库，消费者通过 Boot Services 检索 [1]。',
-    '',
-    '**现象 / 根因排查清单**',
-    '**可复现现象**：`LocateProtocol()`/`OpenProtocol()` 返回非成功状态或拿到空接口指针；协议数据库调试输出中无该 GUID 条目 [1]。',
-    '',
-    '按可能性排序的排查清单，逐项加 `【触发前置条件】`：',
-    '- **GUID 不一致**：【触发前置条件】仅当产生与消费两端 GUID 字节完全相同时才命中；查 DEC、INF `[Protocols]`、代码三方是否一致。',
-    '- **时序倒置（消费者先于生产者执行）**：【触发前置条件】仅当消费者执行早于生产者入口点；非 UEFI Driver Model 驱动在 DXE 早期执行，常因依赖未就绪失败 [3]。',
-    '- **安装失败但未检查返回值**：【触发前置条件】仅当忽略 `InstallMultipleProtocolInterfaces()` 等的返回值时才出现"表面注册、实际没有"。[1]',
-    '- **把 UEFI Application 当作注册者**：【触发前置条件】仅当安装协议的是 UEFI Application；其入口点返回后即被卸载，协议随之消失 [7]。',
-    '',
-    '**约束规则**',
-    '- 协议安装服务：`InstallProtocolInterface()`、`ReInstallProtocolInterface()`、`InstallMultipleProtocolInterfaces()`；检索服务：`LocateProtocol()`、`HandleProtocol()`、`OpenProtocol()` [1]。',
-    '- **通俗解读**：`LocateProtocol()` 全局找第一个实例，`HandleProtocol()` 只在指定 handle 上找；Service Driver 生成的服务句柄没有 Device Path [6]。',
-    '',
-    '**工程要点**',
-    '**【强制要求】** DXE 驱动必须设计为不依赖尚不可用的服务，能推迟的工作推迟到服务可用后再做 [3]。',
-    '**【最佳实践】** 用 `LocateProtocol()` 前先校验 `EFI_ERROR(Status)`，避免空指针解引用。',
-    '- ✅ `Status = gBS->LocateProtocol(&gEfiSampleProtocolGuid, NULL, (VOID**)&SampleProtocol); if (EFI_ERROR(Status)) return Status;`',
-    '- ❌ 不检查返回值直接调用 `SampleProtocol->SampleProtocolApi()`。',
-    '',
-    '**可观测排查手段**（仅故障类启用）',
-    '- 构建产物：确认驱动 .efi 进了 FV（检查 FD/FV 布局与 Dak/As-Built INF），并确认其 `.depex` 正确。',
-    '- UEFI Shell：用 `dh` 查看 handle 数据库、`drivers`/`devices` 检查驱动是否加载。',
-    '- 固件调试输出：DxeCore 协议数据库日志中检索该 GUID 条目是否存在。',
-    '',
-    '## 参考来源',
-    '- edk2-ModuleWriteGuide > 5.4 Communication between UEFI Drivers（本地：ModuleWriteGuide\\5_uefi_drivers\\54_communication_between_uefi_drivers.md）',
-    '',
-    '---',
-    '',
-    'Follow these examples: apply the flexible element paradigm — only include sections that match the question type (fault questions get 现象/根因排查清单 + 可观测排查手段, config/code questions get ✅/❌ examples, concept questions can be brief), ENUMERATE ALL specific rules/values/patterns from context with stable [cXXXXXXXX] citation markers, always close with a ## 参考来源 block, and never print the self-check checklist.',
+    'Example 1 中的 `[cXXXXXXXX]` 引用仅为格式示意：实际引用必须使用上下文条目里真实存在的稳定编号。回答末尾必须附 `## 参考来源` 块。',
   ].join('\n');
 
   const messages = [{ role: 'system', content: system }];
@@ -1292,7 +1354,7 @@ function llmConfig() {
  * Stream LLM chat completions (OpenAI-compatible SSE).
  * Calls onDelta(text) for each content chunk; resolves on completion.
  */
-function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTokens = LLM_MAX_TOKENS, firstTokenMs = 0 } = {}) {
+function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTokens = LLM_MAX_TOKENS, firstTokenMs = 0, signal = null } = {}) {
   return new Promise((resolve, reject) => {
     const { apiKey, baseUrl, model } = llmConfig();
     if (!apiKey || !baseUrl || !model) {
@@ -1301,7 +1363,13 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
     }
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const u = new URL(url);
-    const payload = { model, messages, temperature: 0, stream: true, max_tokens: maxTokens };
+    // stream_options.include_usage lets us observe DeepSeek's automatic prefix
+    // cache (prompt_cache_hit_tokens) so we can confirm the stable system
+    // prompt prefix is actually being reused across requests.
+    const payload = {
+      model, messages, temperature: 0, stream: true, max_tokens: maxTokens,
+      stream_options: { include_usage: true },
+    };
 
     const protocol = u.protocol === 'https:' ? https : http;
     // The socket `timeout` option does NOT fire while the upstream sits in
@@ -1312,6 +1380,8 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
     const clearFirstToken = () => {
       if (firstTokenTimer) { clearTimeout(firstTokenTimer); firstTokenTimer = null; }
     };
+    const _t0 = Date.now();
+    let _firstToken = true;
     const req = protocol.request({
       hostname: u.hostname,
       port: u.port || (u.protocol === 'https:' ? 443 : 80),
@@ -1329,40 +1399,61 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
         Accept: 'text/event-stream',
       },
       timeout: timeoutMs,
+      agent: false,
+      ...(signal ? { signal } : {}),
     }, (res) => {
+      console.error(`[LLMDBG] response status=${res.statusCode} after ${Date.now() - _t0}ms`);
       if (res.statusCode < 200 || res.statusCode >= 300) {
         let data = '';
         res.on('data', (c) => { data += c; });
         res.on('end', () => reject(new Error(`LLM API error ${res.statusCode}: ${data.substring(0, 500)}`)));
         return;
       }
-      let buf = '';
-      let rawChunks = [];
-      res.setEncoding('utf8');
-      res.on('data', (chunk) => {
-        rawChunks.push(chunk);
-        buf += chunk;
-        let idx;
-        while ((idx = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, idx).trim();
-          buf = buf.slice(idx + 1);
-          if (!line.startsWith('data:')) continue;
-          const data = line.slice(5).trim();
-          if (data === '[DONE]') continue;
-          try {
-            const j = JSON.parse(data);
-            const delta = j.choices && j.choices[0] && j.choices[0].delta;
-            if (delta && delta.content) {
-              clearFirstToken();
-              onDelta(delta.content);
-            }
-          } catch { /* ignore malformed chunk */ }
-        }
-      });
-      res.on('end', () => {
-        clearFirstToken();
-        resolve();
-      });
+        let buf = '';
+        let rawChunks = [];
+        let finishReason = null;
+        let usage = null;
+        res.setEncoding('utf8');
+        let _firstChunk = true;
+        res.on('data', (chunk) => {
+          if (_firstChunk) { _firstChunk = false; console.error(`[LLMDBG] first data chunk after ${Date.now() - _t0}ms`); }
+          rawChunks.push(chunk);
+          buf += chunk;
+          let idx;
+          while ((idx = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, idx).trim();
+            buf = buf.slice(idx + 1);
+            if (!line.startsWith('data:')) continue;
+            const data = line.slice(5).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const j = JSON.parse(data);
+              const choice = j.choices && j.choices[0];
+              if (choice) {
+                // Capture finish_reason from the final chunk
+                if (choice.finish_reason) {
+                  finishReason = choice.finish_reason;
+                }
+                const delta = choice.delta;
+                // DeepSeek reasoning models may emit the answer in
+                // `reasoning_content` while `content` is empty (complex prompts).
+                const piece = delta && (delta.content || delta.reasoning_content);
+                if (piece) {
+                  if (_firstToken) { _firstToken = false; console.error(`[LLMDBG] first content token after ${Date.now() - _t0}ms`); }
+                  clearFirstToken();
+                  onDelta(piece);
+                }
+              }
+              // DeepSeek returns cumulative token usage (incl. prefix-cache
+              // hits) on the final streamed chunk when include_usage is set.
+              if (j.usage) usage = j.usage;
+            } catch { /* ignore malformed chunk */ }
+          }
+        });
+        res.on('end', () => {
+          clearFirstToken();
+          resolve({ finishReason, usage });
+        });
       res.on('error', (e) => { clearFirstToken(); reject(e); });
     });
     req.on('error', (e) => { clearFirstToken(); reject(e); });
@@ -1372,6 +1463,7 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
         req.destroy(new Error(`LLM no first token within ${firstTokenMs}ms`));
       }, firstTokenMs);
     }
+    console.error(`[LLMDBG] SEND ${url} payloadChars=${JSON.stringify(payload).length}`);
     req.write(JSON.stringify(payload));
     req.end();
   });
@@ -1383,7 +1475,9 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
 // and as a final non-streaming fallback when the streaming answer path keeps
 // returning empty streams. Falls back to the input text on any failure so
 // search never breaks.
-async function llmComplete(messages, { timeoutMs = 60000, maxTokens = 300 } = {}) {
+async function llmComplete(messages, { timeoutMs = 60000, maxTokens = 300, signal = null } = {}) {
+  const _t0 = Date.now();
+  console.error(`[LCMPLDBG] start timeout=${timeoutMs} msgs=${messages.length}`);
   return new Promise((resolve) => {
     const { apiKey, baseUrl, model } = llmConfig();
     if (!apiKey || !baseUrl || !model) return resolve('');
@@ -1406,22 +1500,117 @@ async function llmComplete(messages, { timeoutMs = 60000, maxTokens = 300 } = {}
         Accept: 'application/json',
       },
       timeout: timeoutMs,
+      ...(signal ? { signal } : {}),
     }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
       res.on('end', () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) return resolve('');
-        try {
-          const j = JSON.parse(data);
-          const text = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
-          resolve(typeof text === 'string' ? text.trim() : '');
-        } catch { resolve(''); }
+        if (res.statusCode < 200 || res.statusCode >= 300) { console.error(`[LCMPLDBG] end status=${res.statusCode} after ${Date.now() - _t0}ms`); return resolve(''); }
+         try {
+           const j = JSON.parse(data);
+           const msg = j.choices && j.choices[0] && j.choices[0].message;
+           // Fall back to reasoning_content: DeepSeek reasoning models put the
+           // answer there (content empty) for complex prompts.
+           const text = (msg && (msg.content || msg.reasoning_content)) || '';
+           console.error(`[LCMPLDBG] end OK after ${Date.now() - _t0}ms chars=${typeof text === 'string' ? text.length : 0}`);
+           resolve(typeof text === 'string' ? text.trim() : '');
+         } catch { console.error(`[LCMPLDBG] end parse-fail after ${Date.now() - _t0}ms`); resolve(''); }
       });
     });
-    req.on('error', () => resolve(''));
-    req.on('timeout', () => { req.destroy(); resolve(''); });
+    req.on('error', () => { console.error(`[LCMPLDBG] error after ${Date.now() - _t0}ms`); resolve(''); });
+    req.on('timeout', () => { console.error(`[LCMPLDBG] TIMEOUT after ${Date.now() - _t0}ms`); req.destroy(); resolve(''); });
     req.write(JSON.stringify(payload));
     req.end();
+  });
+}
+
+// Race a streaming call against a non-streaming call for the SAME prompt.
+//
+// Streaming gives the best UX (tokens arrive live). The non-streaming path is a
+// reliable safety net for the upstream's intermittent "empty stream" failure
+// mode: it returns HTTP 200 + a finish_reason with ZERO deltas, which otherwise
+// burns the whole first-token budget and triggers the multi-call retry /
+// continuation storm (observed: a single question taking 130s instead of ~30s).
+//
+// Strategy (grace timer):
+//   * Start the streaming call immediately (best UX, and the common path).
+//   * If the stream emits its first token within FIRST_TOKEN_GRACE_MS, it is
+//     healthy -> cancel any pending non-streaming call and use the stream.
+//   * If no first token arrives within the grace window (the stream is almost
+//     certainly in the broken mode, since a healthy prefill yields a token in
+//     ~1-2s), start the non-streaming call. When it returns content we use it
+//     (~2s) and abort the dead stream.
+// This keeps a healthy request on pure streaming (no extra cost, no false
+// fallback) while rescuing the broken mode in ~grace+2s instead of ~27s.
+async function raceLlmOnce(messages, { onDelta, timeoutMs, firstTokenMs, maxTokens, signal, firstTokenGraceMs = 6000 } = {}) {
+  return new Promise((resolveRace) => {
+    let streamText = '';
+    let streamFirstToken = false;
+    let streamUsage = null;
+    let done = false;
+    let completeController = null;
+    let completeText = '';
+    const finish = (result) => { if (!done) { done = true; resolveRace(result); } };
+
+    const startComplete = () => {
+      if (completeController || done) return;
+      completeController = new AbortController();
+      llmComplete(messages, {
+        timeoutMs: Math.min(timeoutMs, 60000), maxTokens,
+        signal: completeController.signal,
+      }).then((t) => {
+        completeText = (t || '').toString();
+        if (completeText.length > 0 && !streamFirstToken && !done) {
+          if (signal) try { signal.abort(); } catch { /* stop dead stream */ }
+          onDelta(completeText); // deliver as a single delta
+          finish({ text: completeText, usage: null, via: 'complete', finishReason: 'stop' });
+        }
+      }).catch(() => { /* ignore, fall back to stream result */ });
+    };
+
+    const graceTimer = setTimeout(() => {
+      if (!streamFirstToken && !done) startComplete();
+    }, firstTokenGraceMs);
+
+    const cancelComplete = () => {
+      if (completeController) { try { completeController.abort(); } catch { /* noop */ } completeController = null; }
+    };
+
+    llmStream(messages, {
+      onDelta: (t) => {
+        if (!streamFirstToken) {
+          streamFirstToken = true;
+          clearTimeout(graceTimer);
+          cancelComplete(); // healthy: drop the non-streaming safety net
+        }
+        streamText += t;
+        onDelta(t);
+      },
+      timeoutMs, firstTokenMs, maxTokens, signal,
+    }).then((r) => {
+      clearTimeout(graceTimer);
+      cancelComplete();
+      finish({ text: streamText, usage: r.usage, via: 'stream', finishReason: r.finishReason });
+    }).catch((e) => {
+      clearTimeout(graceTimer);
+      // Stream failed outright: use the non-streaming result if we have one,
+      // else start it now and wait briefly for it.
+      if (completeText.length > 0) {
+        if (signal) try { signal.abort(); } catch { /* noop */ }
+        finish({ text: completeText, usage: null, via: 'complete', finishReason: 'stop' });
+        return;
+      }
+      startComplete();
+      const waitStart = Date.now();
+      const wait = setInterval(() => {
+        if (completeText.length > 0 || Date.now() - waitStart > 60000) {
+          clearInterval(wait);
+          if (signal) try { signal.abort(); } catch { /* noop */ }
+          if (completeText.length > 0) finish({ text: completeText, usage: null, via: 'complete', finishReason: 'stop' });
+          else finish({ text: streamText, usage: null, via: 'stream', finishReason: 'error', error: e.message });
+        }
+      }, 200);
+    });
   });
 }
 
@@ -1474,8 +1663,10 @@ async function llmAnswer(question, results, history, prevResults) {
   if (resp.status < 200 || resp.status >= 300) {
     return { error: `LLM API error ${resp.status}: ${JSON.stringify(resp.body).substring(0, 500)}` };
   }
-  const content = resp.body && resp.body.choices && resp.body.choices[0] && resp.body.choices[0].message
-    ? resp.body.choices[0].message.content : '';
+  const msg = resp.body && resp.body.choices && resp.body.choices[0] && resp.body.choices[0].message;
+  // Fall back to reasoning_content: DeepSeek reasoning models put the answer
+  // there (content empty) for complex prompts.
+  const content = msg ? (msg.content || msg.reasoning_content) : '';
   return { answer: content, model };
 }
 
@@ -1548,8 +1739,37 @@ async function handleAsk(req, res) {
 
       // Answer-cache short-circuit: a repeated (self-contained) question skips
       // the daemon, search, rerank AND the LLM entirely — replayed as SSE.
-      const cachedAnswer = parsed.fresh !== true ? getCachedAnswer(question, llmConfig().model) : null;
-      if (cachedAnswer) {
+      const model = llmConfig().model;
+      const fresh = parsed.fresh === true;
+      // Query routing (doc 2a): decide the retrieval/rerank strategy up front.
+      const tier = routeQuery(question);
+      emitTrace({ traceId, stage: 'route', durationMs: 0, queryHash: qh, status: 'ok', tier });
+
+      // Chit-chat / meta routing (doc 2b): greetings, thanks, "what can you do"
+      // bypass retrieval + the LLM entirely with a fixed instant answer.
+      if (!fresh && isChitChat(question)) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        const ccStart = Date.now();
+        sendSSE(res, 'phase', { step: 'llm', text: '正在回复…', progress: 60, model });
+        sendSSE(res, 'delta', { text: CHITCHAT_ANSWER });
+        sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model });
+        sendSSE(res, 'done', { model });
+        res.end();
+        emitTrace({
+          traceId, stage: 'chitchat', durationMs: Date.now() - ccStart,
+          queryHash: qh, status: 'ok',
+        });
+        finishTotal('ok', { chitchat: true });
+        return;
+      }
+
+      const exactAnswer = !fresh ? getCachedAnswer(question, model) : null;
+      if (exactAnswer) {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream; charset=utf-8',
           'Cache-Control': 'no-cache, no-transform',
@@ -1557,13 +1777,13 @@ async function handleAsk(req, res) {
           'X-Accel-Buffering': 'no',
         });
         const cacheStart = Date.now();
-        replayCachedAnswer(res, cachedAnswer);
+        replayCachedAnswer(res, exactAnswer, false);
         res.end();
         emitTrace({
           traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
-          queryHash: qh, status: 'ok', hit: true, hits: cachedAnswer.hitCount,
+          queryHash: qh, status: 'ok', hit: true, hits: exactAnswer.hitCount,
         });
-        finishTotal('ok', { tokens: cachedAnswer.tokens || 0, from_cache: true, answer_cache: true });
+        finishTotal('ok', { tokens: exactAnswer.tokens || 0, from_cache: true, answer_cache: true });
         return;
       }
 
@@ -1587,6 +1807,29 @@ async function handleAsk(req, res) {
 
       // Check cache first
       sendSSE(res, 'phase', { step: 'cache', text: '检查缓存…', progress: 10 });
+
+      // Semantic (paraphrase) cache: only reached on an exact miss. Embedding
+      // the incoming query and comparing against stored embeddings is ~tens of
+      // ms and lets near-synonym questions reuse a prior generation.
+      if (!fresh && SEMANTIC_CACHE) {
+        const semHit = await getSemanticCachedAnswer(question, model, url);
+        if (semHit) {
+          const cacheStart = Date.now();
+          replayCachedAnswer(res, semHit.cached, true);
+          res.end();
+          emitTrace({
+            traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
+            queryHash: qh, status: 'ok', hit: true, semantic: true,
+            similarity: Number(semHit.similarity.toFixed(4)),
+            hits: semHit.cached.hitCount,
+          });
+          finishTotal('ok', {
+            tokens: semHit.cached.tokens || 0, from_cache: true,
+            answer_cache: true, semantic: true,
+          });
+          return;
+        }
+      }
       let results = getCachedContext(question);
       let fromCache = false;
       
@@ -1644,7 +1887,10 @@ async function handleAsk(req, res) {
           // out of top_k. Run a second query restricted to the authoritative
           // tianocore-docs source and merge it back in below.
           const searchStart = Date.now();
-          const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=35`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } });
+          // Routing (2a): shrink recall for simple factual queries (fast path),
+          // widen it for complex multi-hop/comparison queries (quality).
+          const mainTopK = tier === 'simple' ? 12 : tier === 'complex' ? 22 : 18;
+          const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=${mainTopK}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } });
           // Daemon clamps top_k to 20 and cross-lingual vector recall is weak:
           // a vague Chinese query ("排版/空白") ranks many unrelated Summary/
           // README chunks above the actual CCoding spec chapters. For coding-
@@ -1748,7 +1994,29 @@ async function handleAsk(req, res) {
         // rerank finishes, a second results event reorders the on-screen source
         // list; citations stay correct because they key on stable cids, not
         // positions. Disable via ENABLE_RERANK=false.
-        if (results.length > 10 && ENABLE_RERANK) {
+        if (results.length > 10 && !ENABLE_RERANK) {
+          emitTrace({
+            traceId, stage: 'rerank', durationMs: 0, queryHash: qh,
+            status: 'skipped', reason: 'ENABLE_RERANK=false',
+          });
+        } else if (results.length > 10 && tier === 'simple') {
+          // Routing (2a): simple factual queries use a small recall and skip the
+          // cross-encoder entirely — the LLM context already uses the fused
+          // order, so rerank would only cost CPU to reorder the source panel.
+          emitTrace({
+            traceId, stage: 'rerank', durationMs: 0, queryHash: qh,
+            status: 'skipped', reason: 'simple_tier',
+          });
+        } else if (results.length > 10 && ENABLE_RERANK && tier !== 'complex' && shouldSkipRerank(question, results)) {
+          // Adaptive skip (1a): retrieval already pinned an authoritative #1
+          // chunk strongly matching the query, so the cross-encoder rerank
+          // would only reorder the source panel — the LLM context uses the
+          // fused order either way. Save the CPU and keep the fused ordering.
+          emitTrace({
+            traceId, stage: 'rerank', durationMs: 0, queryHash: qh,
+            status: 'skipped', reason: 'adaptive_confidence',
+          });
+        } else if (results.length > 10 && ENABLE_RERANK) {
           sendSSE(res, 'phase', { step: 'rerank', text: '后台重排序文档…', progress: 25 });
           const rerankStart = Date.now();
           const doRerank = (async () => {
@@ -1853,7 +2121,7 @@ async function handleAsk(req, res) {
 
       // 2) stream LLM answer
       sendSSE(res, 'phase', { step: 'llm_init', text: '初始化LLM…', progress: 40 });
-      const { apiKey, baseUrl, model } = llmConfig();
+      const { apiKey, baseUrl } = llmConfig();
       if (!apiKey || !baseUrl || !model) {
         sendSSE(res, 'error', { error: 'LLM not configured. Set LLM_API_KEY / LLM_BASE_URL / LLM_MODEL.' });
         res.end();
@@ -1880,6 +2148,7 @@ async function handleAsk(req, res) {
       let tokenCount = 0;
       let fullAnswer = '';
       let firstTokenAt = null;
+      let lastUsage = null; // DeepSeek prefix-cache usage from the winning stream
       try {
         // The upstream LLM intermittently returns an empty stream (200 + [DONE]
         // with zero deltas) or drops the connection before any content. Retry
@@ -1923,7 +2192,8 @@ async function handleAsk(req, res) {
                 hasPrev: prevResults.length, prevCount: messages.prevCount || 0,
               });
             }
-            await llmStream(messages, {
+            const _llmController = new AbortController();
+            const streamResult = await raceLlmOnce(messages, {
               onDelta: (text) => {
                 if (firstTokenAt === null) {
                   firstTokenAt = Date.now();
@@ -1942,7 +2212,58 @@ async function handleAsk(req, res) {
                 remainingBudget),
               firstTokenMs: Math.min(LLM_FIRST_TOKEN_TIMEOUT_MS, remainingBudget),
               maxTokens: attemptCaps[attempt - 1],
+              signal: _llmController.signal,
             });
+            lastUsage = streamResult.usage; // capture prefix-cache usage (also on success)
+            // Check if response was truncated due to max_tokens limit
+            // Implement continuation loop: keep asking LLM to continue until complete or max attempts
+            let continuationAttempts = 0;
+            const MAX_CONTINUATIONS = 3; // Prevent infinite loops
+            // Only continue when the STREAMING answer was genuinely truncated with
+            // partial content. An empty `length` response is the upstream's broken
+            // stream mode; raceLlmOnce already fell back to the reliable
+            // non-streaming path there, so re-streaming would just repeat the
+            // emptiness (the multi-call storm that made complex questions take 130s).
+            let currentResult = { finishReason: streamResult.finishReason, usage: streamResult.usage };
+            while (streamResult.via === 'stream' && currentResult.finishReason === 'length' && continuationAttempts < MAX_CONTINUATIONS && fullAnswer.length > 0) {
+              continuationAttempts++;
+              emitTrace({
+                traceId, stage: 'llm_truncated', durationMs: Date.now() - llmStart,
+                queryHash: qh, status: 'truncated', tokens: tokenCount,
+                finishReason: currentResult.finishReason, continuation: continuationAttempts,
+              });
+              // Build continuation context: include system prompt, original question context, and partial answer
+              // The LLM needs to know what question it's answering to continue coherently
+              const lastUserMsg = messages[messages.length - 1];
+              const continuationMessages = [
+                messages[0], // System prompt
+                { 
+                  role: 'user', 
+                  content: lastUserMsg.content + '\n\n[注意：你之前的回答被截断了，以下是已经开始的部分回答]'
+                },
+                { role: 'assistant', content: fullAnswer },
+                { role: 'user', content: '请从上次中断的地方继续，保持内容的连贯性和完整性。' }
+              ];
+              currentResult = await llmStream(continuationMessages, {
+                onDelta: (text) => {
+                  chars += text.length;
+                  tokenCount++;
+                  fullAnswer += text;
+                  sendSSE(res, 'delta', { text });
+                },
+                timeoutMs: Math.min(LLM_STREAM_TIMEOUT_MS, remainingBudget),
+                firstTokenMs: 0,
+                maxTokens: attemptCaps[attempt - 1],
+              });
+            }
+            // Log if still truncated after max continuations
+            if (currentResult && currentResult.finishReason === 'length') {
+              emitTrace({
+                traceId, stage: 'llm_truncated', durationMs: Date.now() - llmStart,
+                queryHash: qh, status: 'max_continuations_reached', tokens: tokenCount,
+                finishReason: currentResult.finishReason, continuations: continuationAttempts,
+              });
+            }
           } catch (e) {
             if (attempt < 3 && chars === 0 && (Date.now() - llmStart) < LLM_TOTAL_BUDGET_MS) {
               sendSSE(res, 'phase', { step: 'llm_retry', text: '生成中断，正在重试…', progress: 70, model });
@@ -1959,15 +2280,17 @@ async function handleAsk(req, res) {
             return;
           }
           if (chars > 0) break;
+          // Both the streaming call AND the non-streaming safety net (raceLlmOnce
+          // already tried both) returned nothing for this attempt. The upstream is
+          // in its empty-output mode for this turn, so retrying streaming is futile
+          // and would burn ~27s per attempt. Bail out and let the final non-
+          // streaming fallback (or an error) end the request quickly.
           emitTrace({
             traceId, stage: 'llm_empty_retry', durationMs: Date.now() - llmStart,
             queryHash: qh, status: 'empty', attempt, maxTokens: attemptCaps[attempt - 1],
             ctxChars: lastCtxChars,
           });
-          if (attempt < 3 && (Date.now() - llmStart) < LLM_TOTAL_BUDGET_MS) {
-            sendSSE(res, 'phase', { step: 'llm_retry', text: '生成结果为空，正在重试…', progress: 70, model });
-            await new Promise(r => setTimeout(r, 1000));
-          }
+          break;
         }
       } catch (e) {
         emitTrace({
@@ -1978,6 +2301,20 @@ async function handleAsk(req, res) {
         res.end();
         finishTotal('error', { error: e.message });
         return;
+      }
+      // Confirm DeepSeek's automatic prefix cache: the stable system prompt is
+      // reused across requests (prompt_cache_hit_tokens / cache_read_input_tokens).
+      if (lastUsage) {
+        const hit = lastUsage.prompt_cache_hit_tokens
+          ?? lastUsage.cache_read_input_tokens ?? 0;
+        const miss = lastUsage.prompt_cache_miss_tokens
+          ?? lastUsage.cache_creation_input_tokens
+          ?? lastUsage.prompt_tokens ?? 0;
+        emitTrace({
+          traceId, stage: 'llm_prefix_cache', durationMs: 0, queryHash: qh,
+          status: hit > 0 ? 'hit' : 'miss',
+          prompt_cache_hit_tokens: hit, prompt_cache_miss_tokens: miss,
+        });
       }
       // Final fallback: the streaming pipeline (POST + SSE) intermittently
       // returns a 200 with zero deltas while the non-streaming pipeline on the
@@ -2035,12 +2372,12 @@ async function handleAsk(req, res) {
       // Store the completed self-contained answer for future replays.
       const selfContained = !history.length && !prevResults.length && parsed.fresh !== true;
       if (selfContained && fullAnswer) {
-        setCachedAnswer(question, model, {
+        await storeAnswerCache(question, model, {
           answer: fullAnswer,
           results: results.slice(0, 10),
           tokens: tokenCount,
           model,
-        });
+        }, url);
         emitTrace({
           traceId, stage: 'answer_cache', durationMs: 0, queryHash: qh,
           status: 'ok', hit: false, tokens: tokenCount,

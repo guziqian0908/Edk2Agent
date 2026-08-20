@@ -606,6 +606,38 @@ class SearchEngine:
         with self._lock:
             return self._load_error
 
+    # Cached embedding function (lazy; mirrors the model used at index time so
+    # query embeddings stay consistent with the stored document vectors).
+    _embedding_func = None
+
+    def _get_embedding_func(self):
+        if SearchEngine._embedding_func is None:
+            from chromadb.utils import embedding_functions
+            SearchEngine._embedding_func = (
+                embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=EMBEDDING_MODEL,
+                    device=EMBEDDING_DEVICE,
+                    normalize_embeddings=True,
+                    local_files_only=True,
+                ))
+        return SearchEngine._embedding_func
+
+    def embed_query(self, text: str) -> List[float]:
+        """Return the normalized dense embedding of ``text`` (bge-m3, 1024-dim).
+
+        Used by the web service for semantic answer-cache lookups. Raises if the
+        embedding model is unavailable so the caller can degrade gracefully to
+        the exact-match cache / live generation.
+        """
+        ef = self._get_embedding_func()
+        vec = ef([text])
+        row = vec[0]
+        try:
+            return [float(x) for x in row]
+        except TypeError:
+            # numpy row: convert element-wise.
+            return [float(x) for x in row.tolist()]
+
     def ensure_ready(self, timeout: float = 120.0) -> None:
         """Block until the index is loaded (or timeout)."""
         deadline = time.time() + timeout
