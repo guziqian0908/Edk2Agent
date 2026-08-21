@@ -15,7 +15,11 @@
  *   LLM_API_KEY       OpenAI-compatible API key (required for LLM answers)
  *   LLM_BASE_URL      base URL, e.g. https://open.bigmodel.cn/api/paas/v4
  *   LLM_MODEL         model name, e.g. glm-4-flash
- *   LLM_MAX_TOKENS    max answer tokens (default 1600; lower = faster; one pass covers most answers, continuation handles the rest)
+ *   LLM_MAX_TOKENS    max answer tokens, standard tier (default 3000; lower = faster; one pass covers most answers, continuation handles the rest)
+ *   LLM_MAX_TOKENS_SIMPLE  max answer tokens, simple tier (default 1600)
+ *   LLM_MAX_TOKENS_COMPLEX max answer tokens, complex tier (default 6000; complex questions must cover every sub-question)
+ *   LLM_CTX_CHARS_COMPLEX  context char budget for complex tier, attempt 1 (default 16000)
+ *   LLM_REASONING_EFFORT   upstream reasoning_effort (default 'none'; 'low'/'medium' trade latency for depth on complex questions)
  *   LLM_TOTAL_BUDGET_MS  hard cap for the whole generate+retry loop (default 120 s)
  *   LLM_FIRST_TOKEN_TIMEOUT_MS per-attempt first-token deadline (default 60 s)
  *   ENABLE_RERANK     set 'false' to skip the BGE rerank stage entirely (default on)
@@ -371,6 +375,19 @@ loadDotEnv();
 // ---- LLM generation budget (env-tunable; defaults balance exhaustiveness and latency) ----
 const LLM_MAX_TOKENS = parseInt(process.env.LLM_MAX_TOKENS || '3000', 10);
 const LLM_RETRY_MAX_TOKENS = parseInt(process.env.LLM_RETRY_MAX_TOKENS || '2000', 10);
+// Tier-aware budgets (fixes the depth inversion: simple questions must stay
+// crisp, complex multi-part questions must have room to answer EVERY
+// sub-question with evidence instead of being compressed into a short answer).
+const LLM_MAX_TOKENS_SIMPLE = parseInt(process.env.LLM_MAX_TOKENS_SIMPLE || '1600', 10);
+const LLM_MAX_TOKENS_COMPLEX = parseInt(process.env.LLM_MAX_TOKENS_COMPLEX || '6000', 10);
+// Complexity-scaled context budget: complex (multi-hop / comparison) questions
+// get a wider evidence window so the deeper answer actually has material.
+const LLM_CTX_CHARS_COMPLEX = parseInt(process.env.LLM_CTX_CHARS_COMPLEX || '16000', 10);
+// Reasoning effort sent to the upstream. 'none' (default) keeps the fast
+// direct-answer path; set to 'low'/'medium' to trade latency for deeper
+// decomposition on complex questions (may stream reasoning_content, which is
+// already stripped by stripReasoning).
+const LLM_REASONING_EFFORT = process.env.LLM_REASONING_EFFORT || 'none';
 const LLM_STREAM_TIMEOUT_MS = parseInt(process.env.LLM_STREAM_TIMEOUT_MS || '180000', 10);
 // Hard cap for the WHOLE generate+retry loop. The upstream can stream an
 // empty response until its timeout fires, so without this a single flaky
@@ -1263,17 +1280,30 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     }
   }
   const intent = classifyQuestion(question);
-  
-  // Add intent-specific guidance to system prompt
+
+  // Per-request guidance (intent + complexity tier). Deliberately kept OUT of
+  // the system prompt so the constant block below stays a stable prefix for
+  // the upstream's automatic prefix cache (see PREFIX-CACHE INVARIANT below).
   let intentGuidance = '';
   if (intent === 'format') {
-    intentGuidance = '\n\n**Question Intent**: The user is asking about format/specification. Focus on providing exact format templates, character limits, and validation tools.';
+    intentGuidance = '用户问的是格式/规范：给出确切的格式模板、长度限制与校验工具，并附最小可参考写法。';
   } else if (intent === 'howto') {
-    intentGuidance = '\n\n**Question Intent**: The user is asking for step-by-step instructions. Provide clear numbered steps, prerequisites, and command examples.';
+    intentGuidance = '用户要操作步骤：给出分步编号步骤、前置条件与命令示例。';
   } else if (intent === 'error') {
-    intentGuidance = '\n\n**Question Intent**: The user is facing an error. Focus on root cause analysis, common pitfalls, and troubleshooting steps.';
+    intentGuidance = '用户遇到报错：按可能性排序根因与排查步骤，只描述可复现现象，不虚构报错码。';
   } else if (intent === 'example') {
-    intentGuidance = '\n\n**Question Intent**: The user wants examples. Prioritize showing complete, working code/config examples with explanations.';
+    intentGuidance = '用户要示例：优先给出完整可用的代码/配置示例并解释。';
+  } else if (intent === 'compare') {
+    intentGuidance = '用户要对比：按维度逐一对比（可用表格），每个差异点给出依据与引用编号。';
+  } else if (intent === 'list') {
+    intentGuidance = '用户要列举：完整列出上下文中的全部条目，逐条标注引用编号，不要遗漏。';
+  }
+
+  let tierGuidance = '';
+  if (opts.tier === 'complex') {
+    tierGuidance = '这是多子问题/复杂问题：必须按"详略分级"逐个子问题或对比维度作答，每个部分用 ### 小节标题展开，给出依据、引用编号与可照做的片段；禁止合并压缩、禁止遗漏子问题——宁可写长，不要写短。';
+  } else if (opts.tier === 'simple') {
+    tierGuidance = '这是简单/单点问题：按"详略分级"直接精炼作答，不要展开无关内容。';
   }
   
   const context = ctxCapped.map((r) => {
@@ -1294,12 +1324,11 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
 
   const system = [
     // PREFIX-CACHE INVARIANT (DeepSeek Context Caching on Disk, automatic):
-    // The content below the intent guidance is large and constant; it is kept
-    // FIRST so it forms a stable prompt prefix reused across every request
-    // (~thousands of tokens => cache hits). Do NOT insert per-request variable
-    // content here. The variable RAG context + question go last (user message).
+    // This entire block is static text and is kept FIRST so it forms a stable
+    // prompt prefix reused across every request (~thousands of tokens => cache
+    // hits). Do NOT insert per-request variable content here (intent/tier/
+    // coverage guidance and the RAG context all go in the user message).
     'You are an EDK2/TianoCore firmware development expert. Answer strictly from the retrieved EDK2/TianoCore context provided below.',
-    intentGuidance,
     '',
     '# 核心原则',
     '- 只依据下方【检索上下文】作答；上下文没有的信息不得断言，也不要用自身记忆补全。',
@@ -1312,6 +1341,12 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     '- 直接输出最终回答，第一句就进入正题。禁止输出任何"过程性 / 元叙述"内容：不要写"分析上下文""回答结构""输出语言""开始撰写""现在撰写""以下是完整答复"等说明你将如何作答的话，也不要复述用户的问题，不要写"好的""当然"之类客套开场。',
     '- 若回答被截断需要续写，从中断处直接续写正文，不要加"现在撰写""接上次未完成部分"等任何前缀或说明。',
     '',
+    '# 详略分级（按问题复杂度）',
+    '- 简单 / 单点问题（一个概念、一个字段、一个命令）：直接精炼作答，一小段到几段即可，不要横向展开无关内容。',
+    '- 多子问题 / 对比 / 机制原理类复杂问题：**必须逐个子问题作答**——每个子问题（或对比维度）用 `###` 小节标题单独展开，每节给出规范依据、关键字段/参数与引用 [cXXXX]；需要时附最小可参考片段。禁止把多个子问题合并成一句话带过，禁止用"详见文档"敷衍。',
+    '- 复杂问题的详略标准：**"覆盖全部子问题 + 每节有依据"优先于"简短"**。总长度没有硬上限；宁可分段写长，也不允许漏掉子问题。',
+    '- 介于两者之间的问题：在切题前提下把上下文里与问题相关的依据讲全（见下一节），按需使用小节。',
+    '',
     '# 怎样才算"有价值、可参考"的回答',
     '- 直接回答用户问题，不要客套铺垫、不要自我重复。',
     '- 覆盖度优先：在切题前提下，把上下文里与问题相关的依据**讲全**——相关的枚举值 / 字段 / 参数要逐一列出并标注 [cXXXX]；不要为了简短而省略对工程师有用的关键细节。',
@@ -1319,11 +1354,11 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     '- 故障 / 报错类：先描述可复现现象（只描述现象，不虚构报错码），再给按可能性排序的根因排查清单与可观测手段（build log / map / UEFI Shell / SCT 等）。',
     '- 概念 / 机制类：先用一句话点出本质，再画清关系模型（从属、数据流、调用关系），必要时列关键步骤。',
     '- 有规范原文 shall/must 依据的结论标【强制要求】；社区经验或推导结论标【最佳实践】，并注明"由多条文档综合推导，原文无直接表述"。',
-    '- 语言紧凑、不注水：用最少的废话把事情说清楚，但信息密度要高——该列的全列、该给片段的给片段，不堆砌与问题无关的内容。',
+    '- 语言紧凑、不注水：不写与问题无关的内容、不自我重复；但信息密度要高——该列的全列、该给片段的给片段。紧凑不等于删减应覆盖的内容（见上方"详略分级"）。',
     '',
     '# 引用与参考来源',
     '每个上下文条目开头为稳定编号 [cXXXXXXXX]（小写 c + 8 位十六进制）。在相关论断后附对应编号，例如：`PcdDebugPrintErrorLevel 控制调试输出级别[c1a2b3c4]`。',
-    '回答末尾必须附 `## 参考来源`，逐条列出用到的文档：`- 文档标题 - 章节（本地：文件路径 > 章节）`，从条目里的 `Local:` 行取定位。只写本地定位，禁止拼造网址。',
+    '编号仅用于证据定位（展示时会被隐藏），不要在回答末尾额外输出"参考来源 / References"列表。',
     '',
     '# 多轮衔接',
     '标记为【上一轮检索】的条目用于衔接上一轮；用户用代词追问时优先引用这些条目，仍用稳定编号。不要编造上一轮检索中没有的内容。',
@@ -1335,8 +1370,6 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     '**DSC（平台赋值）**：在对应 section 中赋值，如 `[PcdsFixedAtBuild] gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000000`[c1a2b3c4]。',
     '**INF（模块引用）**：在 [PcdsXxx] section 写 `TokenSpaceGuid.PcdCName`；一个 PCD 只能属于一种类型，INF 中不得混用 section 类型[c1a2b3c4]。',
     '**C 代码（访问）**：`FixedPcdGet32(PcdX)`、`PatchPcdGet32(PcdX)`、`FeaturePcdGet(PcdX)`、`PcdGet32(PcdX)`、`PcdExGet32(PcdX)`；不同类型用不同宏，混用会报错[c1a2b3c4]。',
-    '## 参考来源',
-    '- EDK II Platform Configuration Database (PCD) - PCD Types（本地：… > PCD Types）',
     '（示例中的 [c1a2b3c4] 为占位，实际必须用上下文里真实存在的编号。）',
   ].join('\n');
 
@@ -1347,11 +1380,19 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     }
   }
   let userContent = `RAG 参考上下文：\n${context}\n\n原始问题：${question}`;
-  // L2b: when retrieval relevance is low, nudge the model toward its honest-
-  // refusal rule instead of guessing (L1 rule 2). Kept out of the system prompt
-  // so it only fires on weak-retrieval turns and preserves the stable prefix cache.
+  // Per-request guidance (intent + tier + L2b coverage) goes here, NOT in the
+  // system prompt, so the stable system prefix cache keeps hitting (L2b: when
+  // retrieval relevance is low, nudge the model toward its honest-refusal rule
+  // instead of guessing — L1 rule 2). Softened for multi-part questions: only
+  // the unsupported parts may be declined, the rest must still be answered.
+  const guidance = [];
+  if (intentGuidance) guidance.push(intentGuidance);
+  if (tierGuidance) guidance.push(tierGuidance);
   if (opts.lowCoverage) {
-    userContent += '\n\n（注意：本次检索到的资料相关度偏低，若上方上下文不足以回答，请严格按证据约束诚实说明"根据当前资料无法确认 XXX"并指明缺哪类信息，禁止猜测或补全。）';
+    guidance.push('本次检索到的资料相关度偏低：有依据的部分答全并标注依据；对无法确认的部分单独说明"根据当前资料无法确认 XXX"及还缺哪类信息，禁止猜测或补全。');
+  }
+  if (guidance.length) {
+    userContent += `\n\n（作答要求：${guidance.join(' ')}）`;
   }
   messages.push({ role: 'user', content: userContent });
   messages.prevCount = ctxCapped.filter(r => r.prev).length;
@@ -1390,8 +1431,8 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
       // Disable the model's private chain-of-thought ("reasoning_content") so it
       // answers directly in `content`. Reasoning models otherwise stream their
       // planning ("分析上下文/开始撰写/…") to the user. `none` keeps factual,
-      // cited RAG answers short and on-point.
-      reasoning_effort: 'none',
+      // cited RAG answers short and on-point. Env-tunable via LLM_REASONING_EFFORT.
+      reasoning_effort: LLM_REASONING_EFFORT,
       stream_options: { include_usage: true },
     };
 
@@ -1510,7 +1551,7 @@ async function llmComplete(messages, { timeoutMs = 60000, maxTokens = 300, signa
     if (!apiKey || !baseUrl || !model) return resolve('');
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const u = new URL(url);
-    const payload = { model, messages, temperature: 0, max_tokens: maxTokens, reasoning_effort: 'none' };
+    const payload = { model, messages, temperature: 0, max_tokens: maxTokens, reasoning_effort: LLM_REASONING_EFFORT };
     const protocol = u.protocol === 'https:' ? https : http;
     const req = protocol.request({
       hostname: u.hostname,
@@ -2169,7 +2210,7 @@ async function handleAsk(req, res) {
       }
       sendSSE(res, 'phase', { step: 'llm_build', text: '构建提示词…', progress: 50, model });
       
-      const messages = buildMessages(question, results, history, prevResults, { lowCoverage: coverage.low });
+      const messages = buildMessages(question, results, history, prevResults, { lowCoverage: coverage.low, tier });
       const inputChars = messages.reduce(
         (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
       emitTrace({
@@ -2198,17 +2239,30 @@ async function handleAsk(req, res) {
         // The whole retry loop is additionally capped by LLM_TOTAL_BUDGET_MS so
         // an upstream that streams empty responses until its timeout cannot
         // blow a single query up to 3 attempts x LLM_STREAM_TIMEOUT_MS.
+        // Tier-aware generation budget: complex multi-part questions get a
+        // large first-attempt cap (they must answer every sub-question), simple
+        // lookups stay small and fast. Attempts 2/3 are retries after empty-
+        // stream failures; they keep the standard retry cap but never exceed
+        // the tier's own budget.
+        const tierMaxTokens = tier === 'simple' ? LLM_MAX_TOKENS_SIMPLE
+          : tier === 'complex' ? LLM_MAX_TOKENS_COMPLEX
+          : LLM_MAX_TOKENS;
         const attemptCaps = [
-          LLM_MAX_TOKENS,
-          LLM_RETRY_MAX_TOKENS,
-          Math.min(LLM_RETRY_MAX_TOKENS, 1500),
+          tierMaxTokens,
+          Math.min(tierMaxTokens, LLM_RETRY_MAX_TOKENS),
+          Math.min(tierMaxTokens, LLM_RETRY_MAX_TOKENS, 1500),
         ];
         // On empty retries the RAG context budget is progressively shrunk as
         // well: a very large input makes prefill slow AND correlates with the
         // upstream's empty-stream failures, so later attempts retry with a
         // tighter context that prefills faster and is far more likely to
         // actually yield content (a shorter answer beats a hard error).
-        const attemptCtxCaps = [undefined, 12000, 6000];
+        // Attempt 1 uses the tier-scaled budget (wider evidence for complex).
+        const attemptCtxCaps = [
+          tier === 'complex' ? LLM_CTX_CHARS_COMPLEX : 12000,
+          12000,
+          6000,
+        ];
         for (let attempt = 1; attempt <= 3; attempt++) {
           const remainingBudget = LLM_TOTAL_BUDGET_MS - (Date.now() - llmStart);
           if (remainingBudget <= 0) break;
@@ -2217,8 +2271,8 @@ async function handleAsk(req, res) {
           try {
             const messages = buildMessages(question, results, history, prevResults,
               Object.assign(
-                attemptCtxCaps[attempt - 1] ? { maxCtxChars: attemptCtxCaps[attempt - 1] } : {},
-                { lowCoverage: coverage.low }));
+                { maxCtxChars: attemptCtxCaps[attempt - 1] },
+                { lowCoverage: coverage.low, tier }));
             lastCtxChars = messages.ctxChars;
             const inputChars = messages.reduce(
               (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
@@ -2366,7 +2420,7 @@ async function handleAsk(req, res) {
       // single delta.
       if (tokenCount === 0 && (Date.now() - llmStart) < LLM_TOTAL_BUDGET_MS) {
         sendSSE(res, 'phase', { step: 'llm_retry', text: '改用非流式生成…', progress: 75, model });
-        const fbMessages = buildMessages(question, results, history, prevResults, { maxCtxChars: 6000, lowCoverage: coverage.low });
+        const fbMessages = buildMessages(question, results, history, prevResults, { maxCtxChars: 6000, lowCoverage: coverage.low, tier });
         const fbInputChars = fbMessages.reduce(
           (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
         emitTrace({

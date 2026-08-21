@@ -59,6 +59,11 @@ node server.js
 | `LLM_API_KEY` | — | LLM API Key（不配置则只显示检索结果） |
 | `LLM_BASE_URL` | — | OpenAI 兼容接口地址（如智谱/DeepSeek/vLLM） |
 | `LLM_MODEL` | — | 模型名（如 `glm-4-flash`） |
+| `LLM_MAX_TOKENS` | `3000` | standard 档单次回答最大 token 数 |
+| `LLM_MAX_TOKENS_SIMPLE` | `1600` | simple 档（单点/短问题）最大 token 数 |
+| `LLM_MAX_TOKENS_COMPLEX` | `6000` | complex 档（多子问题/对比）最大 token 数 |
+| `LLM_CTX_CHARS_COMPLEX` | `16000` | complex 档首次生成的检索上下文字符预算 |
+| `LLM_REASONING_EFFORT` | `none` | 上游推理强度（`none`/`low`/`medium`；提高可让复杂问题分解更充分，但更慢） |
 
 ## 接口
 

@@ -111,7 +111,6 @@
   .result .snippet { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
   .result .link { font-size: 12px; color: var(--accent); word-break: break-all; }
   .result .cid { font-size: 11px; color: #64748b; font-family: ui-monospace, Consolas, monospace; background: rgba(148,163,184,.12); padding: 1px 5px; border-radius: 4px; }
-  a.cite { color: var(--accent); font-weight: 600; text-decoration: underline dotted; cursor: pointer; text-decoration-color: rgba(56,189,248,.5); }
   .result.flash { background: rgba(56,189,248,.15); box-shadow: inset 3px 0 0 var(--accent); }
   html { scroll-behavior: smooth; }
 
@@ -203,14 +202,10 @@ function mdInline(s) {
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
   s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  // stable [cid] citation anchors -> jump to the matching source card
-  s = s.replace(/\[(c[a-f0-9]{6,12})\]/gi, (m, cid) => {
-    const lc = 'c' + cid.slice(1).toLowerCase();
-    const e = currentSourcesMap[lc];
-    if (!e) return m; // unknown id: leave as plain text
-    const label = e.title || e.file || e.section || lc;
-    return '<a href="#src-' + lc + '" class="cite" data-cid="' + lc + '" title="' + esc(String(label)) + '">[' + lc + ']</a>';
-  });
+  // Stable [cid] citation markers are stripped from the displayed answer:
+  // sources are already listed in the side panel, so inline jump links only
+  // clutter the reading flow.
+  s = s.replace(/\[(c[a-f0-9]{6,12})\]/gi, '');
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => '<code>' + esc(codes[+i]) + '</code>');
   return s;
@@ -329,11 +324,14 @@ function renderMarkdown(src) {
   return mdParagraphs(String(src || ''));
 }
 
-// Remove trailing "Based on: ..." source-list section from an answer.
+// Remove trailing source-list sections ("Based on: ...", "References: ...",
+// "## 参考来源") from an answer. Sources live in the side panel, so these
+// trailing lists are stripped from the displayed text.
 function stripBasedOn(src) {
   let s = String(src || '');
   s = s.replace(/\n?\s*Based\s*on\s*:\s*[\s\S]*$/i, '');
   s = s.replace(/\n?\s*[Rr]eferences?\s*:\s*[\s\S]*$/i, '');
+  s = s.replace(/\n?\s*#{1,4}\s*(参考来源|参考资料|参考文献)[：:\s]*[\s\S]*$/i, '');
   return s.trim();
 }
 
@@ -374,12 +372,6 @@ function renderResultsInto(body, results) {
   const entries = (results || []).filter(r => r && (r.cid || r.title || r.file || r.section));
   const n = entries.length;
   const has = n > 0;
-
-  // Rebuild the shared cid->entry map used by mdInline anchors. A cid the LLM
-  // cited but that rerank dropped simply renders as plain text (no dangling
-  // link): this map only covers what is on screen.
-  currentSourcesMap = {};
-  for (const e of entries) if (e.cid) currentSourcesMap[e.cid] = e;
 
   const titleText = has ? '检索结果（Top ' + n + '）' : '未检索到结果';
   if (!st.titleEl) {
@@ -443,7 +435,6 @@ function renderResultsInto(body, results) {
 }
 
 let lastResults = [];
-let currentSourcesMap = {};
 let turnStack = [];
 
 async function refreshStatus() {
@@ -525,7 +516,7 @@ async function ask(question) {
       const now = Date.now();
       if (now - lastRender > 40) {
         lastRender = now;
-        answerDiv.innerHTML = renderMarkdown(answerText);
+        answerDiv.innerHTML = renderMarkdown(stripBasedOn(answerText));
         scrollBottom();
       }
     };
@@ -604,29 +595,6 @@ el('q').addEventListener('keydown', (e) => {
     const q = el('q').value.trim();
     if (q) { el('q').value = ''; ask(q); }
   }
-});
-
-// Clicking a [cid] citation anchor expands the source panel (if collapsed) and
-// highlights + scrolls to the matching source card.
-document.addEventListener('click', (e) => {
-  const a = e.target.closest ? e.target.closest('a.cite') : null;
-  if (!a) return;
-  e.preventDefault();
-  const cid = a.getAttribute('data-cid');
-  if (!cid) return;
-  const item = document.getElementById('src-' + cid);
-  if (!item) return;
-  const list = item.closest('.results-list');
-  if (list && list.style.display === 'none') {
-    list.style.display = '';
-    const title = list.previousElementSibling;
-    if (title && title.classList.contains('results-title')) {
-      title.textContent = title.textContent.replace(/▸$/, '▾');
-    }
-  }
-  item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  item.classList.add('flash');
-  setTimeout(() => item.classList.remove('flash'), 1500);
 });
 
 refreshStatus();
