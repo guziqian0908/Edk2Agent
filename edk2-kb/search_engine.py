@@ -657,6 +657,7 @@ class SearchEngine:
                source_filter: Optional[str] = None,
                rerank: bool = True,
                rewrite: bool = True,
+               dedup: bool = True,
                trace_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Search the knowledge base with hybrid retrieval.
 
@@ -676,6 +677,10 @@ class SearchEngine:
             rewrite: When True (default), expand technical terms (and, for
                 Chinese-dominated queries, append English keyword hints)
                 before retrieval. Set False to compare baselines.
+            dedup: When True (default), collapse to the single best chunk per
+                document. When False, keep multiple chunks per document
+                (distinct sections survive), so enumerative multi-section
+                questions can collect several chapters of one doc.
             trace_id: Correlation id propagated from the caller (web service
                 X-Trace-Id header); a fresh one is generated when omitted.
         """
@@ -715,7 +720,7 @@ class SearchEngine:
             # documents the dense leg missed (exact EDK2 identifiers, PCD/GUID
             # names the embeddings blur), never displacing dense hits.
             candidates = self._fuse_dense_first(
-                groups, min(top_k * 3, MAX_CANDIDATES))
+                groups, min(top_k * 3, MAX_CANDIDATES), dedup=dedup)
             # BM25 candidates currently carry only pid+score; read their full
             # chunk text now, for the surviving set only (deferred 回表).
             self._attach_content(candidates)
@@ -738,18 +743,23 @@ class SearchEngine:
                            status="error" if self._rerank_error else "ok",
                            top_k=top_k)
                 return _add_citation(reranked, RERANKER_MODEL)
-            # No-rerank path: collapse chunks that belong to the same document
-            # (first/highest chunk wins) so the LLM/web UI does not see the
-            # same page repeated across chunks.
+            # No-rerank path: by default collapse chunks that belong to the
+            # same document (first/highest chunk wins) so the LLM/web UI does
+            # not see the same page repeated across chunks. With dedup=False
+            # distinct sections of one document survive (multi-section
+            # enumerative questions).
             results: List[Dict[str, Any]] = []
-            seen_docs = set()
+            seen = set()
             for c in candidates:
                 if c is None:
                     continue
-                dk = _doc_key(c)
-                if dk in seen_docs:
+                if dedup:
+                    k = _doc_key(c)
+                else:
+                    k = (_doc_key(c)[0], _doc_key(c)[1], c.get('section') or '')
+                if k in seen:
                     continue
-                seen_docs.add(dk)
+                seen.add(k)
                 results.append(c)
                 if len(results) >= top_k:
                     break
@@ -889,7 +899,7 @@ class SearchEngine:
                     if source_filter and source != source_filter:
                         continue
 
-                    source_key = f"{source}:{metadata.get('file') or metadata.get('title', '')}"
+                    source_key = f"{source}:{metadata.get('file') or metadata.get('title', '')}:{metadata.get('section', '')}"
                     if source_key in seen_sources:
                         continue
                     seen_sources.add(source_key)
@@ -1146,7 +1156,8 @@ class SearchEngine:
 
     def _fuse_dense_first(self,
                           ranked_groups: List[List[Dict[str, Any]]],
-                          limit: int) -> List[Dict[str, Any]]:
+                          limit: int,
+                          dedup: bool = True) -> List[Dict[str, Any]]:
         """Fuse dense + BM25 results, dense-first.
 
         The groups list alternates [chroma_q1, bm25_q1, chroma_q2, bm25_q2, ...]
@@ -1157,9 +1168,18 @@ class SearchEngine:
         while still surfacing exact keyword hits (EDK2 identifiers, PCD/GUID
         names) the embeddings miss -- without the noise-dilution that pure RRF
         fusion caused on Chinese queries.
+
+        With dedup=False the dedup key widens to (doc, section) so several
+        sections of the same document can coexist in the candidate window.
         """
         chroma_groups = ranked_groups[0::2]
         bm25_groups = ranked_groups[1::2]
+
+        def key_of(item: Dict[str, Any]):
+            dk = _doc_key(item)
+            if dedup:
+                return dk
+            return (dk[0], dk[1], item.get('section') or '')
 
         # Merge all dense groups and sort by retrieval score, so the best
         # dense hit from any query variant (original vs expanded) wins rather
@@ -1170,13 +1190,13 @@ class SearchEngine:
                           reverse=True)
 
         out: List[Dict[str, Any]] = []
-        seen_docs: set = set()
+        seen: set = set()
 
         for item in chroma_items:
-            dk = _doc_key(item)
-            if dk in seen_docs:
+            k = key_of(item)
+            if k in seen:
                 continue
-            seen_docs.add(dk)
+            seen.add(k)
             out.append(item)
             if len(out) >= limit:
                 return out
@@ -1185,10 +1205,10 @@ class SearchEngine:
             for item in group:
                 if item is None:
                     continue
-                dk = _doc_key(item)
-                if dk in seen_docs:
+                k = key_of(item)
+                if k in seen:
                     continue
-                seen_docs.add(dk)
+                seen.add(k)
                 out.append(item)
                 if len(out) >= limit:
                     break

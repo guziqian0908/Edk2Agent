@@ -64,6 +64,10 @@ node server.js
 | `LLM_MAX_TOKENS_COMPLEX` | `6000` | complex 档（多子问题/对比）最大 token 数 |
 | `LLM_CTX_CHARS_COMPLEX` | `16000` | complex 档首次生成的检索上下文字符预算 |
 | `LLM_REASONING_EFFORT` | `none` | 上游推理强度（`none`/`low`/`medium`；提高可让复杂问题分解更充分，但更慢） |
+| `RERANK_CANDIDATES_COMPLEX` | `24` | complex 档送入重排器的候选数 |
+| `RERANK_SNIPPET_CHARS_COMPLEX` | `1200` | complex 档每个候选送入重排器的文本长度 |
+| `RERANK_SPAWN_COOLDOWN_MS` | `300000` | 重排服务自动拉起冷却时间（毫秒） |
+| `L3_FAITHFULNESS_CHECK` | 开 | 设为 `false` 关闭 complex 档生成后忠实度校验（LLM-judge） |
 
 ## 接口
 

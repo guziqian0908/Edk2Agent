@@ -217,6 +217,9 @@ Question: {question}
             query = body.get("query", "")
             top_k = body.get("top_k", 5)
             source = body.get("source", "all")
+            dedup = body.get("dedup", True)
+            if isinstance(dedup, str):
+                dedup = dedup.lower() not in ("0", "false", "no", "off")
         else:
             query = request.query_params.get("query", "")
             try:
@@ -224,6 +227,8 @@ Question: {question}
             except (TypeError, ValueError):
                 top_k = 5
             source = request.query_params.get("source", "all")
+            dedup = request.query_params.get("dedup", "true").lower() \
+                not in ("0", "false", "no", "off")
 
         if not query or not query.strip():
             return JSONResponse(_cors({"error": "Missing query parameter"}), 400)
@@ -239,7 +244,7 @@ Question: {question}
         _t = time.monotonic()
         try:
             results = engine.search(query_text, top_k, src, rerank=False,
-                                    trace_id=trace_id)
+                                    dedup=dedup, trace_id=trace_id)
             trace_emit(trace_id, "search_total",
                        (time.monotonic() - _t) * 1000, qh,
                        status="ok", results=len(results))

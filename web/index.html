@@ -115,6 +115,8 @@
   html { scroll-behavior: smooth; }
 
   .error { color: #fca5a5; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); padding: 12px; border-radius: 10px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+  .warnbox { color: #fcd34d; background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.35); padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-top: 10px; line-height: 1.6; word-break: break-word; }
+  .warnbox ul { margin: 6px 0 0 0; padding-left: 20px; }
   .typing { color: var(--muted); font-size: 13px; padding: 6px 2px; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; vertical-align: middle; margin-right: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -511,6 +513,10 @@ async function ask(question) {
     let buf = '';
     let resultsAppended = false;
     let lastRender = 0;
+    // Post-generation warnings (citation / faithfulness checks) arrive AFTER
+    // the deltas; they are queued and rendered after the final render so the
+    // streaming re-renders never wipe them.
+    const warnBoxes = [];
 
     const renderThrottled = () => {
       const now = Date.now();
@@ -547,6 +553,14 @@ async function ask(question) {
         } else if (type === 'done') {
           const tag = el('modelTag');
           if (d.model) { tag.textContent = d.model; tag.style.display = ''; }
+        } else if (type === 'faithfulness_warn') {
+          const claims = (d.claims || []).filter(Boolean);
+          if (claims.length) {
+            warnBoxes.push('<div class="warnbox">' + esc(d.note || '以下内容未被检索上下文支撑，请谨慎参考。') +
+              '<ul>' + claims.map(c => '<li>' + esc(c) + '</li>').join('') + '</ul></div>');
+          }
+        } else if (type === 'citation_warn') {
+          warnBoxes.push('<div class="warnbox">' + esc(d.note || '引用编号未出现在本次检索结果中，请以上下文为准。') + '</div>');
         } else if (type === 'error') {
           answerDiv.innerHTML = '<div class="error">' + esc(d.error || '处理出错') + '</div>';
         }
@@ -555,6 +569,7 @@ async function ask(question) {
     // final render (flush throttled)
     answerText = stripBasedOn(answerText);
     answerDiv.innerHTML = renderMarkdown(answerText);
+    for (const w of warnBoxes) answerDiv.insertAdjacentHTML('beforeend', w);
     scrollBottom();
 
     // persist history for multi-turn

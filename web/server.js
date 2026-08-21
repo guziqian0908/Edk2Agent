@@ -26,6 +26,13 @@
  *   RERANK_TIMEOUT_MS rerank HTTP timeout (default 60000 ms)
  *   RERANK_CANDIDATES candidates scored by the reranker (default 16)
  *   RERANK_SNIPPET_CHARS per-candidate text sent to the reranker (default 800)
+ *   RERANK_CANDIDATES_COMPLEX rerank candidates for complex tier (default 24)
+ *   RERANK_SNIPPET_CHARS_COMPLEX per-candidate text, complex tier (default 1200)
+ *   RERANK_SPAWN_COOLDOWN_MS auto-restart cooldown for the rerank service (default 300 s)
+ *   RERANK_PY          python executable used to auto-start rerank_server.py (default python)
+ *   L3_FAITHFULNESS_CHECK  set 'false' to disable the post-generation
+ *                          faithfulness fact-check on complex-tier answers
+ *                          (default on: LLM-judge flags unsupported claims)
  *   ANSWER_CACHE_MAX    answer-cache LRU entries (default 300)
  *   ANSWER_CACHE_TTL_MS answer-cache TTL ms (default 30 min)
  *   RERANK_ADAPTIVE_SKIP set 'false' to disable confidence-based rerank skip
@@ -43,12 +50,48 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const WEB_DIR = __dirname;
 const DEFAULT_KB_DIR = path.join(os.homedir(), '.edk2-opencode', 'kb');
 const RERANK_SCRIPT = path.join(WEB_DIR, 'rerank.py');
+const RERANK_SERVER_SCRIPT = path.join(WEB_DIR, 'rerank_server.py');
 const RERANK_SERVER = process.env.RERANK_SERVER || 'http://127.0.0.1:18766';
+// Auto-restart only makes sense for the local service.
+const RERANK_SERVER_LOCAL = /127\.0\.0\.1|localhost/i.test(RERANK_SERVER);
+
+// ---- rerank service watchdog ----
+// The BGE cross-encoder service is required for reliable ordering (especially
+// complex tier, which forces rerank). When a call to it fails with a
+// connection error and the target is the local default server, try to
+// (re)start rerank_server.py in the background — detached so it survives this
+// process — and keep the current request alive via the retrieval-order
+// fallback. A cooldown prevents spawn storms while the model is still loading
+// (~15-30s on CPU).
+const RERANK_SPAWN_COOLDOWN_MS = parseInt(
+  process.env.RERANK_SPAWN_COOLDOWN_MS || '300000', 10);
+const RERANK_PY = process.env.RERANK_PY || 'python';
+let lastRerankSpawnAt = 0;
+
+function ensureRerankServiceRunning() {
+  const now = Date.now();
+  if (now - lastRerankSpawnAt < RERANK_SPAWN_COOLDOWN_MS) return;
+  lastRerankSpawnAt = now;
+  try {
+    const out = fs.openSync(path.join(WEB_DIR, 'rerank.out.log'), 'a');
+    const err = fs.openSync(path.join(WEB_DIR, 'rerank.err.log'), 'a');
+    const child = spawn(RERANK_PY, [RERANK_SERVER_SCRIPT], {
+      cwd: WEB_DIR,
+      detached: true,
+      stdio: ['ignore', out, err],
+    });
+    child.on('error', (e) => console.error(`[rerank] auto-start failed: ${e.message}`));
+    child.unref();
+    console.error(`[rerank] auto-starting rerank_server.py (pid ${child.pid})`);
+  } catch (e) {
+    console.error(`[rerank] auto-start error: ${e.message}`);
+  }
+}
 
 // Context cache to reduce redundant searches (LRU with max 100 entries)
 const contextCache = new Map();
@@ -259,22 +302,24 @@ function replayCachedAnswer(res, cached, semantic = false) {
 }
 
 // Rerank documents using BGE-reranker-v2-m3
-function rerankDocuments(query, docs) {
+function rerankDocuments(query, docs, opts = {}) {
   return new Promise((resolve, reject) => {
     if (!Array.isArray(docs) || docs.length === 0) {
       resolve(docs);
       return;
     }
     
+    const candidates = opts.candidates || RERANK_CANDIDATES;
+    const snippetChars = opts.snippetChars || RERANK_SNIPPET_CHARS;
     const fallback = () => docs.sort((a, b) => (b.score || 0) - (a.score || 0));
     
     // Trim payload before sending: the reranker only needs title/section/
     // snippet. Sending full content blobs makes the HTTP request large, which
     // can abort the single-threaded rerank server or hit its read timeout.
-    const slim = (docs || []).map((d) => ({
+    const slim = (docs || []).slice(0, candidates).map((d) => ({
       title: d.title || '',
       section: d.section || '',
-      snippet: String(d.snippet || d.content || '').slice(0, RERANK_SNIPPET_CHARS),
+      snippet: String(d.snippet || d.content || '').slice(0, snippetChars),
       score: d.score || 0,
       source: d.source || '',
       url: d.url || '',
@@ -315,10 +360,12 @@ function rerankDocuments(query, docs) {
     });
     req.on('error', (e) => {
       console.error(`Rerank service unavailable: ${e.message}`);
+      if (RERANK_SERVER_LOCAL) ensureRerankServiceRunning();
       resolve(fallback());
     });
     req.on('timeout', () => {
       req.destroy(new Error('timeout'));
+      if (RERANK_SERVER_LOCAL) ensureRerankServiceRunning();
       resolve(fallback());
     });
     req.write(body);
@@ -427,6 +474,13 @@ const RERANK_COVERAGE_THRESHOLD = parseFloat(
 // reranker seeing more of each chunk.
 const RERANK_CANDIDATES = parseInt(process.env.RERANK_CANDIDATES || '16', 10);
 const RERANK_SNIPPET_CHARS = parseInt(process.env.RERANK_SNIPPET_CHARS || '800', 10);
+// Complex tier rerank budget: multi-sub-question turns need more candidates
+// and longer snippets so the cross-encoder sees each sub-question's evidence
+// (bge-reranker-v2-m3 supports long passages; the cost scales with candidates).
+const RERANK_CANDIDATES_COMPLEX = parseInt(
+  process.env.RERANK_CANDIDATES_COMPLEX || '24', 10);
+const RERANK_SNIPPET_CHARS_COMPLEX = parseInt(
+  process.env.RERANK_SNIPPET_CHARS_COMPLEX || '1200', 10);
 
 // ---- rate limiting (per client IP, in-memory) ----
 const ASK_LIMIT = parseInt(process.env.RATE_LIMIT_ASK || '10', 10);      // /api/ask per window
@@ -727,6 +781,49 @@ const KB_EXPANSION_RULES = [
   { w: 0.8, re: /许可|license|开源协议|bsd/, terms: 'license BSD open source licensing contribution agreement' },
 ];
 
+// Focused docs-source queries per enumerative topic. The broad retrieval
+// queries recall the chapter FAMILY but often miss the concrete rule
+// sub-chunks (5.2.1/5.2.2/..., PCD type sections, [Depex] grammar...), so each
+// matched topic fires a few precise English queries against tianocore-docs
+// that pin the sub-chunks. Matched against the original question + translation
+// + expansion so Chinese phrasing still triggers. Generalized from the
+// original style-only list (P1-4).
+const DOCS_FOCUS_TOPICS = [
+  {
+    re: /spacing|formatting|indentation|排版|空白|缩进|风格|style|vertical|horizontal|coding.?standard|编码规范/i,
+    queries: [
+      'C Coding Standards 5.2 Spacing Vertical Spacing blank lines Horizontal Spacing indentation File Heading section rules',
+      'vertical spacing blank lines make code more readable group logically related sections one statement on a line open brace predicate expression alignment continuation line',
+      'Formatting: General Rules Formatting: Vertical spacing Formatting: Horizontal spacing Formatting: Predicate Expressions 5.2.2 Horizontal Spacing 5.2.3 File Heading Predicate Expressions quick reference source_files',
+      '5.2.2.1 space one or more spaces long 5.2.2.2 binary operators space',
+      '5.2.2.3 unary operators 5.2.2.4 multi-line function calls line up',
+      '5.2.2.5 commas semicolons 5.2.2.6 open parenthesis 5.2.2.7 open brace',
+      '5.2.2.8 structure member 5.2.2.9 array subscripts 5.2.2.10 parentheses precedence 5.2.2.11 align continuation',
+    ],
+  },
+  {
+    re: /pcds|pcd\b|patchable|featureflag|fixedatbuild|dynamicex|pcd.*(类型|写法|怎么|如何|动态|固定)/i,
+    queries: [
+      'PCD types PcdsFeatureFlag PcdsFixedAtBuild PcdsPatchableInModule PcdsDynamic PcdsDynamicEx module declaration',
+      'DEC PCD declaration section DSC PCD section INF PCD section access macro FixedPcdGet PatchPcdGet PcdGet PcdSet DynamicEx',
+    ],
+  },
+  {
+    re: /depex|依赖表达式|dependency expression/i,
+    queries: [
+      '[Depex] section dependency expression INF grammar TRUE AND OR NOT module dispatch',
+      'dependency expression depex module dispatch order PPI protocol',
+    ],
+  },
+  {
+    re: /driver binding|driverbinding|驱动绑定|驱动模型|Supported\(|Start\(|Stop\(|EFI_DRIVER_BINDING/i,
+    queries: [
+      'UEFI Driver Model Driver Binding Protocol Supported Start Stop EFI_DRIVER_BINDING_PROTOCOL',
+      'driver binding Supported Start Stop implementation UEFI driver',
+    ],
+  },
+];
+
 function expandChineseQuery(q) {
   const lower = q.toLowerCase();
   const hits = [];
@@ -943,8 +1040,14 @@ function isChitChat(question) {
 // when url/file/title are all empty (common for tianocore-docs spec pages).
 // Use it as a dedup fallback so multiple same-source spec chunks survive
 // aggregation instead of all collapsing onto the empty-string key.
+// The key includes the section when a file is known, so with the daemon's
+// dedup=false several sections of ONE document can coexist (multi-section
+// enumerative questions) instead of collapsing to the first chunk.
 function chunkKey(r) {
-  return r.url || r.file || r.title || r.section || (r._pid != null ? String(r._pid) : '') || '';
+  if (r.url) return r.url;
+  const file = r.file || '';
+  if (file) return r.section ? `${file}#${r.section}` : file;
+  return r.title || r.section || (r._pid != null ? String(r._pid) : '') || '';
 }
 
 // Stable citation id for a retrieved chunk. Rerank can reorder the display
@@ -1015,7 +1118,9 @@ function aggregateContext(results) {
       type: r.type || 'docs',
       source: r.source_display || r.source || '',
       url: r.url || '',
+      file: r.file || '',
       section: r.section || '',
+      cid: r.cid || '',
       body: body.substring(0, 4500),
     });
   }
@@ -1035,7 +1140,9 @@ function aggregateContext(results) {
       type: r.type || 'docs',
       source: r.source_display || r.source || '',
       url: r.url || '',
+      file: r.file || '',
       section: r.section || '',
+      cid: r.cid || '',
       body: body.substring(0, 6000),
     });
   }
@@ -1113,7 +1220,8 @@ function aggregateContextEnhanced(results) {
       out.push({
         title: r.title || r.file || 'Untitled', type: r.type || 'docs',
         source: r.source_display || r.source || '', url: r.url || '',
-        section: r.section || '', topic: topic, priority: priority,
+        file: r.file || '', section: r.section || '', cid: r.cid || '',
+        topic: topic, priority: priority,
         body: body.substring(0, maxLen),
       });
     }
@@ -1129,7 +1237,8 @@ function aggregateContextEnhanced(results) {
     out.push({
       title: r.file || 'Contribution Rules', type: r.type || 'docs',
       source: r.source_display || r.source || '', url: r.url || '',
-      section: r.section || '', topic: 'commit', priority: 95,
+      file: r.file || '', section: r.section || '', cid: r.cid || '',
+      topic: 'commit', priority: 95,
       body: body.substring(0, 6000),
     });
   }
@@ -1201,7 +1310,9 @@ function validateCitations(answer, results) {
   const valid = new Set(
     (results || []).map(r => String(r.cid || '').toLowerCase()).filter(Boolean));
   const used = new Set();
-  const re = /\[c([0-9a-f]{8})\]/gi;
+  // 6-12 hex chars: the prompt example uses a 7-char placeholder that must
+  // also be caught if the model lazily copies it.
+  const re = /\[c([0-9a-f]{6,12})\]/gi;
   let m;
   while ((m = re.exec(answer || '')) !== null) used.add('c' + m[1].toLowerCase());
   const invalid = [...used].filter(c => !valid.has(c));
@@ -1682,31 +1793,75 @@ async function raceLlmOnce(messages, { onDelta, timeoutMs, firstTokenMs, maxToke
   });
 }
 
-// Cache for question -> English translation (LRU, 200 entries, 30 min TTL).
+// Cache for question analysis (translation + sub-query decomposition)
+// (LRU, 200 entries, 30 min TTL). One LLM round-trip serves both purposes:
+// the faithful English translation for cross-lingual retrieval AND, for
+// complex-tier questions, 2-4 independent English sub-queries so every
+// sub-question gets its own evidence window (multi-query retrieval).
 const translationCache = new Map();
 const TRANSLATION_TTL_MS = 30 * 60 * 1000;
+const MAX_SUB_QUERIES = 4;
 
-async function translateToEnglish(question) {
+const ANALYZE_SYSTEM_TRANSLATE =
+  'You are a translation engine. Translate the user question from Chinese into concise, technically accurate English suitable for searching EDK2/TianoCore documentation. Keep EDK2 terms (INF, DSC, DEC, FDF, PCD, SMM, HII, protocol, GUID...) as-is. Output ONLY the English translation, no explanation, no quotes.';
+
+const ANALYZE_SYSTEM_DECOMPOSE =
+  'You are a query analysis engine for an EDK2/TianoCore documentation knowledge base. The user question may contain several sub-questions. Do BOTH: ' +
+  '1) Translate the WHOLE question into concise, technically accurate English for document retrieval, keeping EDK2 terms (INF, DSC, DEC, FDF, PCD, SMM, HII, protocol, GUID...) as-is. ' +
+  '2) Decompose the question into 2-4 independent English retrieval sub-queries, each focused on ONE sub-question or comparison dimension, keeping EDK2 terms as-is. If the question is a single point, return an empty list. ' +
+  'Output ONLY strict JSON, no markdown fences, no explanation: {"translation": "...", "sub_queries": ["...", "..."]}';
+
+function parseAnalysis(text, question, decompose) {
+  const data = { translation: question, subQueries: [] };
+  const raw = String(text || '').trim();
+  if (!raw) return data;
+  let jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  // The model occasionally wraps the JSON with a preamble; keep only the part
+  // between the first { and the last }.
+  const lo = jsonText.indexOf('{');
+  const hi = jsonText.lastIndexOf('}');
+  if (lo >= 0 && hi > lo) jsonText = jsonText.slice(lo, hi + 1);
+  try {
+    const j = JSON.parse(jsonText);
+    if (typeof j.translation === 'string' && j.translation.trim()) {
+      data.translation = j.translation.trim().slice(0, 300);
+    }
+    if (Array.isArray(j.sub_queries)) {
+      data.subQueries = j.sub_queries
+        .filter((s) => typeof s === 'string' && s.trim())
+        .map((s) => s.trim().slice(0, 200))
+        .slice(0, MAX_SUB_QUERIES);
+    }
+  } catch {
+    // Non-JSON output: in translation mode the whole text is the translation;
+    // in decompose mode a broken JSON is useless, so drop back to the original.
+    if (!decompose && !/[{}]/.test(jsonText)) data.translation = raw;
+  }
+  return data;
+}
+
+async function analyzeQuery(question, tier) {
   const key = normalizeQuery(question);
   const hit = translationCache.get(key);
-  if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.text;
+  if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.data;
+  const decompose = tier === 'complex';
   // The corpus is English-only: a question that is already pure ASCII (English
   // phrasing, EDK2 identifiers, error codes) is used verbatim, skipping a full
-  // LLM round-trip (~2s) that would only rephrase it.
-  if (/^[\x00-\x7F\s]+$/.test(question) && /[a-zA-Z]{3,}/.test(question)) {
-    translationCache.set(key, { text: question, timestamp: Date.now() });
-    return question;
+  // LLM round-trip (~2s) that would only rephrase it — unless decomposition is
+  // needed for a multi-sub-question complex turn.
+  if (!decompose && /^[\x00-\x7F\s]+$/.test(question) && /[a-zA-Z]{3,}/.test(question)) {
+    const data = { translation: question, subQueries: [] };
+    translationCache.set(key, { data, timestamp: Date.now() });
+    return data;
   }
   const text = await llmComplete([
-    {
-      role: 'system',
-      content: 'You are a translation engine. Translate the user question from Chinese into concise, technically accurate English suitable for searching EDK2/TianoCore documentation. Keep EDK2 terms (INF, DSC, DEC, FDF, PCD, SMM, HII, protocol, GUID...) as-is. Output ONLY the English translation, no explanation, no quotes.',
-    },
+    { role: 'system', content: decompose ? ANALYZE_SYSTEM_DECOMPOSE : ANALYZE_SYSTEM_TRANSLATE },
     { role: 'user', content: question },
-  ]);
-  const result = text || question;
-  translationCache.set(key, { text: result, timestamp: Date.now() });
-  return result;
+  ], { timeoutMs: 60000, maxTokens: decompose ? 500 : 300 });
+  const data = parseAnalysis(text, question, decompose);
+  if (!data.translation) data.translation = question;
+  translationCache.set(key, { data, timestamp: Date.now() });
+  return data;
 }
 
 async function llmAnswer(question, results, history, prevResults) {
@@ -1915,10 +2070,13 @@ async function handleAsk(req, res) {
           // translation failure).
           sendSSE(res, 'phase', { step: 'translate', text: '翻译检索查询…', progress: 15 });
           const translateStart = Date.now();
-          const translated = await translateToEnglish(question);
+          // P1: one LLM call yields the English translation AND (for complex
+          // tier) the sub-query decomposition — no extra round-trip.
+          const analysis = await analyzeQuery(question, tier);
+          const subQueries = (analysis.subQueries || []).slice(0, MAX_SUB_QUERIES);
           emitTrace({
             traceId, stage: 'llm_translate', durationMs: Date.now() - translateStart,
-            queryHash: qh, status: 'ok',
+            queryHash: qh, status: 'ok', subQueries: subQueries.length,
           });
           // Hybrid retrieval query: the faithful English translation provides
           // cross-lingual semantic recall (Chinese "排版/空白" -> English
@@ -1931,7 +2089,7 @@ async function handleAsk(req, res) {
           // a ~3x slower path (verified: same query 1488ms with CJK vs 416ms
           // English-only on the docs source). The English translation + anchors
           // preserve top-20 recall (15-18/20 overlap in probes).
-          const translatedQ = (translated && translated !== question) ? translated : '';
+          const translatedQ = (analysis.translation && analysis.translation !== question) ? analysis.translation : '';
           const expanded = expandChineseQuery(question);
           const seen = new Set(translatedQ.toLowerCase().split(/\s+/).filter(Boolean));
           const tail = expanded.split(/\s+/).filter(t => {
@@ -1957,36 +2115,38 @@ async function handleAsk(req, res) {
           // Routing (2a): shrink recall for simple factual queries (fast path),
           // widen it for complex multi-hop/comparison queries (quality).
           const mainTopK = tier === 'simple' ? 12 : tier === 'complex' ? 22 : 18;
-          const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=${mainTopK}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } });
-          // Daemon clamps top_k to 20 and cross-lingual vector recall is weak:
-          // a vague Chinese query ("排版/空白") ranks many unrelated Summary/
-          // README chunks above the actual CCoding spec chapters. For coding-
-          // style topics fire two focused English docs queries (chapter locator
-          // + concrete rule phrases) so 5.2.1/5.2.2/5.2.3 sub-chunks survive.
-          // Test the ORIGINAL question + translation + expansion (not just the
-          // CJK-free searchQuery) so Chinese style triggers still fire.
-          const isStyleTopic = /spacing|formatting|indentation|排版|空白|缩进|风格|style|vertical|horizontal|coding.?standard|编码规范/i.test([question, translatedQ, expanded].join(' '));
-          const docsFocusQueries = isStyleTopic
-            ? [
-                'C Coding Standards 5.2 Spacing Vertical Spacing blank lines Horizontal Spacing indentation File Heading section rules',
-                'vertical spacing blank lines make code more readable group logically related sections one statement on a line open brace predicate expression alignment continuation line',
-                'Formatting: General Rules Formatting: Vertical spacing Formatting: Horizontal spacing Formatting: Predicate Expressions 5.2.2 Horizontal Spacing 5.2.3 File Heading Predicate Expressions quick reference source_files',
-                '5.2.2.1 space one or more spaces long 5.2.2.2 binary operators space',
-                '5.2.2.3 unary operators 5.2.2.4 multi-line function calls line up',
-                '5.2.2.5 commas semicolons 5.2.2.6 open parenthesis 5.2.2.7 open brace',
-                '5.2.2.8 structure member 5.2.2.9 array subscripts 5.2.2.10 parentheses precedence 5.2.2.11 align continuation',
-              ]
-            : [];
+          // Complex tier keeps multiple chunks per document (dedup=false) so
+          // enumerative multi-section questions can collect several chapters
+          // of one doc instead of collapsing to a single chunk (P1-4).
+          const mainDedup = tier === 'complex' ? '&dedup=false' : '';
+          const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=${mainTopK}${mainDedup}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } });
+          // Focused docs queries for enumerative topics (see DOCS_FOCUS_TOPICS):
+          // pin the concrete rule sub-chunks the broad queries miss.
+          const qBlob = [question, translatedQ, expanded].join(' ');
+          const docsFocusQueries = [];
+          for (const t of DOCS_FOCUS_TOPICS) {
+            if (!t.re.test(qBlob)) continue;
+            for (const fq of t.queries) {
+              if (!docsFocusQueries.includes(fq)) docsFocusQueries.push(fq);
+            }
+          }
           const docsPromise = docsQuery
             ? httpJson(`${url}/search?query=${encodeURIComponent(docsQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } })
               .catch(() => null)
             : Promise.resolve(null);
           const docsFocusPromises = docsFocusQueries.map(fq =>
-            httpJson(`${url}/search?query=${encodeURIComponent(fq)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
-          const [mainResp, docsResp, ...docsFocusResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises]);
+            httpJson(`${url}/search?query=${encodeURIComponent(fq)}&top_k=20&source=tianocore-docs${mainDedup}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
+          // P1-2: decomposed sub-queries (complex tier) run in parallel against
+          // the full index; each sub-question then has its own evidence window.
+          const subPromises = subQueries.map(sq =>
+            httpJson(`${url}/search?query=${encodeURIComponent(sq)}&top_k=10&dedup=false`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
+          const [mainResp, docsResp, ...restResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises, ...subPromises]);
+          const docsFocusResps = restResps.slice(0, docsFocusQueries.length);
+          const subResps = restResps.slice(docsFocusQueries.length);
           emitTrace({
             traceId, stage: 'mcp_search', durationMs: Date.now() - searchStart,
-            queryHash: qh, status: 'ok', calls: 2 + docsFocusQueries.length,
+            queryHash: qh, status: 'ok', calls: 2 + docsFocusQueries.length + subQueries.length,
+            subQueries: subQueries.length,
           });
           searchResp = mainResp;
           const docsResults = (docsResp && docsResp.body && docsResp.body.results) || [];
@@ -2015,6 +2175,34 @@ async function handleAsk(req, res) {
               return true;
             });
             merged.push(...docsOnly.slice(0, 15));
+            for (const r of broad.slice(3)) {
+              const k = chunkKey(r);
+              if (merged.length >= 35) break;
+              if (!docSeen.has(k)) { docSeen.add(k); merged.push(r); }
+            }
+            // Append sub-query hits (dedup by chunk key) so every decomposed
+            // sub-question contributes its own evidence before the broad tail.
+            const subHits = subResps.flatMap(r => (r && r.body && r.body.results) || []);
+            if (subHits.length) {
+              for (const r of subHits) {
+                if (merged.length >= 35) break;
+                const k = chunkKey(r);
+                if (!docSeen.has(k)) { docSeen.add(k); merged.push(r); }
+              }
+            }
+            searchResp = { body: { results: merged } };
+          } else if (subResps.length) {
+            // No docs-source results at all: still merge sub-query hits behind
+            // the broad retrieval order.
+            const broad = (searchResp.body && searchResp.body.results) || [];
+            const merged = broad.slice(0, 3);
+            const docSeen = new Set(merged.map(r => chunkKey(r)));
+            const subHits = subResps.flatMap(r => (r && r.body && r.body.results) || []);
+            for (const r of subHits) {
+              if (merged.length >= 35) break;
+              const k = chunkKey(r);
+              if (!docSeen.has(k)) { docSeen.add(k); merged.push(r); }
+            }
             for (const r of broad.slice(3)) {
               const k = chunkKey(r);
               if (merged.length >= 35) break;
@@ -2134,7 +2322,14 @@ async function handleAsk(req, res) {
               const key = (r.file || '') + '|' + (r.section || '') + '|' + (r.title || '');
               if (!guardSeen.has(key)) { guardSeen.add(key); guarded.push(r); }
             }
-            const reranked = await rerankDocuments(rerankQuery, results.slice(0, RERANK_CANDIDATES));
+            // Complex tier gets a wider rerank window (more candidates, longer
+            // snippets) so every sub-question's evidence is scored.
+            const rerankCandidates = tier === 'complex' ? RERANK_CANDIDATES_COMPLEX : RERANK_CANDIDATES;
+            const rerankSnippetChars = tier === 'complex' ? RERANK_SNIPPET_CHARS_COMPLEX : RERANK_SNIPPET_CHARS;
+            const reranked = await rerankDocuments(rerankQuery, results, {
+              candidates: rerankCandidates,
+              snippetChars: rerankSnippetChars,
+            });
             
             // Build merged list: start with guaranteed top hits
             const seen = new Set();
@@ -2481,6 +2676,76 @@ async function handleAsk(req, res) {
           traceId, stage: 'citation_check', durationMs: 0, queryHash: qh,
           status: 'ok', used: cit.used.length,
         });
+      }
+      // L3 — Faithfulness guard (complex tier, env-disableable): a strict
+      // fact-checker pass compares factual claims against the retrieved
+      // context AFTER generation. Unsupported claims are surfaced to the
+      // client as a warning; the streamed text itself is untouched. This is
+      // the "生成后校验" layer from the RAG defense-in-depth design.
+      const L3_FAITHFULNESS_CHECK = process.env.L3_FAITHFULNESS_CHECK !== 'false';
+      if (L3_FAITHFULNESS_CHECK && tier === 'complex' && fullAnswer) {
+        const l3Start = Date.now();
+        // Judge context: entries the answer actually CITES first (by stable
+        // cid), then the top entries as filler — so a claim is checked against
+        // the very chunk it references, not just the top-15 blind window.
+        const citedIds = new Set(validateCitations(fullAnswer, results).used);
+        const agg = aggregateContextEnhanced(results);
+        const byCid = new Map(agg.map(r => [(r.cid || '').toLowerCase(), r]));
+        const cited = [];
+        const rest = [];
+        for (const r of agg) {
+          if (r.cid && citedIds.has(r.cid.toLowerCase())) cited.push(r);
+          else rest.push(r);
+        }
+        const l3Entries = [...cited, ...rest].slice(0, 15);
+        const l3Ctx = l3Entries
+          .map((r, i) => {
+            // Cited entries get their full body (the claim's own evidence);
+            // filler entries keep a shorter window.
+            const cap = i < cited.length ? 3000 : 1200;
+            return `[${r.title || r.section || 'doc'}] ${String(r.body || '').slice(0, cap)}`;
+          })
+          .join('\n');
+        const l3Text = await llmComplete([
+          {
+            role: 'system',
+            content: 'You are a strict fact-checker for an EDK2 RAG assistant. Given the question, retrieved context chunks, and the answer, find factual claims in the answer that are NOT supported by the context. A claim IS supported when the context states it or directly implies it; rephrasing context content in the model\'s own words is SUPPORTED, and cross-chunk inference is allowed. Only flag claims that (1) directly contradict the context, or (2) assert specific technical details (identifiers, values, rules, numbers) that appear nowhere in the context. When in doubt, treat the claim as supported. The answer\'s inline [cXXXXXXXX] markers are hidden citation ids: when quoting a claim, OMIT them. Output ONLY strict JSON: {"unsupported": ["<claim quoted from the answer>", ...]}. If fully supported: {"unsupported": []}. Quote at most 5 claims, each at most 100 characters.',
+          },
+          {
+            role: 'user',
+            content: `Question: ${question}\n\nContext:\n${l3Ctx}\n\nAnswer:\n${fullAnswer.slice(0, 6000)}`,
+          },
+        ], { timeoutMs: 25000, maxTokens: 500 });
+        let unsupported = [];
+        if (l3Text) {
+          try {
+            const m = String(l3Text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+            const lo = m.indexOf('{');
+            const hi = m.lastIndexOf('}');
+            const j = JSON.parse(lo >= 0 && hi > lo ? m.slice(lo, hi + 1) : m);
+            if (Array.isArray(j.unsupported)) {
+              unsupported = j.unsupported
+                .filter(x => typeof x === 'string' && x.trim())
+                .map(x => x.trim().slice(0, 150))
+                .slice(0, 5);
+            }
+          } catch { /* judge returned non-JSON -> skip the warning */ }
+        }
+        if (unsupported.length) {
+          emitTrace({
+            traceId, stage: 'faithfulness_check', durationMs: Date.now() - l3Start,
+            queryHash: qh, status: 'unsupported', count: unsupported.length,
+          });
+          sendSSE(res, 'faithfulness_warn', {
+            claims: unsupported,
+            note: '以下内容未被检索上下文支撑，请谨慎参考。',
+          });
+        } else {
+          emitTrace({
+            traceId, stage: 'faithfulness_check', durationMs: Date.now() - l3Start,
+            queryHash: qh, status: 'ok',
+          });
+        }
       }
       sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model, tokens: tokenCount });
       // Store the completed self-contained answer for future replays.
