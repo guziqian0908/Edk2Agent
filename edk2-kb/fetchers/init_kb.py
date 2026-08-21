@@ -1157,8 +1157,20 @@ def build_chroma_index() -> int:
     # transformers >=5 dropped the constructor arg, so the limit is applied
     # to the loaded model directly.
     max_seq = int(os.environ.get("EDK2_EMBEDDING_MAX_SEQ", "768"))
+    # Optional dense-embedding skip list (comma-separated sources): those
+    # sources stay fully searchable via FTS5/BM25 (exact keywords) but get no
+    # dense vector — a big CPU saving for noise sources like commit logs.
+    # NOTE: the truncation below only shapes the RANKING embedding; the full
+    # chunk text is still stored and returned, so content is never lost.
+    skip_sources = {
+        s.strip().lower()
+        for s in os.environ.get("EDK2_EMBEDDING_SKIP_SOURCES", "").split(",")
+        if s.strip()
+    }
     log(f"Loading embedding model {model_name} (device={device}, "
-        f"max_seq={max_seq})...")
+        f"max_seq={max_seq}"
+        + (f", skip_sources={sorted(skip_sources)}" if skip_sources else "")
+        + ")...")
     try:
         embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=model_name,
@@ -1185,18 +1197,41 @@ def build_chroma_index() -> int:
     
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
     
-    # Delete existing collection if exists (to use new embedding)
+    # Resume protection: the marker records (model, max_seq) of the build in
+    # progress. A crashed build can be restarted WITHOUT re-embedding the
+    # batches already upserted (their ids are skipped). If the marker is
+    # absent or the settings changed, the old collection is deleted first so
+    # a wrong-embedding-space collection can never be resumed.
+    marker_file = CHROMA_DIR / ".build_marker.json"
+    marker_data = {"model": model_name, "max_seq": max_seq,
+                   "skip_sources": sorted(skip_sources)}
+    resume = False
     try:
-        client.delete_collection("edk2_docs")
-        log("Deleted old collection for fresh start")
-    except:
-        pass
+        resume = (json.loads(marker_file.read_text(encoding="utf-8"))
+                  == marker_data)
+    except Exception:
+        resume = False
+    
+    if not resume:
+        try:
+            client.delete_collection("edk2_docs")
+            log("Deleted old collection for fresh start")
+        except Exception:
+            pass
     
     collection = client.get_or_create_collection(
         "edk2_docs",
         embedding_function=embedding_func,
         metadata={"hnsw:space": "cosine"}
     )
+    
+    existing_ids = set()
+    if resume:
+        try:
+            existing_ids = set(collection.get(include=[])["ids"])
+            log(f"Resuming build: {len(existing_ids)} chunks already indexed")
+        except Exception:
+            existing_ids = set()
     
     doc_index = PROCESSED_DIR / 'documents.json'
     if not doc_index.exists():
@@ -1223,9 +1258,14 @@ def build_chroma_index() -> int:
         
         for j, doc in enumerate(batch):
             try:
+                doc_id = f"doc_{i+j}"
+                if doc_id in existing_ids:
+                    continue
+                if doc.get('source', 'unknown').lower() in skip_sources:
+                    continue
                 with open(doc['path'], 'r', encoding='utf-8') as f:
                     texts.append(f.read())
-                ids.append(f"doc_{i+j}")
+                ids.append(doc_id)
                 metadatas.append({
                     'source': doc.get('source', 'unknown'),
                     'title': doc.get('title', ''),
@@ -1249,6 +1289,10 @@ def build_chroma_index() -> int:
             )
             indexed += len(texts)
     
+    try:
+        marker_file.write_text(json.dumps(marker_data), encoding="utf-8")
+    except Exception:
+        pass
     log(f"Indexed {indexed} documents into ChromaDB")
     return indexed
 
