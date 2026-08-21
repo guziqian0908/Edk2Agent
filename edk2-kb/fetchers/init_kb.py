@@ -1151,7 +1151,14 @@ def build_chroma_index() -> int:
     # default: it is small (~74MB), fast to load and does not block startup.
     model_name = os.environ.get("EDK2_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
     device = os.environ.get("EDK2_EMBEDDING_DEVICE", "cpu")
-    log(f"Loading embedding model {model_name} (device={device})...")
+    # bge-m3 defaults to an 8192-token window, which makes CPU embedding ~8x
+    # slower than needed: chunks are at most ~2000 chars (~600 tokens), so a
+    # 768-token window is lossless and much faster. Env-tunable. sentence-
+    # transformers >=5 dropped the constructor arg, so the limit is applied
+    # to the loaded model directly.
+    max_seq = int(os.environ.get("EDK2_EMBEDDING_MAX_SEQ", "768"))
+    log(f"Loading embedding model {model_name} (device={device}, "
+        f"max_seq={max_seq})...")
     try:
         embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=model_name,
@@ -1159,9 +1166,22 @@ def build_chroma_index() -> int:
             normalize_embeddings=True,
             local_files_only=True
         )
+        _model = getattr(embedding_func, "_model", None)
+        if _model is not None:
+            try:
+                _model.max_seq_length = max_seq
+            except Exception:
+                pass
+            try:
+                _model.tokenizer.model_max_length = max_seq
+            except Exception:
+                pass
     except Exception as e:
-        log(f"Failed to load {model_name}, using default: {e}", "WARNING")
-        embedding_func = None
+        # A silent fallback to the default MiniLM embedder would build a
+        # collection with the WRONG embedding space (384-dim) that the
+        # runtime bge-m3 (1024-dim) cannot query — fail loudly instead.
+        log(f"Failed to load {model_name}: {e}", "ERROR")
+        sys.exit(1)
     
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
     

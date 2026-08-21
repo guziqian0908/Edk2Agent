@@ -354,6 +354,35 @@ def _shared_expansion_terms(query: str) -> List[str]:
     return terms
 
 
+# ------------------------------------------------------------------ #
+# P3 LambdaMART runtime hook. Disabled by default; set EDK2_LTR_MODEL
+# to a trained rank/ranker.txt to reorder the fused candidate window
+# with the learned scorer (the cross-encoder reranker still runs after
+# it, so the LTR signal and the semantic signal compose).
+# ------------------------------------------------------------------ #
+_LTR_MODEL_PATH = os.environ.get("EDK2_LTR_MODEL", "")
+_ltr_model = None
+_ltr_load_error: Optional[str] = None
+
+
+def _get_ltr_model():
+    global _ltr_model, _ltr_load_error
+    if not _LTR_MODEL_PATH:
+        return None
+    if _ltr_model is None and _ltr_load_error is None:
+        try:
+            rank_dir = str(Path(__file__).resolve().parent / "rank")
+            if rank_dir not in sys.path:
+                sys.path.insert(0, rank_dir)
+            from rank_lib import load_model  # noqa: E402
+            _ltr_model = load_model(_LTR_MODEL_PATH)
+        except Exception as e:
+            _ltr_load_error = str(e)
+            print(f"[ltr] failed to load {_LTR_MODEL_PATH}: {e}",
+                  file=sys.stderr)
+    return _ltr_model
+
+
 def rewrite_query(query: str) -> str:
     """Expand EDK2 technical terms for better retrieval.
 
@@ -797,6 +826,16 @@ class SearchEngine:
             # BM25 candidates currently carry only pid+score; read their full
             # chunk text now, for the surviving set only (deferred 回表).
             self._attach_content(candidates)
+            # Optional LambdaMART reorder (P3): EDK2_LTR_MODEL points at a
+            # trained rank/ranker.txt. The learned scorer reorders the fused
+            # window; the cross-encoder rerank below still fine-tunes after.
+            ltr = _get_ltr_model()
+            if ltr is not None and candidates:
+                try:
+                    from rank_lib import rank_candidates  # noqa: E402
+                    candidates = rank_candidates(query, candidates, ltr)
+                except Exception as e:  # pragma: no cover - defensive
+                    print(f"[ltr] rank failed: {e}", file=sys.stderr)
             _retrieval_ms = (time.monotonic() - _t) * 1000
             trace_emit(trace_id, "chroma_vector", _chroma_ms, qh,
                        status="ok", queries=len(queries))

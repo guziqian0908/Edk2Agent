@@ -148,3 +148,24 @@ curl http://127.0.0.1:8080/api/status
     聚合 trace.jsonl 的延迟/长度/引用/忠实度回归监控；
   - `python edk2-kb/eval/run_web_eval.py`：全链路 LLM-judge 评测
     （faithfulness + relevancy 双轴评分，按档位分组，输出报告）。
+
+## Phase 3/4 说明（2026-08-21）
+
+LambdaMART 学习排序 + 上线门控。训练数据不足时自动提示退化方案
+（保持 BGE cross-encoder 精排不变）。
+
+```powershell
+# 1. 打标（需知识库就绪；每条 (query, chunk) 由 LLM-judge 打 0/1/2 相关度）
+python edk2-kb/eval/label_pipeline.py `
+  --data-dir "$env:USERPROFILE\.edk2-opencode\kb\data" `
+  --synthetic 30 --out edk2-kb/rank/ltr_labels.jsonl
+
+# 2. 训练 LambdaMART（lightgbm；标签 <300 行时拒绝训练并提示退化）
+python edk2-kb/rank/train_ranker.py --labels edk2-kb/rank/ltr_labels.jsonl
+
+# 3. 启用（daemon 环境变量，重启 daemon 生效）
+$env:EDK2_LTR_MODEL = "edk2-kb/rank/ranker.txt"
+
+# 4. 上线门控（faithfulness>=4.6 且 relevancy>=4.4 才 PASS，退出码供 CI）
+python edk2-kb/eval/run_web_eval.py --gate
+```

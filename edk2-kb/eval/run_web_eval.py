@@ -209,11 +209,20 @@ def judge_answer(env: Dict[str, str], question: str,
     return parse_judge_json(text)
 
 
-def render_report(rows: List[Dict[str, Any]]) -> str:
+def render_report(rows: List[Dict[str, Any]],
+                  gate: Optional[Tuple[float, float]] = None) -> str:
     lines = ["# Web Pipeline LLM-Judge Evaluation", ""]
+    mean_faith = _mean([r['judge'].get('faithfulness', 0) for r in rows])
+    mean_relev = _mean([r['judge'].get('relevancy', 0) for r in rows])
     lines.append(f"questions={len(rows)} "
-                 f"mean_faithfulness={_mean([r['judge'].get('faithfulness', 0) for r in rows])} "
-                 f"mean_relevancy={_mean([r['judge'].get('relevancy', 0) for r in rows])}")
+                 f"mean_faithfulness={mean_faith} "
+                 f"mean_relevancy={mean_relev}")
+    if gate:
+        faith_gate, relev_gate = gate
+        passed = mean_faith >= faith_gate and mean_relev >= relev_gate
+        lines.append("")
+        lines.append(f"## Gate: {'PASS' if passed else 'FAIL'} "
+                     f"(faithfulness>={faith_gate}, relevancy>={relev_gate})")
     lines.append("")
     lines.append("| tier | n | faith | relev | warn_l3 | warn_l2c |")
     lines.append("|---|---|---|---|---|---|")
@@ -250,6 +259,13 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--judge-only", default="",
                     help="re-judge stored answers from an existing results file")
+    ap.add_argument("--gate", action="store_true",
+                    help="gate mode: exit non-zero when mean scores are below "
+                         "the thresholds (for CI / pre-release checks)")
+    ap.add_argument("--gate-faith", type=float, default=4.6,
+                    help="faithfulness gate (default 4.6 == RAGAS 0.9)")
+    ap.add_argument("--gate-relev", type=float, default=4.4,
+                    help="relevancy gate (default 4.4 == RAGAS 0.85)")
     args = ap.parse_args()
 
     env = load_env()
@@ -293,9 +309,19 @@ def main() -> None:
     RESULTS_FILE.write_text(
         json.dumps({"rows": rows}, indent=2, ensure_ascii=False),
         encoding="utf-8")
-    REPORT_FILE.write_text(render_report(rows), encoding="utf-8")
+    gate = (args.gate_faith, args.gate_relev) if args.gate else None
+    REPORT_FILE.write_text(render_report(rows, gate), encoding="utf-8")
     print(f"\nresults -> {RESULTS_FILE}")
     print(f"report  -> {REPORT_FILE}")
+
+    if args.gate:
+        mean_faith = _mean([r["judge"].get("faithfulness", 0) for r in rows])
+        mean_relev = _mean([r["judge"].get("relevancy", 0) for r in rows])
+        passed = mean_faith >= args.gate_faith and mean_relev >= args.gate_relev
+        print(f"GATE: {'PASS' if passed else 'FAIL'} "
+              f"(faith {mean_faith}>={args.gate_faith}, "
+              f"relev {mean_relev}>={args.gate_relev})")
+        sys.exit(0 if passed else 1)
 
 
 if __name__ == "__main__":
