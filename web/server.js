@@ -369,7 +369,7 @@ function loadDotEnv() {
 loadDotEnv();
 
 // ---- LLM generation budget (env-tunable; defaults balance exhaustiveness and latency) ----
-const LLM_MAX_TOKENS = parseInt(process.env.LLM_MAX_TOKENS || '1600', 10);
+const LLM_MAX_TOKENS = parseInt(process.env.LLM_MAX_TOKENS || '3000', 10);
 const LLM_RETRY_MAX_TOKENS = parseInt(process.env.LLM_RETRY_MAX_TOKENS || '2000', 10);
 const LLM_STREAM_TIMEOUT_MS = parseInt(process.env.LLM_STREAM_TIMEOUT_MS || '180000', 10);
 // Hard cap for the WHOLE generate+retry loop. The upstream can stream an
@@ -392,6 +392,15 @@ const LLM_FIRST_TOKEN_TIMEOUT_MS = parseInt(
 // is a latency-vs-ordering trade-off, so it is opt-in.
 const ENABLE_RERANK = process.env.ENABLE_RERANK !== 'false';
 const RERANK_TIMEOUT_MS = parseInt(process.env.RERANK_TIMEOUT_MS || '60000', 10);
+// L2b — Retrieval coverage gate (CRAG-style). When the top reranked (or, if
+// rerank is off, the top retrieved) chunk's relevance score is below threshold,
+// the retrieval is treated as "insufficient": we surface a low-coverage hint so
+// the LLM triggers its honest-refusal rule (L1 rule 2) instead of guessing. Env-
+// tunable; disabled by setting RERANK_COVERAGE_GATE=false.
+const RERANK_COVERAGE_GATE = process.env.RERANK_COVERAGE_GATE !== 'false';
+const RERANK_COVERAGE_TOPN = parseInt(process.env.RERANK_COVERAGE_TOPN || '5', 10);
+const RERANK_COVERAGE_THRESHOLD = parseFloat(
+  process.env.RERANK_COVERAGE_THRESHOLD || '0.35');
 // Rerank cost control: the single-threaded CPU cross-encoder takes ~1s per
 // (query, snippet) pair at 1024-token max_length, so the payload size is the
 // main latency lever. RERANK_CANDIDATES caps how many candidates get scored;
@@ -1152,6 +1161,49 @@ function sanitizeResultList(raw) {
   return out;
 }
 
+// L2b — Retrieval coverage estimate (CRAG-style). Uses the top reranked score
+// when rerank ran, otherwise the retrieval score. Returns whether the top
+// evidence is too weakly relevant to answer confidently.
+function retrievalCoverage(results) {
+  if (!Array.isArray(results) || results.length === 0) {
+    return { maxScore: 0, low: RERANK_COVERAGE_GATE };
+  }
+  const top = results.slice(0, RERANK_COVERAGE_TOPN);
+  let maxScore = 0;
+  for (const r of top) {
+    const s = (typeof r.rerank_score === 'number') ? r.rerank_score : (r.score || 0);
+    if (s > maxScore) maxScore = s;
+  }
+  return { maxScore, low: RERANK_COVERAGE_GATE && maxScore < RERANK_COVERAGE_THRESHOLD };
+}
+
+// L2c — Citation verification (structural, model cannot bypass). Every
+// `[cXXXXXXXX]` used in the answer must exist in this turn's retrieval set.
+// Returns the fabricated/unknown ids so the caller can flag them.
+function validateCitations(answer, results) {
+  const valid = new Set(
+    (results || []).map(r => String(r.cid || '').toLowerCase()).filter(Boolean));
+  const used = new Set();
+  const re = /\[c([0-9a-f]{8})\]/gi;
+  let m;
+  while ((m = re.exec(answer || '')) !== null) used.add('c' + m[1].toLowerCase());
+  const invalid = [...used].filter(c => !valid.has(c));
+  return { invalid, used: [...used] };
+}
+
+// Strip reasoning/thinking artifacts that some models leak into the answer
+// stream (e.g. DeepSeek's `reasoning_content` or `<no_analysis>` / `<think>`
+// markers). The final answer must contain ONLY the user-facing response.
+function stripReasoning(text) {
+  if (!text) return text;
+  return String(text)
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\/?think>/gi, '')
+    .replace(/<no_analysis>/gi, '')
+    .replace(/<noanalysis>/gi, '')
+    .replace(/<analysis>[\s\S]*?<\/analysis>/gi, '');
+}
+
 function buildMessages(question, results, history, prevResults, opts = {}) {
   const ctx = aggregateContextEnhanced(results);
   // prevResults is now a multi-turn list: [{ turn, results }]. Each previous
@@ -1179,7 +1231,7 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
   // previous turns share the remainder weighted by recency (turn 1 = closest,
   // weight PREV_DECAY^(turn-1)), so the most recent turn's retrieved material
   // is always the most represented and older turns fade out.
-  const MAX_CTX_CHARS = opts.maxCtxChars || 8000;
+  const MAX_CTX_CHARS = opts.maxCtxChars || 12000;
   const CUR_BUDGET = prevEntries.length ? Math.round(MAX_CTX_CHARS * 0.7) : MAX_CTX_CHARS;
   let ctxChars = 0;
   const ctxCapped = [];
@@ -1246,86 +1298,46 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     // FIRST so it forms a stable prompt prefix reused across every request
     // (~thousands of tokens => cache hits). Do NOT insert per-request variable
     // content here. The variable RAG context + question go last (user message).
-    'You are an EDK2/TianoCore firmware development expert. You answer strictly from the retrieved EDK2/TianoCore documentation context.',
+    'You are an EDK2/TianoCore firmware development expert. Answer strictly from the retrieved EDK2/TianoCore context provided below.',
     intentGuidance,
     '',
-    '## 回答要求（简洁优先）',
+    '# 核心原则',
+    '- 只依据下方【检索上下文】作答；上下文没有的信息不得断言，也不要用自身记忆补全。',
+    '- 每条事实陈述后都标注其来源稳定编号 [cXXXXXXXX]（条目开头即是）。只允许引用真实存在的编号，禁止编造或用 [1][2] 这类位置序号。',
+    '- 上下文不足以回答时，明确写"根据当前资料无法确认 XXX"，并说明还缺哪类信息；禁止猜测、补全、给"可能/大概"式虚构。',
+    '- 不同上下文相互矛盾时，分别列出各方观点与出处（带编号），不要自行捏合出折中答案。',
+    '- 依据薄弱时用"（依据较弱）"标注，不伪装成确定结论。',
     '',
-    '严格依据检索上下文作答，回答要紧凑、直接，去除无信息量的铺垫与重复；同等内容用更少的字数表达。',
-    '配置/规范类问题列出关键规则与枚举值（带稳定编号）；故障类给根因排查清单与可观测手段；概念类点到本质即可，不必铺陈。',
-    '上下文未覆盖的点如实说明，绝不虚构规范条文、报错码或 API 签名。',
+    '# 输出纪律（必须遵守）',
+    '- 直接输出最终回答，第一句就进入正题。禁止输出任何"过程性 / 元叙述"内容：不要写"分析上下文""回答结构""输出语言""开始撰写""现在撰写""以下是完整答复"等说明你将如何作答的话，也不要复述用户的问题，不要写"好的""当然"之类客套开场。',
+    '- 若回答被截断需要续写，从中断处直接续写正文，不要加"现在撰写""接上次未完成部分"等任何前缀或说明。',
     '',
-    '## 证据约束（最高优先级，必须遵守）',
+    '# 怎样才算"有价值、可参考"的回答',
+    '- 直接回答用户问题，不要客套铺垫、不要自我重复。',
+    '- 覆盖度优先：在切题前提下，把上下文里与问题相关的依据**讲全**——相关的枚举值 / 字段 / 参数要逐一列出并标注 [cXXXX]；不要为了简短而省略对工程师有用的关键细节。',
+    '- 配置 / 规范 / PCD / INF / DEC / DSC 类：给出关键字段与约束，并附**最小可参考的片段或真实写法**（如 DEC/DSC/INF 的 section 写法、C 代码中的访问宏），让工程师能照着落地。',
+    '- 故障 / 报错类：先描述可复现现象（只描述现象，不虚构报错码），再给按可能性排序的根因排查清单与可观测手段（build log / map / UEFI Shell / SCT 等）。',
+    '- 概念 / 机制类：先用一句话点出本质，再画清关系模型（从属、数据流、调用关系），必要时列关键步骤。',
+    '- 有规范原文 shall/must 依据的结论标【强制要求】；社区经验或推导结论标【最佳实践】，并注明"由多条文档综合推导，原文无直接表述"。',
+    '- 语言紧凑、不注水：用最少的废话把事情说清楚，但信息密度要高——该列的全列、该给片段的给片段，不堆砌与问题无关的内容。',
     '',
-    '1. **只基于上下文作答**：只能使用用户消息中"RAG 参考上下文"条目里的内容。若答案不能完全由上下文支撑，明确写"根据现有资料无法确认XXX"，并给出可追问的补充信息；绝不编造规范条文、报错码、API 签名、章节号或数据。',
-    '2. **冲突处理**：不同上下文相互冲突时，分别列出各方并说明冲突所在，不要自行捏合或偏向一方。',
-    '3. **逐条引用**：每条事实性陈述后标注来源编号 `[cXXXXXXXX]`（即上下文条目开头的稳定编号）。只允许引用上下文中真实存在的编号，禁止发明编号、禁止用 `[1]` 这类位置序号。',
-    '4. **切题即止**：回答长度以切题所需为最短，用要点式输出。禁止穷举所有规则/枚举值、禁止自我重复、禁止堆砌与问题无关的上下文内容；对枚举类型只列出上下文里有依据的取值。',
-    '5. **诚实降级**：检索覆盖不足时明确说明"资料覆盖不足"，不要猜测硬答。',
+    '# 引用与参考来源',
+    '每个上下文条目开头为稳定编号 [cXXXXXXXX]（小写 c + 8 位十六进制）。在相关论断后附对应编号，例如：`PcdDebugPrintErrorLevel 控制调试输出级别[c1a2b3c4]`。',
+    '回答末尾必须附 `## 参考来源`，逐条列出用到的文档：`- 文档标题 - 章节（本地：文件路径 > 章节）`，从条目里的 `Local:` 行取定位。只写本地定位，禁止拼造网址。',
     '',
-    '## 引用规则（稳定编号，禁止位置序号）',
+    '# 多轮衔接',
+    '标记为【上一轮检索】的条目用于衔接上一轮；用户用代词追问时优先引用这些条目，仍用稳定编号。不要编造上一轮检索中没有的内容。',
     '',
-    '每个上下文条目以其稳定编号开头，格式为 `[cXXXXXXXX]`（小写 `c` + 8 位小写十六进制，如 `[c1a2b3c4]`）。在回答中引用资料时，在相关论断后附上对应条目的稳定编号，例如：`...[c1a2b3c4]`。编号与展示顺序无关，是永久的。禁止使用 `[1][2]` 这类位置序号，也禁止编造上下文中不存在的编号。',
-    '',
-    '## 多轮对话上下文（上一轮检索）',
-    '',
-    '上下文中标记为【上一轮检索】的条目来自最近一轮对话的检索结果，用于衔接前一轮的内容。当用户用代词或指代（如"那它的定义呢？"、"为什么会这样？"）追问上一轮的内容时，优先从这些【上一轮检索】条目中引用并展开，仍用稳定编号标记引用。不要编造上一轮检索中不存在的内容。',
-    '',
-    '## 输出范式：柔性要素，禁止刚性填空',
-    '',
-    '输出遵循**柔性要素范式**组织：每类问题只启用与其匹配的要素；**没有对应参考素材就直接舍弃该要素，禁止编造内容来填满章节**。禁止输出过程日志或自检勾选内容。',
-    '',
-    '1. **定义与关系模型**：绝大多数问题保留。开篇一句话点出本质；梳理概念之间的从属、数据流、调用关系；有多个概念时画清关系模型。',
-    '',
-    '2. **现象 / 根因排查清单**：**仅故障异常类问题启用**。先给可复现的外部现象（**只描述现象，禁止虚构报错码或错误文本**），再按可能性排序列出根因排查清单。**非故障问题直接删除本章节，禁止编造排查项。**',
-    '',
-    '3. **约束规则**：配置、驱动、规范类问题启用；纯概念科普可精简。**启用时它是回答的主体**：逐条列出上下文中的具体规则、模式、枚举值、API 签名，每条保留引用标记（上下文条目的稳定编号 `[cXXXXXXXX]`）。',
-    '   - 对枚举类型（如 MODULE_TYPE）：只列出上下文里有依据的取值及其含义。',
-    '   - 对流程/机制：按顺序描述上下文覆盖的步骤，未覆盖的不臆造。',
-    '   - **消除无条件绝对化表述**：关键规则补上 `【触发前置条件】仅当XXX满足，才会发生该行为，否则不生效。`',
-    '   - **晦涩规则双轨表达**：复杂构建/驱动规则保留稳定引用标记后，另起一行附"通俗解读"，说明实际开发场景含义。',
-    '   - 事实性信息（章节号、签名、阈值）与上下文完全一致，禁止虚构。',
-    '',
-    '4. **工程要点（【强制要求】/【最佳实践】）**：技术类问题优先保留。',
-    '   - **仅当 RAG 上下文有 shall/must 等规范原文依据时才标【强制要求】**；社区经验、commit 案例、逻辑推导一律归【最佳实践】。',
-    '   - 综合多条文档推导出的结论加注释：`注：该结论由多条文档综合推导，原始文档无直接对应表述`，**禁止放入【强制要求】**。',
-    '',
-    '5. **✅/❌ 正误示例**：INF/DEC/DSC/FDF 配置、PCD 配置、Protocol/库类定义、DriverBinding 函数逻辑等场景按需补充极简核心片段（仅关键行，不写完整大文件）；**概念类问题无合适示例可省略**。',
-    '',
-    '6. **可观测排查验证手段**：**仅故障异常类问题输出**（构建产物 As-Built INF / map / build log、UEFI Shell 命令、SCT 测试等）；只描述现象，禁止虚构错误码。',
-    '',
-    '### 结尾统一放参考来源',
-    '- 回答末尾附 `## 参考来源`，逐条列出本地文档定位：`- 文档标题 - 章节`（附 `Local:` 行给出的 `文件路径 > 章节`）。',
-    '- 每个文档条目里 `Local:` 开头的行就是该条目的本地定位，从中取文档标题与章节。',
-    '- 参考来源只写本地定位，禁止拼造任何网址。',
-    '',
-    '## 示例（仅示范结构与引用写法，不是穷举模板）',
-    '',
-    '### Example 1: 模块/包/平台关系',
-    '**Question**: EDK2中模块（Module）、包（Package）和平台（Platform）是什么关系？',
-    '',
-    '**答案：**',
-    '',
-    '**定义与关系模型**',
-    'EDK2 用三级构建单元组织源码：Module（编译单元）位于 Package（接口与头文件集合）之内，最终由 Platform（DSC+FDF）决定哪些模块进入固件。',
-    '',
-    '**约束规则**',
-    '- Module 是"1个 INF + 一组.c/.h源码"的编译单元，INF 关键段见 [1]。',
-    '- Package 的标识物是 DEC：`[Defines]` 声明包名与 GUID；`[Includes]` 导出公共头文件根目录；`[LibraryClasses]` 声明库类头文件；`[Guids/Ppis/Protocols]` 声明 GUID 值；`[Pcds]` 声明 PCD（默认值、数据类型、Token 号），见 [1]。',
-    '- Platform 由 DSC + FDF 描述：DSC 设输出目录/架构/BUILD_TARGETS、`[Components]` 列出编译模块、`[LibraryClasses]` 选具体实例、`[Pcds*]` 配置 PCD 值；FDF 描述 FD/FV 布局，见 [1]。',
-    '- build 工具解析 DSC + 各 DEC + 各 INF，生成顶层 makefile 和每个模块的 makefile + AutoGen.c/AutoGen.h。一次 build 只有 active platform 的 DSC 生效，见 [1]。',
-    '- `【触发前置条件】仅当模块被平台 DSC 的 [Components] 引用时，build 才会为其生成 makefile 与 AutoGen.*。`',
-    '',
-    '**工程要点**',
-    '**【最佳实践】** 新增功能先按 Module→Package→Platform 三层各自落位，接口放包、实现放模块，避免越层依赖。',
-    '- ✅ 库类声明在 DEC `[LibraryClasses]`，具体库实例在 DSC 选择 / ❌ 把库类实现直接写进 DEC。',
-    '',
+    '# 示例（示范深度与引用写法）',
+    '问：PCD 有哪几种类型，分别在 DEC / DSC / INF 与 C 代码里怎么写？',
+    '答：EDK2 的 PCD 有 5 种类型[c1a2b3c4]：FixedPcd（FIXED_AT_BUILD）、PatchPcd（PATCHABLE_IN_MODULE）、FeaturePcd（FEATURE_FLAG）、DynamicPcd（DYNAMIC）、DynamicExPcd（DYNAMIC_EX）[c1a2b3c4]。',
+    '**DEC（声明）**：在 [PcdsFixedAtBuild]/[PcdsDynamic]/[PcdsDynamicEx]/[PcdsFeatureFlag]/[PcdsPatchableInModule] 中声明，格式 `TokenSpaceGuid.PcdCName|默认值|数据类型|Token`[c1a2b3c4]。',
+    '**DSC（平台赋值）**：在对应 section 中赋值，如 `[PcdsFixedAtBuild] gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000000`[c1a2b3c4]。',
+    '**INF（模块引用）**：在 [PcdsXxx] section 写 `TokenSpaceGuid.PcdCName`；一个 PCD 只能属于一种类型，INF 中不得混用 section 类型[c1a2b3c4]。',
+    '**C 代码（访问）**：`FixedPcdGet32(PcdX)`、`PatchPcdGet32(PcdX)`、`FeaturePcdGet(PcdX)`、`PcdGet32(PcdX)`、`PcdExGet32(PcdX)`；不同类型用不同宏，混用会报错[c1a2b3c4]。',
     '## 参考来源',
-    '- EDK II Module Write Guide - 1.1 Overview + 2.1 Package（本地：edk2-ModuleWriteGuide > 2.1 Package）',
-    '',
-    '---',
-    '',
-    'Example 1 中的 `[cXXXXXXXX]` 引用仅为格式示意：实际引用必须使用上下文条目里真实存在的稳定编号。回答末尾必须附 `## 参考来源` 块。',
+    '- EDK II Platform Configuration Database (PCD) - PCD Types（本地：… > PCD Types）',
+    '（示例中的 [c1a2b3c4] 为占位，实际必须用上下文里真实存在的编号。）',
   ].join('\n');
 
   const messages = [{ role: 'system', content: system }];
@@ -1334,7 +1346,14 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
       messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 4000) });
     }
   }
-  messages.push({ role: 'user', content: `RAG 参考上下文：\n${context}\n\n原始问题：${question}` });
+  let userContent = `RAG 参考上下文：\n${context}\n\n原始问题：${question}`;
+  // L2b: when retrieval relevance is low, nudge the model toward its honest-
+  // refusal rule instead of guessing (L1 rule 2). Kept out of the system prompt
+  // so it only fires on weak-retrieval turns and preserves the stable prefix cache.
+  if (opts.lowCoverage) {
+    userContent += '\n\n（注意：本次检索到的资料相关度偏低，若上方上下文不足以回答，请严格按证据约束诚实说明"根据当前资料无法确认 XXX"并指明缺哪类信息，禁止猜测或补全。）';
+  }
+  messages.push({ role: 'user', content: userContent });
   messages.prevCount = ctxCapped.filter(r => r.prev).length;
   messages.ctxCount = ctxCapped.length;
   messages.ctxChars = ctxChars;
@@ -1368,6 +1387,11 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
     // prompt prefix is actually being reused across requests.
     const payload = {
       model, messages, temperature: 0, stream: true, max_tokens: maxTokens,
+      // Disable the model's private chain-of-thought ("reasoning_content") so it
+      // answers directly in `content`. Reasoning models otherwise stream their
+      // planning ("分析上下文/开始撰写/…") to the user. `none` keeps factual,
+      // cited RAG answers short and on-point.
+      reasoning_effort: 'none',
       stream_options: { include_usage: true },
     };
 
@@ -1435,13 +1459,16 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
                   finishReason = choice.finish_reason;
                 }
                 const delta = choice.delta;
-                // DeepSeek reasoning models may emit the answer in
-                // `reasoning_content` while `content` is empty (complex prompts).
+                // Use `content` as the answer. Some reasoning models stream the
+                // final answer in `reasoning_content` while `content` is empty; in
+                // that case fall back to `reasoning_content` but strip thinking
+                // markers so the model's private planning ("分析上下文/开始撰写…")
+                // never reaches the user.
                 const piece = delta && (delta.content || delta.reasoning_content);
                 if (piece) {
                   if (_firstToken) { _firstToken = false; console.error(`[LLMDBG] first content token after ${Date.now() - _t0}ms`); }
                   clearFirstToken();
-                  onDelta(piece);
+                  onDelta(stripReasoning(piece));
                 }
               }
               // DeepSeek returns cumulative token usage (incl. prefix-cache
@@ -1483,7 +1510,7 @@ async function llmComplete(messages, { timeoutMs = 60000, maxTokens = 300, signa
     if (!apiKey || !baseUrl || !model) return resolve('');
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const u = new URL(url);
-    const payload = { model, messages, temperature: 0, max_tokens: maxTokens };
+    const payload = { model, messages, temperature: 0, max_tokens: maxTokens, reasoning_effort: 'none' };
     const protocol = u.protocol === 'https:' ? https : http;
     const req = protocol.request({
       hostname: u.hostname,
@@ -1509,11 +1536,11 @@ async function llmComplete(messages, { timeoutMs = 60000, maxTokens = 300, signa
          try {
            const j = JSON.parse(data);
            const msg = j.choices && j.choices[0] && j.choices[0].message;
-           // Fall back to reasoning_content: DeepSeek reasoning models put the
-           // answer there (content empty) for complex prompts.
-           const text = (msg && (msg.content || msg.reasoning_content)) || '';
+            // Prefer `content`; fall back to `reasoning_content` (thinking stripped
+            // by stripReasoning) for reasoning models that answer there.
+            const text = (msg && (msg.content || msg.reasoning_content)) || '';
            console.error(`[LCMPLDBG] end OK after ${Date.now() - _t0}ms chars=${typeof text === 'string' ? text.length : 0}`);
-           resolve(typeof text === 'string' ? text.trim() : '');
+            resolve(typeof text === 'string' ? stripReasoning(text).trim() : '');
          } catch { console.error(`[LCMPLDBG] end parse-fail after ${Date.now() - _t0}ms`); resolve(''); }
       });
     });
@@ -1651,7 +1678,7 @@ async function llmAnswer(question, results, history, prevResults) {
   const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
   const resp = await httpJson(url, {
     method: 'POST',
-    payload: { model, messages, temperature: 0 },
+    payload: { model, messages, temperature: 0, reasoning_effort: 'none' },
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'User-Agent': process.env.LLM_USER_AGENT ||
@@ -1664,10 +1691,9 @@ async function llmAnswer(question, results, history, prevResults) {
     return { error: `LLM API error ${resp.status}: ${JSON.stringify(resp.body).substring(0, 500)}` };
   }
   const msg = resp.body && resp.body.choices && resp.body.choices[0] && resp.body.choices[0].message;
-  // Fall back to reasoning_content: DeepSeek reasoning models put the answer
-  // there (content empty) for complex prompts.
+  // Prefer `content`; fall back to `reasoning_content` (thinking stripped).
   const content = msg ? (msg.content || msg.reasoning_content) : '';
-  return { answer: content, model };
+  return { answer: stripReasoning(content), model };
 }
 
 const MIME = {
@@ -2119,6 +2145,19 @@ async function handleAsk(req, res) {
       for (const r of results) { r.cid = r.cid || stableCid(r); }
       sendSSE(res, 'results', { results: results.slice(0, 15), daemon: url, from_cache: fromCache });
 
+      // L2b — Retrieval coverage gate. If the top evidence is too weakly
+      // relevant, surface a hint so the LLM honestly declines instead of
+      // hallucinating (L1 rule 2). Pure-code, no extra retrieval unless L2b's
+      // query-rewrite extension is later added.
+      const coverage = retrievalCoverage(results);
+      if (coverage.low) {
+        sendSSE(res, 'phase', { step: 'low_coverage', text: '检索相关度偏低，将如实说明', progress: 35 });
+        emitTrace({
+          traceId, stage: 'coverage', durationMs: 0, queryHash: qh,
+          status: 'low', maxScore: coverage.maxScore, threshold: RERANK_COVERAGE_THRESHOLD,
+        });
+      }
+
       // 2) stream LLM answer
       sendSSE(res, 'phase', { step: 'llm_init', text: '初始化LLM…', progress: 40 });
       const { apiKey, baseUrl } = llmConfig();
@@ -2130,7 +2169,7 @@ async function handleAsk(req, res) {
       }
       sendSSE(res, 'phase', { step: 'llm_build', text: '构建提示词…', progress: 50, model });
       
-      const messages = buildMessages(question, results, history, prevResults);
+      const messages = buildMessages(question, results, history, prevResults, { lowCoverage: coverage.low });
       const inputChars = messages.reduce(
         (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
       emitTrace({
@@ -2177,7 +2216,9 @@ async function handleAsk(req, res) {
           let lastCtxChars = 0;
           try {
             const messages = buildMessages(question, results, history, prevResults,
-              attemptCtxCaps[attempt - 1] ? { maxCtxChars: attemptCtxCaps[attempt - 1] } : {});
+              Object.assign(
+                attemptCtxCaps[attempt - 1] ? { maxCtxChars: attemptCtxCaps[attempt - 1] } : {},
+                { lowCoverage: coverage.low }));
             lastCtxChars = messages.ctxChars;
             const inputChars = messages.reduce(
               (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
@@ -2242,7 +2283,7 @@ async function handleAsk(req, res) {
                   content: lastUserMsg.content + '\n\n[注意：你之前的回答被截断了，以下是已经开始的部分回答]'
                 },
                 { role: 'assistant', content: fullAnswer },
-                { role: 'user', content: '请从上次中断的地方继续，保持内容的连贯性和完整性。' }
+                { role: 'user', content: '请从上次中断的地方继续，保持内容的连贯性和完整性。直接从中断处续写正文，不要写"现在撰写""以下是完整答复""接上次未完成部分"等任何前缀或说明。' }
               ];
               currentResult = await llmStream(continuationMessages, {
                 onDelta: (text) => {
@@ -2325,7 +2366,7 @@ async function handleAsk(req, res) {
       // single delta.
       if (tokenCount === 0 && (Date.now() - llmStart) < LLM_TOTAL_BUDGET_MS) {
         sendSSE(res, 'phase', { step: 'llm_retry', text: '改用非流式生成…', progress: 75, model });
-        const fbMessages = buildMessages(question, results, history, prevResults, { maxCtxChars: 6000 });
+        const fbMessages = buildMessages(question, results, history, prevResults, { maxCtxChars: 6000, lowCoverage: coverage.low });
         const fbInputChars = fbMessages.reduce(
           (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
         emitTrace({
@@ -2368,6 +2409,25 @@ async function handleAsk(req, res) {
         traceId, stage: 'llm_generate', durationMs: Date.now() - llmStart,
         queryHash: qh, status: 'ok', tokens: tokenCount,
       });
+      // L2c — Post-generation citation verification (structural guard). Flag any
+      // `[cXXXXXXXX]` that does not exist in this turn's retrieval set so the
+      // client can mark it as unverified; the model cannot forge a valid id.
+      const cit = validateCitations(fullAnswer, results);
+      if (cit.invalid.length) {
+        emitTrace({
+          traceId, stage: 'citation_check', durationMs: 0, queryHash: qh,
+          status: 'invalid', invalid: cit.invalid, used: cit.used.length,
+        });
+        sendSSE(res, 'citation_warn', {
+          invalid: cit.invalid,
+          note: '以下引用编号未出现在本次检索结果中，可能不可靠，请以上下文为准。',
+        });
+      } else {
+        emitTrace({
+          traceId, stage: 'citation_check', durationMs: 0, queryHash: qh,
+          status: 'ok', used: cit.used.length,
+        });
+      }
       sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model, tokens: tokenCount });
       // Store the completed self-contained answer for future replays.
       const selfContained = !history.length && !prevResults.length && parsed.fresh !== true;
@@ -2383,7 +2443,7 @@ async function handleAsk(req, res) {
           status: 'ok', hit: false, tokens: tokenCount,
         });
       }
-      sendSSE(res, 'done', { model, tokens: tokenCount, from_cache: fromCache });
+      sendSSE(res, 'done', { model, tokens: tokenCount, from_cache: fromCache, unverifiedCitations: cit.invalid });
       res.end();
       finishTotal('ok', { tokens: tokenCount, from_cache: fromCache });
     } catch (e) {
