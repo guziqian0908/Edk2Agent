@@ -716,70 +716,27 @@ async function ensureDaemonRunning() {
 // hybrid retrieval (dense vector + BM25) weights the intended topic above
 // incidental keyword matches (e.g. "模块" appearing in both "module" and
 // "driver model" context).
-const KB_EXPANSION_RULES = [
-  // 元数据文件 / 构建体系
-  { w: 1.0, re: /inf|dsc|dec|fdf|元数据|inf文件|dsc文件|dec文件|fdf文件|包配置|平台配置|模块关系|包关系/, terms: 'INF DSC DEC FDF file format EDK II module package platform build AutoGen' },
-  { w: 1.0, re: /模块.{0,10}(包|平台)|包.{0,10}(模块|平台)|平台.{0,10}模块|module.*package.*platform|package和module/, terms: 'module package platform relationship EDK II build hierarchy Module Package Platform' },
-  // 命名规范 / 编码风格
-  { w: 1.0, re: /命名|命名规范|命名规则|变量命名|函数命名|文件名|标识符|前缀|coding.*naming/, terms: 'naming conventions identifiers Hungarian prefix gVariable mVariable pPointer CamelCase EACH_WORD_IS_DISTINCT EDK II coding standards 4.4 Identifiers function data type macro names' },
-  { w: 0.9, re: /编码规范|代码风格|代码格式|排版|缩进|空白|格式要求|coding|style|formatting|spacing/, terms: 'coding standards code style formatting spacing indentation EDK II coding standards specification' },
-  // MODULE_TYPE / 模块开发
-  { w: 1.0, re: /MODULE_TYPE|模块类型|模块型|入口函数|入口点|ENTRY_POINT|entry point/, terms: 'MODULE_TYPE module type ENTRY_POINT entry point SEC PEI_CORE PEIM DXE_CORE DXE_DRIVER UEFI_DRIVER UEFI_APPLICATION BASE' },
-  // 库类 / 库实例
-  { w: 1.0, re: /库类|库实例|library class|library instance|库绑定|库映射/, terms: 'library class library instance INF DSC binding LIBRARY_CLASS constructor' },
-  // PCD
-  { w: 1.0, re: /pcd|固定值|动态配置|编译期|FeatureFlag|FixedAtBuild|PatchableInModule/, terms: 'PCD types PcdsFeatureFlag PcdsFixedAtBuild PcdsPatchableInModule PcdsDynamic PcdsDynamicEx PcdLib FixedPcdGet' },
-  // Depex / 依赖表达式
-  { w: 1.0, re: /depex|依赖表达式|依赖表达式|派发顺序|依赖协议|depex段/, terms: '[Depex] dependency expression dispatch order Protocol PPI TRUE AND OR NOT' },
-  // 单模块编译
-  { w: 1.0, re: /只编译|单个模块|build.{0,10}(-m|-p)|编译参数|AutoGen|编译单个/, terms: 'build command -p -m -a -b -t AutoGen.c AutoGen.h module build output Build' },
-  // 编译报错
-  { w: 0.9, re: /报错|编译错误|链接错误|unresolved|error 4000|LNK2001|C4013|字母大小写|case mismatch/, terms: 'build error LNK2001 unresolved external symbol error 4000 Guid not found library class not found case mismatch' },
-  // DEBUG / ASSERT
-  { w: 1.0, re: /调试信息|打印|DEBUG|ASSERT|CpuDeadLoop|调试.*配置|PcdDebug/, terms: 'DEBUG ASSERT DebugLib PcdDebugPrintErrorLevel PcdDebugPropertyMask CpuDeadLoop debug output' },
-  // UEFI Driver Model
-  { w: 1.0, re: /driver binding|DriverBinding|驱动绑定|Supported|Start\(\)|Stop\(\)|驱动模型/, terms: 'UEFI Driver Model Driver Binding Protocol Supported Start Stop EFI_DRIVER_BINDING_PROTOCOL' },
-  // Protocol 获取方式
-  { w: 1.0, re: /LocateProtocol|LocateHandleBuffer|OpenProtocol|协议.{0,10}(获取|拿)|拿.*协议|协议属性|Attributes/, terms: 'LocateProtocol LocateHandleBuffer OpenProtocol CloseProtocol EFI_OPEN_PROTOCOL_BY_DRIVER handle database' },
-  // 贡献流程 / CI / PR
-  { w: 1.0, re: /贡献|提补丁|上游|提交.*(流程|步骤)|contribution|onboarding|collaborator/, terms: 'EDK II contribution process git rebase PatchCheck Uncrustify Stuart CI pull request fork' },
-  { w: 1.0, re: /commit message|提交信息|提交格式|签名行|Signed-off-by|提交标题/, terms: 'commit message format Signed-off-by PatchCheck multi-package Global summary line length' },
-  { w: 0.9, re: /拆分|拆成.*(commit|提交)|commit.{0,10}拆|git bisect|提交拆分/, terms: 'commit partitioning git bisect commit granularity separate commits' },
-  { w: 1.0, re: /Uncrustify|格式化|自动格式化|uncrustify|zachflower/, terms: 'Uncrustify uncrustify.cfg UncrustifyCheck stuart_ci_build format document' },
-  { w: 0.9, re: /CI|流水线|Azure|Mergify|评审|reviewer|maintainer|合并|合入|push.*标签/, terms: 'EDK II CI Azure Pipelines Mergify PatchCheck review maintainer push label' },
-  // 编码规范：类型 / 函数 / 控制流
-  { w: 1.0, re: /int|char|标准C|UINTN|EFI_STATUS|数据类型|EFIAPI|VOLATILE|typedef/, terms: 'UEFI data types INTN UINTN EFI_STATUS EFIAPI VOID CHAR16 EFI_GUID typedef' },
-  { w: 0.9, re: /函数.{0,4}(排版|头|注释)|文件头|@retval|Doxygen|@file|@param/, terms: 'function definition layout function heading Doxygen @retval @param @file file heading' },
-  { w: 0.9, re: /goto|ASSERT.*规则|流程控制|if.*else|switch.*case|注释.{0,4}禁忌/, terms: 'flow control goto ASSERT switch case comment prohibitions EDK II coding standards' },
-  // 启动流程
-  { w: 1.0, re: /启动流程|启动阶段|SEC|PEI|DXE|BDS|TSL|上电|引导流程|PI.*架构/, terms: 'PI boot flow SEC PEI DXE BDS TSL RT AL phase UEFI boot sequence' },
-  { w: 1.0, re: /PEIM.{0,10}(调用|通信)|PPI|HOB|PEI.{0,10}(服务|内存)|横向/, terms: 'PEI PPI PEIM InstallPpi LocatePpi HOB Hand-Off Block PEI Services' },
-  // UEFI 服务
-  { w: 1.0, re: /Boot Services|Runtime Services|ExitBootServices|启动服务|运行时服务|内存图|MapKey/, terms: 'Boot Services Runtime Services ExitBootServices MapKey GetMemoryMap EFI runtime' },
-  { w: 1.0, re: /TPL|任务优先级|RaiseTPL|RestoreTPL|中断.{0,4}优先级|NotifyTpl/, terms: 'TPL Task Priority Level RaiseTPL RestoreTPL TPL_APPLICATION TPL_CALLBACK TPL_NOTIFY TPL_HIGH_LEVEL' },
-  { w: 1.0, re: /AllocatePages|AllocatePool|内存类型|EfiBootServicesData|EfiRuntimeServicesData|FreePages|FreePool/, terms: 'AllocatePages AllocatePool memory type EfiBootServicesData EfiRuntimeServicesData FreePages FreePool' },
-  { w: 1.0, re: /事件|Event|EVT_TIMER|SetTimer|EVT_NOTIFY|CreateEvent|等待.*事件|异步/, terms: 'UEFI event CreateEvent SetTimer EVT_TIMER EVT_NOTIFY_SIGNAL WaitForEvent CloseEvent' },
-  { w: 1.0, re: /(UEFI|EFI).{0,6}变量|变量服务|GetVariable|SetVariable|NVRAM|NV\+BS|BootOrder|读写变量|变量存储|变量存取|非易失变量/, terms: 'UEFI variable GetVariable SetVariable EFI_VARIABLE_NON_VOLATILE BOOTSERVICE_ACCESS RUNTIME_ACCESS NVRAM' },
-  // SMM / MM
-  { w: 1.0, re: /SMM|MMRAM|MM_STANDALONE|DXE_SMM|MmStandalone|standalone mm|management mode|管理模式/, terms: 'SMM MM Standalone MmStandalone DXE_SMM_DRIVER MMRAM Management Mode CommBuffer' },
-  // HII / VFR
-  { w: 1.0, re: /HII|VFR|设置界面|BIOS Setup|Form Browser|formset|varstore|人性化/, terms: 'HII Human Interface Infrastructure VFR formset form varstore IFR Form Browser' },
-  // Secure Boot
-  { w: 1.0, re: /Secure Boot|安全启动|PK|KEK|dbx|签名验证|可信启动|Trusted Boot|Measured Boot/, terms: 'UEFI Secure Boot PK KEK db dbx Trusted Boot Measured Boot TPM PCR verified boot' },
-  // 基础保留项
-  { w: 0.8, re: /提交|commit|签off|签名|贡献/, terms: 'commit requirements commit message format commit signature Signed-off-by code contribution' },
-  { w: 0.8, re: /驱动|driver|uefi驱动|驱动开发/, terms: 'UEFI driver driver model driver binding DriverBinding Protocol' },
-  { w: 0.8, re: /构建|build|编译|edk2编译|编译环境/, terms: 'build toolchain GCC VS ICC compilation build process' },
-  { w: 0.8, re: /工具链|toolchain|编译器|编译工具/, terms: 'toolchain GCC Visual Studio ICC compiler build tools' },
-  { w: 0.8, re: /安全|security|安全编码|安全规范/, terms: 'security secure coding security guide security review' },
-  { w: 0.8, re: /审查|review|代码审查|代码review/, terms: 'code review review process review guidelines' },
-  { w: 0.8, re: /文档|document|注释|comment/, terms: 'documentation comments Doxygen documenting code' },
-  { w: 0.8, re: /启动|boot|引导|uefi启动/, terms: 'boot flow boot sequence UEFI boot PI specification' },
-  { w: 0.8, re: /测试|test|单元测试|单元测试/, terms: 'unit test testing test framework validation' },
-  { w: 0.8, re: /调试|debug|调试方法|调试工具/, terms: 'debug debugging debug tools GDB WinDbg' },
-  { w: 0.8, re: /漏洞|vulnerability|缓冲区|溢出/, terms: 'vulnerability buffer overflow security mitigation DEP ASLR' },
-  { w: 0.8, re: /许可|license|开源协议|bsd/, terms: 'license BSD open source licensing contribution agreement' },
-];
+// P2-9 single source of truth: rules live in
+// edk2-kb/expansion_rules.json and are loaded by BOTH this service and the
+// daemon's rewrite_query (for CJK queries), so the two can never drift.
+function loadExpansionRules() {
+  const rulesPath = path.join(__dirname, '..', 'edk2-kb', 'expansion_rules.json');
+  try {
+    const j = JSON.parse(fs.readFileSync(rulesPath, 'utf-8'));
+    const rules = (j.rules || []).map(r => ({
+      w: Number(r.w) || 0.5,
+      re: new RegExp(r.re, 'i'),
+      terms: String(r.terms || ''),
+    }));
+    console.log(`[expansion] loaded ${rules.length} shared expansion rules from ${rulesPath}`);
+    return rules;
+  } catch (e) {
+    console.error(`[expansion] failed to load shared rules (${rulesPath}): ${e.message}`);
+    return [];
+  }
+}
+
+const KB_EXPANSION_RULES = loadExpansionRules();
 
 // Focused docs-source queries per enumerative topic. The broad retrieval
 // queries recall the chapter FAMILY but often miss the concrete rule
@@ -1811,6 +1768,17 @@ const ANALYZE_SYSTEM_DECOMPOSE =
   '2) Decompose the question into 2-4 independent English retrieval sub-queries, each focused on ONE sub-question or comparison dimension, keeping EDK2 terms as-is. If the question is a single point, return an empty list. ' +
   'Output ONLY strict JSON, no markdown fences, no explanation: {"translation": "...", "sub_queries": ["...", "..."]}';
 
+// P2-8: for short Chinese questions, the LLM also writes 2-3 English
+// rephrasings (different angle, same meaning). Each paraphrase is later
+// validated by RETRIEVAL GAIN (not cosine similarity): it must share >=1
+// document with the main search (topic anchor) AND surface >=1 new document
+// (actual recall gain), otherwise it is discarded.
+const ANALYZE_SYSTEM_PARAPHRASE =
+  'You are a query analysis engine for an EDK2/TianoCore documentation knowledge base. Do BOTH: ' +
+  '1) Translate the user question into concise, technically accurate English for document retrieval, keeping EDK2 terms (INF, DSC, DEC, FDF, PCD, SMM, HII, protocol, GUID...) as-is. ' +
+  '2) Write 2-3 ALTERNATIVE English rephrasings of the SAME question (different wording or angle, same meaning), keeping EDK2 terms as-is. ' +
+  'Output ONLY strict JSON, no markdown fences, no explanation: {"translation": "...", "sub_queries": ["...", "..."]}';
+
 function parseAnalysis(text, question, decompose) {
   const data = { translation: question, subQueries: [] };
   const raw = String(text || '').trim();
@@ -1845,21 +1813,28 @@ async function analyzeQuery(question, tier) {
   const hit = translationCache.get(key);
   if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.data;
   const decompose = tier === 'complex';
+  const paraphrase = tier === 'simple';
   // The corpus is English-only: a question that is already pure ASCII (English
   // phrasing, EDK2 identifiers, error codes) is used verbatim, skipping a full
-  // LLM round-trip (~2s) that would only rephrase it — unless decomposition is
-  // needed for a multi-sub-question complex turn.
-  if (!decompose && /^[\x00-\x7F\s]+$/.test(question) && /[a-zA-Z]{3,}/.test(question)) {
+  // LLM round-trip (~2s) that would only rephrase it — unless decomposition /
+  // paraphrase expansion is wanted for this tier.
+  if (!decompose && !paraphrase &&
+      /^[\x00-\x7F\s]+$/.test(question) && /[a-zA-Z]{3,}/.test(question)) {
     const data = { translation: question, subQueries: [] };
     translationCache.set(key, { data, timestamp: Date.now() });
     return data;
   }
+  const systemPrompt = decompose ? ANALYZE_SYSTEM_DECOMPOSE
+    : paraphrase ? ANALYZE_SYSTEM_PARAPHRASE
+    : ANALYZE_SYSTEM_TRANSLATE;
   const text = await llmComplete([
-    { role: 'system', content: decompose ? ANALYZE_SYSTEM_DECOMPOSE : ANALYZE_SYSTEM_TRANSLATE },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: question },
-  ], { timeoutMs: 60000, maxTokens: decompose ? 500 : 300 });
+  ], { timeoutMs: 60000, maxTokens: decompose || paraphrase ? 500 : 300 });
   const data = parseAnalysis(text, question, decompose);
   if (!data.translation) data.translation = question;
+  // Paraphrase mode must not silently degrade into decomposition: cap at 3.
+  if (paraphrase) data.subQueries = data.subQueries.slice(0, 3);
   translationCache.set(key, { data, timestamp: Date.now() });
   return data;
 }
@@ -2142,11 +2117,30 @@ async function handleAsk(req, res) {
             httpJson(`${url}/search?query=${encodeURIComponent(sq)}&top_k=10&dedup=false`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
           const [mainResp, docsResp, ...restResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises, ...subPromises]);
           const docsFocusResps = restResps.slice(0, docsFocusQueries.length);
-          const subResps = restResps.slice(docsFocusQueries.length);
+          let subResps = restResps.slice(docsFocusQueries.length);
+          // P2-8: retrieval-gain validation for simple-tier paraphrases. A
+          // paraphrase is kept only if (a) it shares >=1 document with the
+          // main search (topic anchor — the paraphrase did not drift) AND
+          // (b) it surfaces >=1 document the main search missed (actual
+          // recall gain). Skipped when the main search returned nothing.
+          if (tier === 'simple' && subResps.length) {
+            const mainFiles = new Set(
+              ((mainResp && mainResp.body && mainResp.body.results) || [])
+                .map(r => String(r.file || r.title || '')).filter(Boolean));
+            if (mainFiles.size) {
+              subResps = subResps.filter(sr => {
+                const rs = (sr && sr.body && sr.body.results) || [];
+                const files = rs.map(r => String(r.file || r.title || '')).filter(Boolean);
+                const anchor = files.some(f => mainFiles.has(f));
+                const gain = files.some(f => !mainFiles.has(f));
+                return anchor && gain;
+              });
+            }
+          }
           emitTrace({
             traceId, stage: 'mcp_search', durationMs: Date.now() - searchStart,
             queryHash: qh, status: 'ok', calls: 2 + docsFocusQueries.length + subQueries.length,
-            subQueries: subQueries.length,
+            subQueries: subQueries.length, validSubQueries: subResps.length,
           });
           searchResp = mainResp;
           const docsResults = (docsResp && docsResp.body && docsResp.body.results) || [];

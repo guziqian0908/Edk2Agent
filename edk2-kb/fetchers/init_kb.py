@@ -552,17 +552,12 @@ def _is_valid_content(content: str, min_len: int = 100) -> bool:
         return False
     return True
 
+def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 0) -> List[Dict]:
+    """Split text into chunks (fallback when no heading structure exists).
 
-def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[Dict]:
-    """Split text into overlapping chunks for better retrieval.
-
-    Args:
-        text: Full text to chunk
-        chunk_size: Target size of each chunk in characters
-        overlap: Number of characters to overlap between chunks
-
-    Returns:
-        List of dicts with 'text' and 'position' keys
+    Breaks at paragraph/sentence boundaries; ``overlap`` is 0 by default —
+    duplicated text between chunks is avoided (0~5% sentence-anchored overlap
+    can be re-enabled by passing a small positive value).
     """
     if len(text) <= chunk_size:
         return [{'text': text, 'position': f"0-{len(text)}"}]
@@ -602,31 +597,174 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[Di
     return chunks if chunks else [{'text': text, 'position': f"0-{len(text)}"}]
 
 
+_FENCE_RE = re.compile(r'^\s*(```|~~~)')
+_TABLE_LINE_RE = re.compile(r'^\s*\|.*\|\s*$')
+_RULE_SENTENCE_RE = re.compile(
+    r'^\s*(shall|must|may|should)\b|^\s*There\s+(shall|must)\b',
+    re.IGNORECASE)
+
+
+def _find_break(lines: List[str], start: int, end: int, min_len: int) -> int:
+    """Pick a safe split point inside ``lines[start:end]``.
+
+    Prefers (in order): a rule-sentence start (shall/must/...), a paragraph
+    break, a sentence-ending line, the largest lexical-gap boundary (topic
+    shift proxy: adjacent lines share few terms). Never cuts inside a fenced
+    code block or a markdown table — those always stay whole.
+    """
+    # Mark forbidden regions: inside ``` fences and inside tables.
+    in_fence = False
+    candidates = []  # (priority, index) index = line start
+    for i in range(start, end):
+        line = lines[i]
+        if _FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if _TABLE_LINE_RE.match(line):
+            continue
+        if i <= start + min_len:
+            continue
+        prio = 0
+        stripped = line.strip()
+        if _RULE_SENTENCE_RE.match(stripped):
+            prio = 4                      # strongest: a new normative rule
+        elif not stripped and i + 1 < end and lines[i + 1].strip():
+            prio = 3                      # paragraph break
+        elif stripped.endswith(('.', ';', ':')):
+            prio = 2                      # sentence end
+        else:
+            prio = 1                      # lexical-gap candidate
+        candidates.append((prio, i))
+    if not candidates:
+        return end
+    candidates.sort(key=lambda c: (-c[0], c[1]))
+    # Lexical gap among priority-1 candidates: pick the one whose term sets
+    # (current vs next line) overlap least — a cheap topic-shift detector
+    # (NLP-free semantic boundary proxy, zero model cost).
+    p1 = [i for p, i in candidates if p == 1]
+    if p1 and len(p1) > 1:
+        def terms(line: str) -> set:
+            return {w.lower() for w in re.split(r'[\s\W_]+', line) if len(w) > 2}
+        best, best_gap = p1[0], -1.0
+        for i in p1:
+            prev_win = ' '.join(lines[max(start, i - 2):i])
+            next_win = ' '.join(lines[i:min(end, i + 2)])
+            a, b = terms(prev_win), terms(next_win)
+            if not a or not b:
+                continue
+            gap = 1.0 - (len(a & b) / min(len(a), len(b)))
+            if gap > best_gap:
+                best, best_gap = i, gap
+        # Only trust a strong gap over the first sentence-end candidate.
+        if best_gap >= 0.75:
+            return best
+    return candidates[0][1]
+
+
 def _split_long_text(text: str, chunk_size: int = 2000,
-                     overlap: int = 200, min_chunk_size: int = 300) -> List[str]:
-    """Split an over-long section body at sentence boundaries."""
+                     overlap: int = 0, min_chunk_size: int = 300) -> List[str]:
+    """Split an over-long section body at safe boundaries.
+
+    Splits land at rule-sentence starts / paragraph breaks / sentence ends /
+    lexical-gap (topic-shift) boundaries, never inside code fences or tables.
+    ``overlap`` is sentence-anchored: 0 by default (chunks start at the next
+    boundary — section paths are prefixed, so continuity does not rely on
+    duplicated text; a value >0 keeps that many trailing characters).
+    """
     if len(text) <= chunk_size:
         return [text]
-    parts = []
+    lines = text.split('\n')
+    parts: List[str] = []
     start = 0
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        if end < len(text):
-            search_start = max(start, end - 260)
-            # Prefer the last paragraph break, then the last sentence break.
-            last_nl = text.rfind('\n', search_start, end)
-            last_period = text.rfind('.', search_start, end)
-            break_point = max(last_nl, last_period)
-            if break_point > start + min_chunk_size:
-                end = break_point + 1
-        part = text[start:end].strip()
+    total = len(lines)
+    while start < total:
+        remain = sum(len(l) + 1 for l in lines[start:])
+        if remain <= chunk_size:
+            parts.append('\n'.join(lines[start:]).strip())
+            break
+        # End candidate: prefer a boundary near chunk_size; fall back hard-cut.
+        limit = start + 1
+        acc = 0
+        while limit < total and acc < chunk_size:
+            acc += len(lines[limit]) + 1
+            limit += 1
+        end = _find_break(lines, start, min(limit, total), min_chunk_size)
+        part = '\n'.join(lines[start:end]).strip()
         if len(part) >= min_chunk_size:
             parts.append(part)
-        next_start = end - overlap
-        if next_start <= start:
-            next_start = start + chunk_size
-        start = next_start
-    return parts if parts else [text]
+        start = end
+    return [p for p in parts if p] or [text]
+
+
+def chunk_text_structured(text: str, chunk_size: int = 2000,
+                          overlap: int = 0) -> List[Dict]:
+    """Split text into chunks that respect the markdown heading hierarchy.
+
+    Each chunk keeps its section path (the chain of headings that contains
+    it) so retrieval retains document context. Over-long sections are split
+    at safe boundaries (rule sentences / paragraphs / sentence ends / topic
+    gaps; never inside code fences or tables) and each sub-chunk is prefixed
+    with its section path, dramatically improving relevance for structured
+    EDK2 docs. ``overlap`` is sentence-anchored (0 = no duplicated text).
+
+    Returns:
+        List of dicts with 'text', 'position', 'section' and 'section_level'
+        keys.
+    """
+    lines = text.split('\n')
+    if not lines:
+        return []
+
+    chunks: List[Dict] = []
+    heading_stack: List[Tuple[int, str]] = []
+    current_lines: List[str] = []
+
+    def section_path() -> str:
+        return ' > '.join(title for _, title in heading_stack)
+
+    def section_level() -> int:
+        return heading_stack[-1][0] if heading_stack else 0
+
+    def flush() -> None:
+        nonlocal current_lines
+        if not current_lines:
+            return
+        body = '\n'.join(current_lines).strip()
+        current_lines = []
+        if not body:
+            return
+        section = section_path()
+        level = section_level()
+        if len(body) <= chunk_size or not section:
+            # Short section, or no heading context: keep as a single chunk.
+            if section:
+                body = f"Section: {section}\n{body}"
+            chunks.append({'text': body, 'position': f"0-{len(body)}",
+                           'section': section, 'section_level': level})
+            return
+        # Long section: split at safe boundaries, prefix the section path.
+        for i, sub in enumerate(_split_long_text(body, chunk_size, overlap)):
+            sub_body = f"Section: {section}\n{sub}"
+            chunks.append({'text': sub_body, 'position': f"{i}:{len(sub)}",
+                           'section': section, 'section_level': level})
+
+    for line in lines:
+        m = _MARKDOWN_HEADING_RE.match(line.strip())
+        if m:
+            flush()
+            level = len(m.group(1))
+            title = m.group(2).strip()
+            while heading_stack and heading_stack[-1][0] >= level:
+                heading_stack.pop()
+            heading_stack.append((level, title))
+            current_lines.append(line)
+        else:
+            current_lines.append(line)
+    flush()
+
+    return chunks if chunks else chunk_text(text, chunk_size, overlap)
 
 
 _RST_UNDERLINE_CHARS = '=-~^"`+*:'
@@ -654,68 +792,6 @@ def rst_to_markdown_headings(text: str) -> str:
             continue
         out.append(line)
     return '\n'.join(out)
-
-
-def chunk_text_structured(text: str, chunk_size: int = 2000,
-                          overlap: int = 200) -> List[Dict]:
-    """Split text into chunks that respect the markdown heading hierarchy.
-
-    Each chunk keeps its section path (the chain of headings that contains
-    it) so retrieval retains document context. Over-long sections are split
-    at sentence boundaries and each sub-chunk is prefixed with its section
-    path, dramatically improving relevance for structured EDK2 docs.
-
-    Returns:
-        List of dicts with 'text', 'position' and 'section' keys.
-    """
-    lines = text.split('\n')
-    if not lines:
-        return []
-
-    chunks: List[Dict] = []
-    heading_stack: List[Tuple[int, str]] = []
-    current_lines: List[str] = []
-
-    def section_path() -> str:
-        return ' > '.join(title for _, title in heading_stack)
-
-    def flush() -> None:
-        nonlocal current_lines
-        if not current_lines:
-            return
-        body = '\n'.join(current_lines).strip()
-        current_lines = []
-        if not body:
-            return
-        section = section_path()
-        if len(body) <= chunk_size or not section:
-            # Short section, or no heading context: keep as a single chunk.
-            if section:
-                body = f"Section: {section}\n{body}"
-            chunks.append({'text': body, 'position': f"0-{len(body)}",
-                           'section': section})
-            return
-        # Long section: split at sentence boundaries, prefix the section path.
-        for i, sub in enumerate(_split_long_text(body, chunk_size, overlap)):
-            sub_body = f"Section: {section}\n{sub}"
-            chunks.append({'text': sub_body, 'position': f"{i}:{len(sub)}",
-                           'section': section})
-
-    for line in lines:
-        m = _MARKDOWN_HEADING_RE.match(line.strip())
-        if m:
-            flush()
-            level = len(m.group(1))
-            title = m.group(2).strip()
-            while heading_stack and heading_stack[-1][0] >= level:
-                heading_stack.pop()
-            heading_stack.append((level, title))
-            current_lines.append(line)
-        else:
-            current_lines.append(line)
-    flush()
-
-    return chunks if chunks else chunk_text(text, chunk_size, overlap)
 
 
 def process_documents() -> int:
@@ -752,8 +828,10 @@ def process_documents() -> int:
             if _is_valid_content(content):
                 # Chunk the document for better retrieval, keeping section
                 # headings so each chunk retains its document context.
+                # Sentence-anchored overlap=0: no duplicated text between
+                # chunks (the Section: prefix carries the context instead).
                 chunks = chunk_text_structured(content, chunk_size=2000,
-                                               overlap=200)
+                                               overlap=0)
 
                 for chunk_idx, chunk in enumerate(chunks):
                     doc_file = PROCESSED_DIR / f"wiki_{len(documents)}.txt"
@@ -772,6 +850,7 @@ def process_documents() -> int:
                         'title': info.get('title', 'Unknown'),
                         'url': url,
                         'section': chunk.get('section', ''),
+                        'section_level': chunk.get('section_level', 0),
                         'chunk_idx': chunk_idx,
                         'total_chunks': len(chunks)
                     })
@@ -807,8 +886,14 @@ def process_documents() -> int:
 
                     # Chunk the document for better retrieval, keeping section
                     # headings so each chunk retains its document context.
-                    chunks = chunk_text_structured(content, chunk_size=2000,
-                                                   overlap=200)
+                    # Spec/guide markdown repos get rule-level granularity
+                    # (1200 chars): most chapters are dense with shall/must
+                    # rules, and smaller chunks keep one or two rules per
+                    # vector instead of a blended topic. PDFs keep 2000
+                    # (page-extracted text is less structured).
+                    cs = 1200 if suffix != '.pdf' else 2000
+                    chunks = chunk_text_structured(content, chunk_size=cs,
+                                                   overlap=0)
 
                     for chunk_idx, chunk in enumerate(chunks):
                         out_file = PROCESSED_DIR / f"docs_{len(documents)}.txt"
@@ -827,6 +912,7 @@ def process_documents() -> int:
                             'repo': repo_name,
                             'file': rel_path,
                             'section': chunk.get('section', ''),
+                            'section_level': chunk.get('section_level', 0),
                             'chunk_idx': chunk_idx,
                             'total_chunks': len(chunks)
                         })
@@ -849,8 +935,8 @@ def process_documents() -> int:
                     content = rst_to_markdown_headings(f.read())
 
                 if _is_valid_content(content, min_len=150):
-                    chunks = chunk_text_structured(content, chunk_size=2000,
-                                                   overlap=200)
+                    chunks = chunk_text_structured(content, chunk_size=1200,
+                                                   overlap=0)
                     rel_path = f"{version}/source/{rst_file.name}"
                     for chunk_idx, chunk in enumerate(chunks):
                         out_file = PROCESSED_DIR / f"spec_{len(documents)}.txt"
@@ -870,6 +956,7 @@ def process_documents() -> int:
                             'repo': version,
                             'file': rel_path,
                             'section': chunk.get('section', ''),
+                            'section_level': chunk.get('section_level', 0),
                             'chunk_idx': chunk_idx,
                             'total_chunks': len(chunks)
                         })
@@ -889,7 +976,7 @@ def process_documents() -> int:
                     log(f"Skipping empty PDF: {pdf_file.name}", "WARNING")
                     continue
                 chunks = chunk_text_structured(content, chunk_size=2000,
-                                               overlap=200)
+                                               overlap=0)
                 rel_path = f"{version}/source/{pdf_file.name}"
                 for chunk_idx, chunk in enumerate(chunks):
                     out_file = PROCESSED_DIR / f"spec_{len(documents)}.txt"
@@ -909,6 +996,7 @@ def process_documents() -> int:
                         'repo': version,
                         'file': rel_path,
                         'section': chunk.get('section', ''),
+                        'section_level': chunk.get('section_level', 0),
                         'chunk_idx': chunk_idx,
                         'total_chunks': len(chunks)
                     })
@@ -940,7 +1028,7 @@ def process_documents() -> int:
                 if not _is_valid_content(text, min_len=150):
                     continue
                 chunks = chunk_text_structured(text, chunk_size=2000,
-                                               overlap=200)
+                                               overlap=0)
                 for chunk_idx, chunk in enumerate(chunks):
                     out_file = PROCESSED_DIR / f"pr_{len(documents)}.txt"
                     with open(out_file, 'w', encoding='utf-8') as f:
@@ -959,6 +1047,7 @@ def process_documents() -> int:
                         'file': f"PR#{number}",
                         'url': pr.get('html_url', ''),
                         'section': f"PR {number}",
+                        'date': pr.get('created_at', ''),
                         'chunk_idx': chunk_idx,
                         'total_chunks': len(chunks)
                     })
@@ -1012,7 +1101,7 @@ def process_documents() -> int:
                 if not subject or not _is_valid_content(text, min_len=150):
                     continue
                 chunks = chunk_text_structured(text, chunk_size=2000,
-                                               overlap=200)
+                                               overlap=0)
                 for chunk_idx, chunk in enumerate(chunks):
                     out_file = PROCESSED_DIR / f"commit_{len(documents)}.txt"
                     with open(out_file, 'w', encoding='utf-8') as f:
@@ -1031,6 +1120,7 @@ def process_documents() -> int:
                         'file': commit_hash,
                         'url': f"https://github.com/tianocore/edk2/commit/{commit_hash}",
                         'section': subject,
+                        'date': date,
                         'chunk_idx': chunk_idx,
                         'total_chunks': len(chunks)
                     })
@@ -1124,7 +1214,9 @@ def build_chroma_index() -> int:
                     'repo': doc.get('repo', ''),
                     'section': doc.get('section', ''),
                     'chunk_idx': doc.get('chunk_idx', 0),
-                    'total_chunks': doc.get('total_chunks', 1)
+                    'total_chunks': doc.get('total_chunks', 1),
+                    'date': doc.get('date', ''),
+                    'section_level': int(doc.get('section_level', 0) or 0)
                 })
             except Exception:
                 continue

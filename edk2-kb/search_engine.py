@@ -141,6 +141,17 @@ BM25_WEIGHT = float(os.environ.get("EDK2_BM25_WEIGHT", "1.5"))
 # and both the JSON payload and the HTTP transfer stay small.
 MAX_CANDIDATES = int(os.environ.get("EDK2_MAX_CANDIDATES", "200"))
 
+# Commit/PR freshness decay (P2). Requires the 'date' metadata added by the
+# v2 chunking pipeline (init_kb stores commit/PR dates in documents.json and
+# Chroma metadata). Disable with EDK2_COMMIT_DECAY=0.
+EDK2_COMMIT_DECAY = os.environ.get("EDK2_COMMIT_DECAY", "1") != "0"
+EDK2_COMMIT_DECAY_GRACE_YEARS = int(
+    os.environ.get("EDK2_COMMIT_DECAY_GRACE_YEARS", "2"))
+EDK2_COMMIT_DECAY_FACTOR = float(
+    os.environ.get("EDK2_COMMIT_DECAY_FACTOR", "0.85"))
+EDK2_COMMIT_DECAY_FLOOR = float(
+    os.environ.get("EDK2_COMMIT_DECAY_FLOOR", "0.5"))
+
 
 def _minmax(values):
     lo, hi = min(values), max(values)
@@ -286,15 +297,75 @@ def _cjk_keywords(query: str) -> List[str]:
     return hints
 
 
+# ------------------------------------------------------------------ #
+# P2-9 shared expansion rules: single source of truth with the web
+# service (web/server.js). Both sides load edk2-kb/expansion_rules.json.
+# Applied ONLY to queries that contain CJK characters, mirroring the web
+# service's expansion behavior for Chinese questions while leaving
+# English-only query behavior untouched (no eval-baseline drift).
+# ------------------------------------------------------------------ #
+_EXPANSION_RULES_FILE = Path(BASE_DIR) / "expansion_rules.json"
+_SHARED_EXPANSION_RULES: List[Dict[str, Any]] = []
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _load_shared_expansion_rules() -> List[Dict[str, Any]]:
+    global _SHARED_EXPANSION_RULES
+    if _SHARED_EXPANSION_RULES:
+        return _SHARED_EXPANSION_RULES
+    try:
+        with open(_EXPANSION_RULES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        rules: List[Dict[str, Any]] = []
+        for r in data.get("rules", []):
+            try:
+                rules.append({
+                    "w": float(r.get("w", 0.5)),
+                    "re": re.compile(r.get("re", ""), re.IGNORECASE),
+                    "terms": str(r.get("terms", "")),
+                })
+            except re.error:
+                continue
+        _SHARED_EXPANSION_RULES = rules
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"[expansion] failed to load shared rules: {e}",
+              file=sys.stderr)
+        _SHARED_EXPANSION_RULES = []
+    return _SHARED_EXPANSION_RULES
+
+
+def _shared_expansion_terms(query: str) -> List[str]:
+    """English expansion terms for CJK queries (mirrors web/server.js)."""
+    if not _CJK_RE.search(query):
+        return []
+    hits = [r for r in _load_shared_expansion_rules()
+            if r["re"].search(query)]
+    hits.sort(key=lambda r: -r["w"])
+    seen: set = set()
+    terms: List[str] = []
+    for r in hits:
+        for t in r["terms"].split():
+            low = t.lower()
+            if low not in seen:
+                seen.add(low)
+                terms.append(t)
+        if len(terms) >= 40:
+            break
+    return terms
+
+
 def rewrite_query(query: str) -> str:
     """Expand EDK2 technical terms for better retrieval.
 
-    Two expansions are applied:
+    Three expansions are applied:
       1. English EDK2 identifiers / acronyms -> verbose phrase (TERM_EXPANSIONS)
       2. Chinese technical terms -> English keyword hints (CJK_KEYWORD_MAP).
          Hints are always appended: retrieval legs are English-tokenized, so a
          Chinese query that carries no ASCII tokens cannot match anything, and
          the hints only add candidate diversity for the reranker to sort.
+      3. Shared English topic expansion (expansion_rules.json) for CJK
+         queries — the same rules the web service applies, so daemon-only
+         (MCP) users get equal recall quality.
 
     Args:
         query: Original user query
@@ -310,8 +381,10 @@ def rewrite_query(query: str) -> str:
             expanded = re.sub(pattern, expansion, expanded)
 
     hints = _cjk_keywords(query)
-    if hints:
-        expanded = expanded + ' ' + ' '.join(hints)
+    shared = _shared_expansion_terms(query)
+    extra = list(hints) + list(shared)
+    if extra:
+        expanded = expanded + ' ' + ' '.join(extra)
 
     return expanded
 
@@ -912,11 +985,32 @@ class SearchEngine:
                     except (KeyError, IndexError, TypeError, ValueError):
                         pass
 
+                    raw_score = round(
+                        1.0 - results['distances'][0][i], 4
+                    ) if results.get('distances') else 0.5
+                    # Freshness decay for commit/PR sources: commit records
+                    # from the early EDK2 years describe long-obsolete code;
+                    # the authoritative spec/guide chapters never age out.
+                    # Each year beyond EDK2_COMMIT_DECAY_GRACE_YEARS (default 2)
+                    # multiplies the score by EDK2_COMMIT_DECAY_FACTOR
+                    # (default 0.85), floored at EDK2_COMMIT_DECAY_FLOOR (0.5).
+                    if (source in ('edk2-commits', 'edk2-prs')
+                            and EDK2_COMMIT_DECAY):
+                        try:
+                            year = int(str(metadata.get('date', ''))[:4])
+                            age = max(0, datetime.now().year - year)
+                            if age > EDK2_COMMIT_DECAY_GRACE_YEARS:
+                                factor = max(
+                                    EDK2_COMMIT_DECAY_FLOOR,
+                                    EDK2_COMMIT_DECAY_FACTOR ** (
+                                        age - EDK2_COMMIT_DECAY_GRACE_YEARS))
+                                raw_score = round(raw_score * factor, 4)
+                        except (ValueError, TypeError):
+                            pass
+
                     documents.append({
                         '_pid': pid,
-                        'score': round(
-                            1.0 - results['distances'][0][i], 4
-                        ) if results.get('distances') else 0.5,
+                        'score': raw_score,
                         'source': source,
                         'source_display': self._format_source(source),
                         'title': metadata.get('title',
@@ -924,6 +1018,7 @@ class SearchEngine:
                         'url': metadata.get('url', ''),
                         'file': metadata.get('file', ''),
                         'section': metadata.get('section', ''),
+                        'date': metadata.get('date', ''),
                         'snippet': doc[:800],
                         'content': doc,
                     })

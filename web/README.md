@@ -129,3 +129,22 @@ curl -X POST http://127.0.0.1:8080/api/ask -H "Content-Type: application/json" `
 # 状态
 curl http://127.0.0.1:8080/api/status
 ```
+
+## Phase 2 说明（2026-08-21）
+
+- **切分 v2（需重建知识库生效）**：规则句粒度（spec/规范 markdown 1200 字符）、
+  表格/代码块保护、词法主题间隙边界（语义感知的无模型代理）、重叠 0（句尾锚定，
+  无重复文本）、`section_level` 层级元数据、commit/PR `date` 时间戳（旧 commit 检索降权）。
+  重建命令（先在 Python 环境装依赖 `pip install -r edk2-kb/requirements.txt`）：
+  ```powershell
+  npx edk2-opencode --init-edk2-wiki
+  ```
+- **词表收敛**：中文扩展规则单一事实源 `edk2-kb/expansion_rules.json`，
+  web 与 daemon 共同加载（daemon 仅对含中文的查询生效，英文查询行为不变）。
+- **简单问题扩写兜底**：短中文问题自动生成 2-3 个英文改写，按"主题锚定 +
+  检索增益"双重校验，无增益的改写直接废弃（不用余弦阈值）。
+- **评测工具**：
+  - `python edk2-kb/eval/tier_monitor.py`：按 simple/standard/complex 档位
+    聚合 trace.jsonl 的延迟/长度/引用/忠实度回归监控；
+  - `python edk2-kb/eval/run_web_eval.py`：全链路 LLM-judge 评测
+    （faithfulness + relevancy 双轴评分，按档位分组，输出报告）。
