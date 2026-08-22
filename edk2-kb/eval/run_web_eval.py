@@ -162,8 +162,12 @@ def route_tier(q: str) -> str:
 # ---------------------------------------------------------------- LLM judge
 def llm(env: Dict[str, str], system: str,
         max_tokens: int = 500) -> str:
+    # JUDGE_MODEL overrides the default model for judging: a stronger judge
+    # (e.g. deepseek-chat) gives lower-variance, fairer scores than the flash
+    # model that generated the answers.
+    model = env.get("JUDGE_MODEL") or env.get("LLM_MODEL", "")
     payload = json.dumps({
-        "model": env.get("LLM_MODEL", ""),
+        "model": model,
         "messages": [{"role": "system", "content": system}],
         "temperature": 0, "max_tokens": max_tokens,
         "reasoning_effort": "none",

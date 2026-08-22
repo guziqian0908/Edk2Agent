@@ -75,8 +75,9 @@ def load_env() -> Dict[str, str]:
 
 
 def llm_judge(env: Dict[str, str], question: str, chunk: str) -> Optional[int]:
+    model = env.get("JUDGE_MODEL") or env.get("LLM_MODEL", "")
     payload = json.dumps({
-        "model": env.get("LLM_MODEL", ""),
+        "model": model,
         "messages": [{"role": "system",
                       "content": JUDGE_PROMPT.format(question=question,
                                                      chunk=chunk[:1200])}],
