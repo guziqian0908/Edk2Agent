@@ -1,14 +1,15 @@
-# EDK2-OpenCode v6.0.1
+# EDK2-OpenCode v6.0.22
 
 [![npm version](https://img.shields.io/npm/v/edk2-opencode.svg)](https://www.npmjs.com/package/edk2-opencode)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**EDK2 Knowledge Base MCP Daemon - Dual Data Source**
+**EDK2 Knowledge Base MCP Daemon + Web Q&A Service**
 
 共享式 EDK2 知识库 MCP 服务，支持 TianoCore Wiki + tianocore-docs 双数据源。
 知识库运行在独立 daemon 中，通过 MCP 协议为 OpenCode 提供服务。
+Web 问答服务（`web/server.js`）基于检索结果调用 LLM 生成带引用的回答。
 
-## v6.0.0 架构
+## v6.0.22 架构
 
 ```
 ┌─────────────┐   ┌────────────────────────────────────────────────┐
@@ -21,6 +22,13 @@
 │             │   │          └── /search  (CLI 便捷端点)            │
 └─────────────┘   │          └── SearchEngine (ChromaDB, 常驻内存)  │
                   └────────────────────────────────────────────────┘
+
+┌─────────────┐   ┌────────────────────────────────────────────────┐
+│  浏览器     │──▶│  web/server.js (Node, :8080)                   │
+│  (局域网)   │   │  ├─ 检索 → daemon /search                      │
+│             │   │  ├─ 详略分级 / 查询分解 / C' 修订               │
+│             │   │  └─ LLM 回答 → 流式返回                        │
+└─────────────┘   └────────────────────────────────────────────────┘
 ```
 
 | 数据源 | 内容 | 更新方式 |
@@ -32,6 +40,7 @@
 
 - 🗂️ **双数据源**：TianoCore Wiki 全站 + tianocore-docs 全部 33 个仓库
 - 🧠 **MCP 服务**：共享 HTTP daemon，OpenCode 通过 MCP 协议远程检索
+- 🌐 **Web 问答**：浏览器输入问题，自动检索 + LLM 生成带引用回答
 - 🔌 **动态端口**：不再固定 9876，多实例永不冲突
 - ♻️ **崩溃自愈**：watchdog 自动重启崩溃的 server；CLI 按需自愈
 - ⚡ **懒加载 + 预热**：daemon 秒级启动，索引后台加载并常驻内存
@@ -238,19 +247,44 @@ edk2-opencode/
 ├── bin/
 │   └── edk2-opencode.js     # CLI 入口（含 daemon 子命令）
 ├── lib/
-│   └── daemon.js            # Node daemon 管理器
+│   ├── daemon.js            # Node daemon 管理器
+│   └── auth.js              # GitHub 认证
+├── web/
+│   ├── server.js            # Web 问答服务（LLM 编排、详略分级、C' 修订）
+│   ├── index.html           # 前端页面
+│   ├── README.md            # Web 服务文档（环境变量、Phase 说明）
+│   └── .env.example         # LLM 配置模板
 ├── edk2-kb/
 │   ├── mcp_server.py        # FastMCP HTTP daemon
 │   ├── daemon_runner.py     # watchdog 守护进程（崩溃自愈）
-│   ├── search_engine.py     # 可复用搜索引擎（懒加载 + 线程安全）
+│   ├── search_engine.py     # 可复用搜索引擎（混合检索 + 重排 + 扩展规则）
+│   ├── expansion_rules.json # 查询扩展规则（中英文，web+daemon 共享）
 │   ├── embedded_search.py   # CLI 兼容包装
 │   ├── fetchers/
-│   │   └── init_kb.py       # 知识库初始化脚本（含全部 tianocore-docs 仓库）
+│   │   ├── init_kb.py       # 知识库初始化脚本
+│   │   ├── fetch_models.py  # 模型本地化下载
+│   │   ├── fetch_specs.py   # UEFI 规范抓取
+│   │   ├── fetch_commits.py # 提交历史抓取
+│   │   ├── fetch_prs.py     # PR 数据抓取
+│   │   ├── add_mdepkg.py    # MdePkg 源码集成
+│   │   └── package_kb.py    # KB 打包脚本
+│   ├── rank/
+│   │   ├── rank_lib.py      # LTR 特征定义（9 特征）
+│   │   └── train_ranker.py  # LambdaMART 训练
+│   ├── eval/
+│   │   ├── run_web_eval.py  # Web 全链路评测 + 门控
+│   │   ├── tier_monitor.py  # 分档回归监控
+│   │   ├── label_pipeline.py# LTR 标注流水线
+│   │   └── run_eval.py      # 检索评测（Hit@5/MRR）
 │   └── requirements.txt     # Python 依赖
 ├── .opencode/skills/
 │   ├── edk2-pr-workflow/    # PR 自动化 Skill
 │   └── ovmf-build/          # OVMF 编译 Skill
 ├── opencode.json            # 配置文件（CLI 运行时写入 mcp 配置）
+├── setup_kb.ps1             # Windows 一键重建
+├── setup_kb.sh              # Linux/macOS 一键重建
+├── install_kb.ps1           # Windows 预构建包安装
+├── install_kb.sh            # Linux/macOS 预构建包安装
 ├── AGENTS.md                # Agent 指令
 └── package.json
 ```

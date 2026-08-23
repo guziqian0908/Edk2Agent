@@ -40,6 +40,16 @@
    - [5.2 硬性验收指标](#52-硬性验收指标)
    - [5.3 关键 bug 修复验证点](#53-关键-bug-修复验证点)
 6. [故障排查与常见问题](#6-故障排查与常见问题)
+7. [Web 回答服务部署与验证](#7-web-回答服务部署与验证)
+   - [7.1 架构概述](#71-架构概述)
+   - [7.2 环境配置](#72-环境配置)
+   - [7.3 启动与验证](#73-启动与验证)
+   - [7.4 详略分级与查询分解](#74-详略分级与查询分解)
+   - [7.5 批评-修订循环（C'）](#75-批评-修订循环c)
+   - [7.6 评测门控](#76-评测门控)
+   - [7.7 学习排序（LTR）流水线](#77-学习排序ltr流水线)
+   - [7.8 查询扩展规则](#78-查询扩展规则)
+   - [7.9 分档监控](#79-分档监控)
 
 ---
 
@@ -639,8 +649,11 @@ NOW  (hybrid + rerank, current)  top5
 | 8 | HTTP 检索 | `GET /search?query=PcdDebugPrintErrorLevel` 返回带 confidence + citation 的结果 |
 | 9 | MCP 检索 | 任意 LLM 客户端经 MCP 调 `search_kb` 可拿到结果 |
 | 10 | 离线验证 | 断网后检索仍正常（`local_files_only=True`、默认禁 webfetch/websearch） |
-| 11 | Web 多轮（可选） | `node web/server.js` 后 `POST /api/ask` 返回回答；追问时携带 `prevResults`/`history` 可连续对话 |
-| 12 | 全量评测 | 重跑 330 条达到第 5.2 节指标 |
+| 11 | Web 服务启动 | `cd web && node server.js` 启动成功，`/healthz` 返回 200 |
+| 12 | Web 问答 | `POST /api/ask` 返回带引用的回答（需配置 LLM_API_KEY） |
+| 13 | Web 详略分级 | simple/standard/complex 三档路由正确（`done` 事件含 `tier` 字段） |
+| 14 | Web 评测门控 | `python edk2-kb/eval/run_web_eval.py --gate` 分档 PASS |
+| 15 | 全量评测 | 重跑 330 条达到第 5.2 节指标 |
 
 ### 5.2 硬性验收指标
 
@@ -675,4 +688,172 @@ NOW  (hybrid + rerank, current)  top5
 
 ---
 
-*Wiki 版本：v6.0.22（含 main 上 6.0.23*/6.0.24* 增强） · 最后更新：2026-08-19 · 内容与 `D:\project-review-test\edk2-opencode-v3\` 源码逐命令核对*
+## 7. Web 回答服务部署与验证
+
+> 本节覆盖 `web/server.js` 实现的 LLM 问答编排层，包括详略分级、查询分解、C' 批评-修订、评测门控、LTR 流水线等 Phase 0-4 增强。完整环境变量与接口说明见 `web/README.md`。
+
+### 7.1 架构概述
+
+```
+浏览器（局域网任意机器）
+   │ http://<服务器IP>:8080
+   ▼
+web/server.js（Node HTTP 服务，端口 8080）
+   ├─ POST /api/ask → 检索 + LLM 回答
+   │   ├─ ① 查询分解（analyzeQuery）→ 简单直查 / 复杂拆子问题
+   │   ├─ ② daemon /search 检索（Top5-15，按档位调整）
+   │   ├─ ③ LLM 生成回答（详略分级：simple/standard/complex）
+   │   ├─ ④ L3 忠实度校验（LLM-judge 标记未支撑断言）
+   │   ├─ ⑤ C' 批评-修订（改写未支撑语句，answer_revision 替换）
+   │   └─ ⑥ 流式返回（SSE delta + citation_warn + faithfulness_warn）
+   ├─ GET /api/status → daemon 健康 + LLM 配置
+   └─ GET /healthz → 存活探针
+```
+
+**核心组件**：
+
+| 组件 | 文件 | 作用 |
+|------|------|------|
+| 详略分级 | `server.js` routeQuery() | 按问题复杂度分 simple/standard/complex 三档 |
+| 查询分解 | `server.js` analyzeQuery() | 复杂多子问题拆分为独立子查询 |
+| L3 忠实度 | `server.js` L3 block | 生成后 LLM-judge 标记未被上下文支撑的断言 |
+| C' 修订 | `server.js` L3_REVISION | 单轮改写未支撑语句，answer_revision SSE 替换 |
+| 扩展规则 | `edk2-kb/expansion_rules.json` | 中英文查询扩展（43 条规则，web+daemon 共享） |
+| LTR | `edk2-kb/rank/` | LambdaMART 学习排序（9 特征，需打标+训练） |
+| 评测 | `edk2-kb/eval/run_web_eval.py` | 全链路 faithfulness+relevancy 评测 + 门控 |
+
+### 7.2 环境配置
+
+**1. 复制模板**：
+```powershell
+cd web
+cp .env.example .env   # Windows: Copy-Item .env.example .env
+```
+
+**2. 填写 LLM 配置**（至少填 API Key 才有 LLM 回答，否则只显示检索结果）：
+```bash
+LLM_API_KEY=sk-your-api-key-here
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-v4-flash
+```
+
+**3. 可选调优**（均有合理默认值）：
+```bash
+# 评测用更强评委模型（降低打分方差）
+JUDGE_MODEL=deepseek-chat
+
+# 关闭忠实度校验（调试用）
+# L3_FAITHFULNESS_CHECK=false
+# L3_REVISION=false
+```
+
+### 7.3 启动与验证
+
+```powershell
+# 进入 web 目录
+cd web
+
+# 启动（首次提问时自动拉起 daemon）
+node server.js
+
+# 验证
+curl http://127.0.0.1:8080/healthz                    # 存活
+curl http://127.0.0.1:8080/api/status                   # 状态
+curl -X POST http://127.0.0.1:8080/api/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"PCD 是什么？"}'                       # 提问
+```
+
+**局域网访问**：其他机器打开 `http://<服务器IP>:8080`。
+
+### 7.4 详略分级与查询分解
+
+服务端自动按问题复杂度分档，不同档位使用不同的 token 预算、检索上下文量和重排策略：
+
+| 档位 | 判定条件 | max_tokens | 检索上下文 | 重排候选 |
+|------|----------|------------|-----------|---------|
+| **simple** | 单关键词/短定义（≤22 字符或 What/格式类） | 1600 | 6000 字符 | 12 |
+| **standard** | 操作指南/中等问题 | 3000 | 10000 字符 | 15 |
+| **complex** | 多子问题/对比/列举（≥2 个子查询或 >44 字符） | 6000 | 16000 字符 | 24 |
+
+**查询分解**（`analyzeQuery`）：复杂问题自动拆分为独立子查询，每个子查询独立检索后合并去重。
+
+### 7.5 批评-修订循环（C'）
+
+L3 忠实度校验标记未被检索上下文支撑的断言后，C' 单轮修订：
+1. 将标记的断言列表 + 当前回答 + 检索上下文送入 LLM
+2. LLM 仅改写未支撑语句（删除无依据的数字/路径/版本），其余逐字保留
+3. 修订后回答通过 `answer_revision` SSE 事件替换前端展示
+4. 修订后重新验证 citation（L2c 复检）
+
+**为什么是单轮**：实测两轮迭代为负优化（复检评委过标导致答案膨胀 faith 4.1→4.2, relev 4.6→4.5）。
+
+### 7.6 评测门控
+
+```powershell
+# 全量评测（18 题 × 双票评委）
+python edk2-kb/eval/run_web_eval.py
+
+# 门控模式（分档判定，退出码供 CI）
+python edk2-kb/eval/run_web_eval.py --gate
+
+# 全局门控模式（单一阈值 4.6/4.4）
+python edk2-kb/eval/run_web_eval.py --gate --gate-mode global
+```
+
+**分档门控阈值**（按实测能力标定）：
+
+| 档位 | faithfulness | relevancy | 说明 |
+|------|-------------|-----------|------|
+| simple | ≥ 4.5 | ≥ 4.5 | 单点问题，接近完全支撑 |
+| standard | ≥ 3.8 | ≥ 4.4 | 操作指南类 |
+| complex | ≥ 3.8 | ≥ 4.2 | 多子问题综合，结构性缺口 |
+
+**当前结果**（2026-08-21，deepseek-chat 双票评委）：
+
+| 档位 | faith | relev | 判定 |
+|------|-------|-------|------|
+| simple | 4.50 | 4.62 | ✅ PASS |
+| standard | 4.50 | 5.00 | ✅ PASS |
+| complex | 3.94 | 4.75 | ✅ PASS |
+
+### 7.7 学习排序（LTR）流水线
+
+LambdaMART 学习排序，9 特征（向量得分、RRF 分、FTS BM25 分、标题/来源匹配、重排得分等）。
+
+```powershell
+# 1. 打标（LLM-judge 对 (query, chunk) 打 0/1/2 相关度）
+python edk2-kb/eval/label_pipeline.py \
+  --data-dir "$env:USERPROFILE\.edk2-opencode\kb\data" \
+  --synthetic 30 --out edk2-kb/rank/ltr_labels.jsonl
+
+# 2. 训练（需 ≥300 行标签 / ≥30 查询）
+python edk2-kb/rank/train_ranker.py --labels edk2-kb/rank/ltr_labels.jsonl
+
+# 3. 启用（daemon 环境变量）
+$env:EDK2_LTR_MODEL = "edk2-kb/rank/ranker.txt"
+npx edk2-opencode daemon restart
+```
+
+> 标签不足时自动退化为 BGE cross-encoder 精排（当前状态）。
+
+### 7.8 查询扩展规则
+
+`edk2-kb/expansion_rules.json` 是中英文查询扩展的单一事实源（43 条规则），web 与 daemon 共同加载。
+
+- **中文查询**：自动扩展同义词/英文术语（如 PCD → Platform Configuration Database）
+- **英文查询**：无扩展（行为不变）
+- **简单问题**：短中文问题自动生成 2-3 个英文改写，按"主题锚定 + 检索增益"双重校验
+
+### 7.9 分档监控
+
+```powershell
+# 按 simple/standard/complex 档位聚合 trace.jsonl
+python edk2-kb/eval/tier_monitor.py
+```
+
+输出各档位的延迟、回答长度、引用数、忠实度均值，用于回归检测。
+
+---
+
+*Wiki 版本：v6.0.22（含 main 上 Web 服务 + Phase 0-4 + C' 修订 + 分档门控增强） · 最后更新：2026-08-23 · 内容与 `D:\project-review-test\edk2-opencode-v3\` 源码逐命令核对*

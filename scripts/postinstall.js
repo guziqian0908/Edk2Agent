@@ -11,7 +11,7 @@ function log(msg) {
 function main() {
   log('');
   log('╔═══════════════════════════════════════════════════════════════╗');
-  log('║     EDK2-OpenCode v6.0.0 - Knowledge Base MCP Daemon          ║');
+  log('║     EDK2-OpenCode v6.0.22 - Knowledge Base MCP Daemon       ║');
   log('╚═══════════════════════════════════════════════════════════════╝');
   log('');
   log('Quick Start:');
@@ -19,10 +19,12 @@ function main() {
   log('  2. npx edk2-opencode                     # Start assistant (auto-starts MCP daemon)');
   log('');
   log('MCP Service: shared HTTP daemon, dynamic port, auto-restart');
+  log('Web Q&A:     node web/server.js            # Browser-based Q&A with LLM');
   log('Data Sources:');
   log('  - TianoCore Wiki (offline cache)');
   log('  - tianocore-docs repository');
-  log('  - ChromaDB vector index');
+  log('  - UEFI specs, commits, PRs, MdePkg source');
+  log('  - ChromaDB vector index + FTS5 full-text');
   log('');
 }
 
