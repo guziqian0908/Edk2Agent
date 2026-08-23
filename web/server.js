@@ -283,7 +283,8 @@ function storeAnswerCache(question, model, data, daemonUrl) {
 
 // Replay a cached answer as the same SSE stream a live LLM call emits:
 // phase(cache_hit) -> results -> phase(llm) -> delta* -> phase(llm_done) -> done.
-function replayCachedAnswer(res, cached, semantic = false) {
+function replayCachedAnswer(res, cached, question, semantic = false) {
+  const tier = routeQuery(question);
   sendSSE(res, 'phase', {
     step: 'cache_hit',
     text: semantic ? '命中语义缓存（近义问法），直接返回…' : '命中历史回答，直接返回…',
@@ -298,7 +299,7 @@ function replayCachedAnswer(res, cached, semantic = false) {
     sendSSE(res, 'delta', { text: answer.slice(i, i + CHUNK) });
   }
   sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic });
-  sendSSE(res, 'done', { model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic });
+  sendSSE(res, 'done', { model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic, tier });
 }
 
 // Rerank documents using BGE-reranker-v2-m3
@@ -1276,6 +1277,24 @@ function validateCitations(answer, results) {
   return { invalid, used: [...used] };
 }
 
+// Parse the L3 fact-checker's JSON output into a cleaned claim list.
+function parseUnsupportedClaims(text) {
+  if (!text) return [];
+  try {
+    const m = String(text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+    const lo = m.indexOf('{');
+    const hi = m.lastIndexOf('}');
+    const j = JSON.parse(lo >= 0 && hi > lo ? m.slice(lo, hi + 1) : m);
+    if (Array.isArray(j.unsupported)) {
+      return j.unsupported
+        .filter(x => typeof x === 'string' && x.trim())
+        .map(x => x.trim().slice(0, 150))
+        .slice(0, 5);
+    }
+  } catch { /* judge returned non-JSON -> no claims */ }
+  return [];
+}
+
 // Strip reasoning/thinking artifacts that some models leak into the answer
 // stream (e.g. DeepSeek's `reasoning_content` or `<no_analysis>` / `<think>`
 // markers). The final answer must contain ONLY the user-facing response.
@@ -1975,7 +1994,7 @@ async function handleAsk(req, res) {
           'X-Accel-Buffering': 'no',
         });
         const cacheStart = Date.now();
-        replayCachedAnswer(res, exactAnswer, false);
+        replayCachedAnswer(res, exactAnswer, question, false);
         res.end();
         emitTrace({
           traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
@@ -2013,7 +2032,7 @@ async function handleAsk(req, res) {
         const semHit = await getSemanticCachedAnswer(question, model, url);
         if (semHit) {
           const cacheStart = Date.now();
-          replayCachedAnswer(res, semHit.cached, true);
+          replayCachedAnswer(res, semHit.cached, question, true);
           res.end();
           emitTrace({
             traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
@@ -2678,6 +2697,7 @@ async function handleAsk(req, res) {
       // client as a warning; the streamed text itself is untouched. This is
       // the "生成后校验" layer from the RAG defense-in-depth design.
       const L3_FAITHFULNESS_CHECK = process.env.L3_FAITHFULNESS_CHECK !== 'false';
+      const L3_REVISION = process.env.L3_REVISION !== 'false';
       if (L3_FAITHFULNESS_CHECK && tier === 'complex' && fullAnswer) {
         const l3Start = Date.now();
         // Judge context: entries the answer actually CITES first (by stable
@@ -2711,21 +2731,7 @@ async function handleAsk(req, res) {
             content: `Question: ${question}\n\nContext:\n${l3Ctx}\n\nAnswer:\n${fullAnswer.slice(0, 6000)}`,
           },
         ], { timeoutMs: 25000, maxTokens: 500 });
-        let unsupported = [];
-        if (l3Text) {
-          try {
-            const m = String(l3Text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-            const lo = m.indexOf('{');
-            const hi = m.lastIndexOf('}');
-            const j = JSON.parse(lo >= 0 && hi > lo ? m.slice(lo, hi + 1) : m);
-            if (Array.isArray(j.unsupported)) {
-              unsupported = j.unsupported
-                .filter(x => typeof x === 'string' && x.trim())
-                .map(x => x.trim().slice(0, 150))
-                .slice(0, 5);
-            }
-          } catch { /* judge returned non-JSON -> skip the warning */ }
-        }
+        let unsupported = parseUnsupportedClaims(l3Text);
         if (unsupported.length) {
           emitTrace({
             traceId, stage: 'faithfulness_check', durationMs: Date.now() - l3Start,
@@ -2735,6 +2741,46 @@ async function handleAsk(req, res) {
             claims: unsupported,
             note: '以下内容未被检索上下文支撑，请谨慎参考。',
           });
+          // C' — critic-revise (single pass): rewrite ONLY the flagged
+          // portions using context-supported content; the revision replaces
+          // the streamed answer via the answer_revision event. A second pass
+          // was measured to HURT (the re-check judge over-flags, so pass 2
+          // rewrites fine text and can bloat the answer) — keep one pass.
+          if (L3_REVISION) {
+            const revStart = Date.now();
+            const revText = await llmComplete([
+              {
+                role: 'system',
+                content: 'You are revising an EDK2 RAG assistant answer. Given the question, retrieved context, the current answer, and a list of claims NOT supported by the context: revise ONLY the statements related to those claims — delete unsupported specific details (numbers, paths, versions, macro names) and replace them with what the context can support. Keep every other part verbatim. Do NOT add new details, do NOT re-explain the whole answer, do NOT change citations. Output the complete revised answer only, no preamble.',
+              },
+              {
+                role: 'user',
+                content: `Question: ${question}\n\nContext:\n${l3Ctx}\n\nCurrent answer:\n${fullAnswer.slice(0, 6000)}\n\nClaims to revise (unsupported by context):\n${unsupported.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
+              },
+            ], { timeoutMs: 30000, maxTokens: 3000 });
+            if (revText && revText.length > fullAnswer.length * 0.5) {
+              fullAnswer = revText;
+              tokenCount = Math.max(tokenCount, Math.ceil(revText.length / 4));
+              // Re-verify citations on the revised answer (L2c).
+              const cit2 = validateCitations(fullAnswer, results);
+              if (cit2.invalid.length) {
+                sendSSE(res, 'citation_warn', {
+                  invalid: cit2.invalid,
+                  note: '修订后仍有以下引用编号未出现在本次检索结果中，请以上下文为准。',
+                });
+              }
+              sendSSE(res, 'answer_revision', { answer: fullAnswer });
+              emitTrace({
+                traceId, stage: 'answer_revision', durationMs: Date.now() - revStart,
+                queryHash: qh, status: 'ok', chars: fullAnswer.length,
+              });
+            } else {
+              emitTrace({
+                traceId, stage: 'answer_revision', durationMs: Date.now() - revStart,
+                queryHash: qh, status: 'empty',
+              });
+            }
+          }
         } else {
           emitTrace({
             traceId, stage: 'faithfulness_check', durationMs: Date.now() - l3Start,
@@ -2757,7 +2803,7 @@ async function handleAsk(req, res) {
           status: 'ok', hit: false, tokens: tokenCount,
         });
       }
-      sendSSE(res, 'done', { model, tokens: tokenCount, from_cache: fromCache, unverifiedCitations: cit.invalid });
+      sendSSE(res, 'done', { model, tokens: tokenCount, from_cache: fromCache, unverifiedCitations: cit.invalid, tier });
       res.end();
       finishTotal('ok', { tokens: tokenCount, from_cache: fromCache });
     } catch (e) {

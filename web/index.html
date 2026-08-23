@@ -515,8 +515,11 @@ async function ask(question) {
     let lastRender = 0;
     // Post-generation warnings (citation / faithfulness checks) arrive AFTER
     // the deltas; they are queued and rendered after the final render so the
-    // streaming re-renders never wipe them.
+    // streaming re-renders never wipe them. The faithfulness warning is kept
+    // separately: a critic-revise pass (answer_revision) replaces the answer
+    // and drops it.
     const warnBoxes = [];
+    let faithWarnHtml = null;
 
     const renderThrottled = () => {
       const now = Date.now();
@@ -556,8 +559,13 @@ async function ask(question) {
         } else if (type === 'faithfulness_warn') {
           const claims = (d.claims || []).filter(Boolean);
           if (claims.length) {
-            warnBoxes.push('<div class="warnbox">' + esc(d.note || '以下内容未被检索上下文支撑，请谨慎参考。') +
-              '<ul>' + claims.map(c => '<li>' + esc(c) + '</li>').join('') + '</ul></div>');
+            faithWarnHtml = '<div class="warnbox">' + esc(d.note || '以下内容未被检索上下文支撑，请谨慎参考。') +
+              '<ul>' + claims.map(c => '<li>' + esc(c) + '</li>').join('') + '</ul></div>';
+          }
+        } else if (type === 'answer_revision') {
+          if (d.answer) {
+            answerText = d.answer;
+            faithWarnHtml = null; // flagged claims were revised away
           }
         } else if (type === 'citation_warn') {
           warnBoxes.push('<div class="warnbox">' + esc(d.note || '引用编号未出现在本次检索结果中，请以上下文为准。') + '</div>');
@@ -569,6 +577,7 @@ async function ask(question) {
     // final render (flush throttled)
     answerText = stripBasedOn(answerText);
     answerDiv.innerHTML = renderMarkdown(answerText);
+    if (faithWarnHtml) answerDiv.insertAdjacentHTML('beforeend', faithWarnHtml);
     for (const w of warnBoxes) answerDiv.insertAdjacentHTML('beforeend', w);
     scrollBottom();
 

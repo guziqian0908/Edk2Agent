@@ -68,6 +68,7 @@ node server.js
 | `RERANK_SNIPPET_CHARS_COMPLEX` | `1200` | complex 档每个候选送入重排器的文本长度 |
 | `RERANK_SPAWN_COOLDOWN_MS` | `300000` | 重排服务自动拉起冷却时间（毫秒） |
 | `L3_FAITHFULNESS_CHECK` | 开 | 设为 `false` 关闭 complex 档生成后忠实度校验（LLM-judge） |
+| `L3_REVISION` | 开 | 设为 `false` 关闭批评-修订循环（被标记断言按上下文改写并替换回答） |
 
 ## 接口
 
