@@ -80,8 +80,12 @@ SOURCE_DISPLAY = {
 # all-MiniLM-L6-v2) and its 1024-dim vectors align with the bge-reranker
 # scores. Prefer a locally installed copy under
 # ~/.edk2-opencode/models/bge-m3; override via EDK2_EMBEDDING_MODEL / DEVICE.
+# EDK2_MODELS_DIR overrides the base models directory.
+_MODELS_DIR = Path(os.environ.get(
+    "EDK2_MODELS_DIR", str(Path.home() / ".edk2-opencode" / "models")))
+
 def _default_embedding_model() -> str:
-    local = Path.home() / ".edk2-opencode" / "models" / "bge-m3"
+    local = _MODELS_DIR / "bge-m3"
     if local.exists():
         return str(local)
     return "BAAI/bge-m3"
@@ -96,7 +100,7 @@ def _default_reranker_model() -> str:
     # downloaded bge-reranker-v2-m3 works without needing the HF cache
     # (~/.edk2-opencode/models/bge-reranker-v2-m3/). Falls back to the HF
     # model id for environments where the model is cached by huggingface_hub.
-    local = Path.home() / ".edk2-opencode" / "models" / "bge-reranker-v2-m3"
+    local = _MODELS_DIR / "bge-reranker-v2-m3"
     if local.exists():
         return str(local)
     return "BAAI/bge-reranker-v2-m3"

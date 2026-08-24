@@ -75,7 +75,7 @@
    ├─ tianocore-docs   → 1797 个文本文件（33 个规范仓库）
    ├─ uefi-specs       → 185 个 RST + 1 个 Shell PDF（4 部官方规范）
    ├─ edk2-commits     → 36434 个提交（2006 至今完整 git log）
-   ├─ edk2-prs         → 15332 个 Pull Request（GitHub API）
+   ├─ edk2-prs         → ~8000+ 个 Pull Request（GitHub API，数量随时间增长）
    └─ edk2-mdepkg      → MdePkg 源码（1982 个文件，排除 Library/）
             │
 ② 清洗与分块（edk2-kb/fetchers/init_kb.py + add_mdepkg.py）
@@ -261,12 +261,16 @@ huggingface-cli download BAAI/bge-m3 --local-dir "$env:USERPROFILE\.edk2-opencod
 ```powershell
 # Windows（仓库根目录）
 powershell -ExecutionPolicy Bypass -File setup_kb.ps1
+# 指定非默认路径（如 D 盘）：
+powershell -ExecutionPolicy Bypass -File setup_kb.ps1 -DataDir "D:\kb\data" -ModelsDir "D:\models"
 # 跳过慢速嵌入阶段（稍后补）：
 powershell -ExecutionPolicy Bypass -File setup_kb.ps1 -SkipEmbed
 
 # Linux / macOS
 bash setup_kb.sh            # 或 bash setup_kb.sh --skip-embed
 ```
+
+> **Windows 注意**：`setup_kb.ps1` 会自动在 `~/.edk2-opencode/kb/venv` 创建 Python 虚拟环境，所有 `pip install` 和脚本调用均在 venv 内执行，不污染系统 Python。
 
 一键脚本依次执行（每步产出见下方流程）：
 
@@ -346,12 +350,12 @@ npx edk2-opencode --search "PcdDebugPrintErrorLevel"
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
-| `EDK2_EMBEDDING_MODEL` | `BAAI/bge-m3`（推理）/ `all-MiniLM-L6-v2`（init_kb 默认） | 嵌入模型；**构建索引用本地 bge-m3 路径** |
+| `EDK2_EMBEDDING_MODEL` | `BAAI/bge-m3`（init_kb + search_engine 均默认） | 嵌入模型；**构建索引和运行时查询必须匹配** |
 | `EDK2_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排模型（本地化） |
-| `EDK2_KB_DATA` | `~/.edk2-opencode/kb/data` | 知识库数据目录（fetch_* / add_mdepkg / package_kb 均遵守） |
-| `EDK2_MODELS_DIR` | `~/.edk2-opencode/models` | 模型目录（fetch_models / add_mdepkg 遵守） |
-| `GITHUB_TOKEN` | — | fetch_prs.py 的 GitHub API 令牌（提高限速至 5000/h） |
-| `EDK2_EMBEDDING_DEVICE` | `cpu` | 嵌入设备（init_kb） |
+| `EDK2_KB_DATA` | `~/.edk2-opencode/kb/data` | 知识库数据目录（**所有** fetch_*/init_kb/add_mdepkg/package_kb 均遵守） |
+| `EDK2_MODELS_DIR` | `~/.edk2-opencode/models` | 模型目录（fetch_models/add_mdepkg/**search_engine** 均遵守） |
+| `GITHUB_TOKEN` | — | fetch_prs.py 的 GitHub API 令牌（无 token 限速 60/h，设后 5000/h） |
+| `EDK2_EMBEDDING_DEVICE` | `cpu` | 嵌入设备（init_kb + add_mdepkg 均遵守，有 GPU 可设 `cuda`） |
 | `EDK2_EMBEDDING_BATCH` | `50` | 嵌入批量（init_kb） |
 | `HF_ENDPOINT` | — | 下载镜像（如 `https://hf-mirror.com`） |
 | `HF_HUB_DISABLE_XET` | — | 设为 `1` 绕过 Xet 协议下载 |
@@ -373,7 +377,7 @@ npx edk2-opencode --search "PcdDebugPrintErrorLevel"
         ├── tianocore-docs/           # 数据源②：33 个规范仓库（1797 文本文件）
         ├── uefi-specs/               # 数据源③：ACPI_6.5/PI_1.10/UEFI_2.11 RST + Shell PDF
         ├── edk2-commits/             # 数据源④：commits.txt（36434 提交）
-        ├── edk2-prs/                 # 数据源⑤：prs.jsonl（15332 PR）
+        ├── edk2-prs/                 # 数据源⑤：prs.jsonl（~8000+ PR）
         ├── edk2-mdepkg/              # 数据源⑥：MdePkg 源码（1982 文件）
         ├── processed/                # 处理后分块：82297 个 txt + documents.json
         ├── chroma_db/                # ChromaDB 持久化向量索引
@@ -453,9 +457,10 @@ score = β · Chroma cosine 归一化得分 + (1 − β) · RRF 融合分
 
 ### 3.7 一致性约束（维度与模型匹配）
 
-1. **构建与查询必须用同一嵌入模型**：构建用 `EDK2_EMBEDDING_MODEL` 指向本地 bge-m3（1024 维），查询引擎默认 bge-m3（1024 维）→ 匹配。
-2. 若用默认 `all-MiniLM-L6-v2` 构建（384 维）而查询为 bge-m3，则向量维度不匹配 → 向量检索自动降级、仅剩全文检索 → Hit@5 远低于验收值。**必须全量重建**。
-3. 重排器缺失（reranker 目录不存在 / 加载失败）时检索退化为"无重排"模式（等价 v6.0.11 前效果）。
+1. **构建与查询默认同一嵌入模型**：`init_kb.py` 和 `search_engine.py` 均默认 `BAAI/bge-m3`（1024 维），无需额外设置即可匹配。
+2. 若显式设 `EDK2_EMBEDDING_MODEL` 为其他模型（如 `all-MiniLM-L6-v2` 384 维），则**构建和查询必须同时设同一值**，否则维度不匹配 → 向量检索失败。**必须全量重建**。
+3. `search_engine.py` 读取 `EDK2_MODELS_DIR` 定位本地模型目录（与 `fetch_models.py` / `add_mdepkg.py` 一致），不再硬编码 `~/.edk2-opencode/models`。
+4. 重排器缺失（reranker 目录不存在 / 加载失败）时检索退化为"无重排"模式（等价 v6.0.11 前效果）。
 
 ---
 
@@ -685,6 +690,11 @@ NOW  (hybrid + rerank, current)  top5
 | Shell 规范（UEFI_Shell_2_2 PDF）缺失 | uefi.org 对脚本 UA 返回 403；web.archive.org 可能不可达 | `fetch_specs.py` 已内置多 URL 回退，全部失败时仅跳过该 PDF（警告非致命）；可手动把 PDF 放到 `uefi-specs/Shell_2.2/source/` 后重跑 `init_kb.py` |
 | TianoCore Wiki 页面数偏少（< 全站约 380 页） | 站点极慢（searchindex.js ~9.86MB），爬虫 BFS 超时静默跳过孤儿页 | 属已知限制；缺失多为孤立技术页。如需全量，可改用 git 源仓库 `tianocore/tianocore-wiki.github.io`（mdBook 源，375 个 .md）作为数据源 |
 | docs 仓库没有更新 | 上游 33 个仓库默认分支均为 `main`，更新路径需 `git fetch --depth=1` + `reset --hard origin/main` | 重跑 `init_kb.py --update`（见 `clone_tianocore_docs`）；确认本地 `origin/main` 已拉到最新 |
+| `init_kb.py` 数据写入仓库目录而非 `EDK2_KB_DATA` | 旧版 `init_kb.py` 硬编码 `BASE_DIR/"data"`（已修复为读取 `EDK2_KB_DATA`） | 升级到最新代码；或手动设 `EDK2_KB_DATA` 后重跑 |
+| `add_mdepkg.py` sparse clone 失败（`origin/main` not found） | edk2 默认分支是 `master`，旧版写死 `main`（已修复） | 升级到最新代码；或手动 `git fetch origin master` |
+| `mcp_server.py` 报 `ModuleNotFoundError: No module named 'fastmcp'` | `requirements.txt` 未声明 `fastmcp` 依赖（已修复） | `pip install fastmcp>=2.0.0` 或升级到最新 `requirements.txt` 重装 |
+| PR 拉取极慢（2+ 小时） | 无 `GITHUB_TOKEN` 时 GitHub API 限速 60 次/小时 | 设置 `GITHUB_TOKEN` 环境变量（5000 次/小时）；脚本启动时会警告 |
+| `search_engine.py` 找不到模型（路径不匹配） | 旧版硬编码 `~/.edk2-opencode/models`，不读 `EDK2_MODELS_DIR`（已修复） | 升级到最新代码；或确保模型在默认路径 |
 
 ---
 

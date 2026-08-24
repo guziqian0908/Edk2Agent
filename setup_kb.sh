@@ -25,6 +25,15 @@ done
 export EDK2_KB_DATA="${EDK2_KB_DATA:-$HOME/.edk2-opencode/kb/data}"
 export EDK2_MODELS_DIR="${EDK2_MODELS_DIR:-$HOME/.edk2-opencode/models}"
 
+# --- Create and use a local venv to avoid bare-python pollution ---
+VENV_DIR="$HOME/.edk2-opencode/kb/venv"
+if [ ! -x "$VENV_DIR/bin/python" ]; then
+    echo "Creating Python venv at $VENV_DIR ..."
+    python3 -m venv "$VENV_DIR"
+fi
+PY="$VENV_DIR/bin/python"
+echo "Using venv python: $PY"
+
 run_step() {
     echo
     echo "=== $1 ==="
@@ -35,19 +44,19 @@ run_step() {
 echo "Data dir : $EDK2_KB_DATA"
 echo "Models   : $EDK2_MODELS_DIR"
 
-run_step "install python deps" python -m pip install -r edk2-kb/requirements.txt
-run_step "download local models (bge-m3 + bge-reranker-v2-m3)" python edk2-kb/fetchers/fetch_models.py
-run_step "fetch UEFI spec sources" python edk2-kb/fetchers/fetch_specs.py
-run_step "fetch tianocore/edk2 commit history" python edk2-kb/fetchers/fetch_commits.py
-run_step "fetch tianocore/edk2 pull requests" python edk2-kb/fetchers/fetch_prs.py
-run_step "build KB (wiki + tianocore-docs + specs/prs/commits)" python edk2-kb/fetchers/init_kb.py
-run_step "add MdePkg (chunking + FTS5)" python edk2-kb/fetchers/add_mdepkg.py
+run_step "install python deps" $PY -m pip install -r edk2-kb/requirements.txt
+run_step "download local models (bge-m3 + bge-reranker-v2-m3)" $PY edk2-kb/fetchers/fetch_models.py
+run_step "fetch UEFI spec sources" $PY edk2-kb/fetchers/fetch_specs.py
+run_step "fetch tianocore/edk2 commit history" $PY edk2-kb/fetchers/fetch_commits.py
+run_step "fetch tianocore/edk2 pull requests" $PY edk2-kb/fetchers/fetch_prs.py
+run_step "build KB (wiki + tianocore-docs + specs/prs/commits)" $PY edk2-kb/fetchers/init_kb.py
+run_step "add MdePkg (chunking + FTS5)" $PY edk2-kb/fetchers/add_mdepkg.py
 if [ "$SKIP_EMBED" -eq 0 ]; then
-    run_step "embed MdePkg into ChromaDB (slow)" python edk2-kb/fetchers/add_mdepkg.py --embed
+    run_step "embed MdePkg into ChromaDB (slow)" $PY edk2-kb/fetchers/add_mdepkg.py --embed
 else
     echo
     echo "Skipped embedding. Run later:"
-    echo "  python edk2-kb/fetchers/add_mdepkg.py --embed"
+    echo "  $PY edk2-kb/fetchers/add_mdepkg.py --embed"
 fi
 
 echo

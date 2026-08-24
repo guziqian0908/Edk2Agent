@@ -94,7 +94,7 @@ def ensure_src():
             run(["git", "init"], cwd=clone)
             run(["git", "remote", "add", "origin", REPO_URL], cwd=clone)
             run(["git", "fetch", "--depth", "1",
-                 "--filter=blob:none", "origin", "main"], cwd=clone)
+                 "--filter=blob:none", "origin", "master"], cwd=clone)
         if not (clone / ".git" / "info" / "sparse-checkout").exists():
             run(["git", "sparse-checkout", "init", "--cone"], cwd=clone)
         run(["git", "sparse-checkout", "set", "MdePkg"], cwd=clone)
@@ -142,7 +142,7 @@ def process():
         if len(text) <= 100:
             continue
         chunks = chunk_text(text)
-        url = f"{REPO_URL}/blob/main/{rel}"
+        url = f"{REPO_URL}/blob/master/{rel}"
         for idx, chunk in enumerate(chunks):
             n = len(documents) + len(new_docs)
             doc_file = PROCESSED / f"mdepkg_{n}.txt"
@@ -235,8 +235,9 @@ def embed_upsert(documents, existing, batch_size):
     import chromadb
     from chromadb.utils import embedding_functions
 
+    device = os.environ.get("EDK2_EMBEDDING_DEVICE", "cpu")
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name=str(BGE_M3), device="cpu",
+        model_name=str(BGE_M3), device=device,
         normalize_embeddings=True, local_files_only=True)
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
     collection = client.get_or_create_collection(

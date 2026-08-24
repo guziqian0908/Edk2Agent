@@ -14,6 +14,7 @@ faiss-cpu>=1.7.4
 # Will be downloaded automatically on first use (~2.2GB)
 
 # MCP Protocol
+fastmcp>=2.0.0
 fastapi>=0.100.0
 uvicorn>=0.23.0
 

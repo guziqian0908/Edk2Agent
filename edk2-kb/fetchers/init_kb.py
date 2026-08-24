@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = Path(os.environ.get("EDK2_KB_DATA", str(BASE_DIR / "data")))
 WIKI_DIR = DATA_DIR / "tianocore-wiki"
 DOCS_DIR = DATA_DIR / "tianocore-docs"
 CHROMA_DIR = DATA_DIR / "chroma_db"
@@ -1147,9 +1147,11 @@ def build_chroma_index() -> int:
         log("ChromaDB not available, skipping index build", "ERROR")
         return 0
     
-    # Embedding model + device (override via env vars). all-MiniLM-L6-v2 is the
-    # default: it is small (~74MB), fast to load and does not block startup.
-    model_name = os.environ.get("EDK2_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    # Embedding model + device (override via env vars). bge-m3 (1024-dim) is
+    # the default: it matches the runtime search_engine.py default and avoids
+    # dimension-mismatch failures. Override with EDK2_EMBEDDING_MODEL for a
+    # different model (must match the runtime query embedding).
+    model_name = os.environ.get("EDK2_EMBEDDING_MODEL", "BAAI/bge-m3")
     device = os.environ.get("EDK2_EMBEDDING_DEVICE", "cpu")
     # bge-m3 defaults to an 8192-token window, which makes CPU embedding ~8x
     # slower than needed: chunks are at most ~2000 chars (~600 tokens), so a

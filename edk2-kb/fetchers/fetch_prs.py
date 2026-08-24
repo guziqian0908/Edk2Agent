@@ -88,6 +88,15 @@ def main():
                 pass
         print(f"Resuming: {len(seen)} PRs already in {OUT}")
 
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        print("[warn] No GITHUB_TOKEN set — rate limit is 60 requests/hour.",
+              file=sys.stderr)
+        print("[warn] Set GITHUB_TOKEN to raise the limit to 5000/hour.",
+              file=sys.stderr)
+        print("[warn] Estimated time for ~8000+ PRs without token: 2+ hours.",
+              file=sys.stderr)
+
     mode = "a" if seen else "w"
     page, written, empty = 1, 0, 0
     with open(OUT, mode, encoding="utf-8") as f:
