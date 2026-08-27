@@ -296,7 +296,7 @@ function truncateDegenerate(text) {
     seen.set(key, c);
   }
   if (cut <= 0) return text;
-  return parts.slice(0, cut).join('').trim() + '（回答在生成时检测到重复内容，已截断）';
+  return parts.slice(0, cut).join('').trim();
 }
 
 function storeAnswerCache(question, model, data, daemonUrl) {
@@ -1480,6 +1480,7 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     '- 配置 / 规范 / PCD / INF / DEC / DSC 类：给出关键字段与约束，并附**最小可参考的片段或真实写法**（如 DEC/DSC/INF 的 section 写法、C 代码中的访问宏），让工程师能照着落地。',
     '- 故障 / 报错类：先描述可复现现象（只描述现象，不虚构报错码），再给按可能性排序的根因排查清单与可观测手段（build log / map / UEFI Shell / SCT 等）。',
     '- 概念 / 机制类：先用一句话点出本质，再画清关系模型（从属、数据流、调用关系），必要时列关键步骤。',
+    '- 若问题询问"某字段 / 参数有什么用、可以用来做什么"：必须点出该字段**实际控制的具体行为**——如排序 / 优先级、启用禁用、选择分支、匹配规则等，并标注依据编号。若上下文明确写到该字段决定驱动连接 / 加载的优先级顺序，必须把"决定优先级排序"这一结论直接写出，不要只说"供 XXX 参考"或"用于标识版本"。',
     '- 有规范原文 shall/must 依据的结论标【强制要求】；社区经验或推导结论标【最佳实践】。任何无法在单个条目里逐字核对的断言，一律标【综合推导】并注明"由多条文档综合推导，原文无直接表述"，且不得展开成具体细节（细节必须回到有依据的部分）。',
     '- 语言紧凑、不注水：不写与问题无关的内容、不自我重复；但信息密度要高——该列的全列、该给片段的给片段。紧凑不等于删减应覆盖的内容（见上方"详略分级"）。',
     '',
@@ -1997,12 +1998,12 @@ async function rerankResults(question, results, keep) {
     const txt = (r.text || r.content || '').replace(/\s+/g, ' ').slice(0, 220);
     return `${i}|${src}|${txt}`;
   }).join('\n');
-  const prompt = `You are a reranker for an EDK2/TianoCore documentation RAG system. Given the user QUESTION and the numbered DOCUMENT CHUNKS below, select the chunks that best help answer the question. Prefer chunks that directly define the concept, explain its purpose/usage, or describe the mechanism/process that uses it. Return ONLY a minified JSON array of the selected indices in descending relevance, up to ${keep}. Example: [3,0,7].`;
+  const prompt = `You are a reranker for an EDK2/TianoCore documentation RAG system. Given the user QUESTION and the numbered DOCUMENT CHUNKS below, rank ALL chunks by how well they help answer the question (most relevant first). Prefer chunks that directly define the concept, explain its purpose/usage, or describe the mechanism/process that uses it. Return ONLY a minified JSON array of ALL candidate indices (0..N-1) in descending relevance order. Example: [3,0,7,1,2,...].`;
   try {
     const text = await llmComplete([
       { role: 'system', content: prompt },
       { role: 'user', content: `QUESTION: ${question}\n\nCHUNKS:\n${payload}` },
-    ], { timeoutMs: 60000, maxTokens: 200 });
+    ], { timeoutMs: 60000, maxTokens: 400 });
     const m = text.match(/\[[\s\S]*\]/);
     if (m) {
       const idx = JSON.parse(m[0]);
@@ -2015,7 +2016,12 @@ async function rerankResults(question, results, keep) {
             seenIdx.add(n);
             picked.push(cand[n]);
           }
-          if (picked.length >= keep) break;
+        }
+        // Guarantee every candidate is represented: a full reorder must never
+        // drop a doc. Dropping the lexically-distant-but-correct answer chunk
+        // is exactly the recall bug we are fixing, so append any unranked index.
+        for (let i = 0; i < cand.length; i++) {
+          if (!seenIdx.has(i)) { seenIdx.add(i); picked.push(cand[i]); }
         }
         if (picked.length) return picked;
       }
@@ -3024,7 +3030,7 @@ async function handleAsk(req, res) {
       }
       // Store the completed self-contained answer for future replays.
       const selfContained = !history.length && !prevResults.length && parsed.fresh !== true;
-      if (selfContained && fullAnswer && !isDegenerate(fullAnswer) && !fullAnswer.includes('已截断')) {
+      if (selfContained && fullAnswer && !isDegenerate(fullAnswer)) {
         await storeAnswerCache(question, model, {
           answer: fullAnswer,
           results: results.slice(0, 10),
