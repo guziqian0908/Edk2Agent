@@ -265,6 +265,40 @@ async function getSemanticCachedAnswer(question, model, daemonUrl) {
 // query embedding so the semantic cache can match future paraphrases. The
 // embedding is computed asynchronously so it never delays the final `done`
 // event; embedding failure is non-fatal (exact-match reuse still works).
+// Detect degenerate / looping model output (heavy repetition). Used so we never
+// cache or display garbage answers.
+function isDegenerate(text) {
+  if (!text || text.length < 80) return false;
+  const sentences = text.split(/(?<=[。！？!?\n])/);
+  const seen = new Map();
+  for (const s of sentences) {
+    const key = s.replace(/\s+/g, '').slice(0, 40);
+    if (key.length < 6) continue;
+    const c = (seen.get(key) || 0) + 1;
+    if (c >= 3) return true;
+    seen.set(key, c);
+  }
+  return false;
+}
+
+// Cut a degenerate answer at the first repeated sentence so the user at least
+// sees a coherent prefix instead of endless repetition.
+function truncateDegenerate(text) {
+  if (!text || text.length < 80) return text;
+  const parts = text.split(/(?<=[。！？!?\n])/);
+  const seen = new Map();
+  let cut = -1;
+  for (let i = 0; i < parts.length; i++) {
+    const key = parts[i].replace(/\s+/g, '').slice(0, 40);
+    if (key.length < 6) continue;
+    const c = (seen.get(key) || 0) + 1;
+    if (c >= 2) { cut = i; break; }
+    seen.set(key, c);
+  }
+  if (cut <= 0) return text;
+  return parts.slice(0, cut).join('').trim() + '（回答在生成时检测到重复内容，已截断）';
+}
+
 function storeAnswerCache(question, model, data, daemonUrl) {
   const key = answerCacheKey(question, model);
   if (answerCache.size >= ANSWER_CACHE_MAX) {
@@ -283,7 +317,7 @@ function storeAnswerCache(question, model, data, daemonUrl) {
 
 // Replay a cached answer as the same SSE stream a live LLM call emits:
 // phase(cache_hit) -> results -> phase(llm) -> delta* -> phase(llm_done) -> done.
-function replayCachedAnswer(res, cached, question, semantic = false) {
+function replayCachedAnswer(res, cached, question, semantic = false, startTs = null) {
   const tier = routeQuery(question);
   sendSSE(res, 'phase', {
     step: 'cache_hit',
@@ -299,7 +333,12 @@ function replayCachedAnswer(res, cached, question, semantic = false) {
     sendSSE(res, 'delta', { text: answer.slice(i, i + CHUNK) });
   }
   sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic });
-  sendSSE(res, 'done', { model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic, tier });
+  sendSSE(res, 'done', {
+    model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic, tier,
+    totalMs: startTs != null ? Date.now() - startTs : 0,
+    searchMs: null,
+    searchCalls: 0,
+  });
 }
 
 // Rerank documents using BGE-reranker-v2-m3
@@ -1515,7 +1554,7 @@ function llmStream(messages, { onDelta, timeoutMs = LLM_STREAM_TIMEOUT_MS, maxTo
     // cache (prompt_cache_hit_tokens) so we can confirm the stable system
     // prompt prefix is actually being reused across requests.
     const payload = {
-      model, messages, temperature: 0, stream: true, max_tokens: maxTokens,
+      model, messages, temperature: 0, frequency_penalty: parseFloat(process.env.LLM_FREQUENCY_PENALTY || '1.5'), stream: true, max_tokens: maxTokens,
       // Disable the model's private chain-of-thought ("reasoning_content") so it
       // answers directly in `content`. Reasoning models otherwise stream their
       // planning ("分析上下文/开始撰写/…") to the user. `none` keeps factual,
@@ -1639,7 +1678,7 @@ async function llmComplete(messages, { timeoutMs = 60000, maxTokens = 300, signa
     if (!apiKey || !baseUrl || !model) return resolve('');
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const u = new URL(url);
-    const payload = { model, messages, temperature: 0, max_tokens: maxTokens, reasoning_effort: LLM_REASONING_EFFORT };
+    const payload = { model, messages, temperature: 0, frequency_penalty: parseFloat(process.env.LLM_FREQUENCY_PENALTY || '1.5'), max_tokens: maxTokens, reasoning_effort: LLM_REASONING_EFFORT };
     const protocol = u.protocol === 'https:' ? https : http;
     const req = protocol.request({
       hostname: u.hostname,
@@ -1930,19 +1969,34 @@ async function handleAsk(req, res) {
     const traceId = newTraceId();
     const startedAt = Date.now();
     let qh = '';
+    let question = '';
+    let turnSearchMs = null;
+    let turnSearchCalls = 0;
     const finishTotal = (status, extra = {}) => {
+      const totalMs = Date.now() - startedAt;
+      const searchPart = turnSearchMs == null
+        ? '检索: 跳过(命中缓存/闲聊)'
+        : `检索: ${turnSearchMs}ms (calls=${turnSearchCalls})`;
+      console.log(`[对话轮次] 总耗时 ${totalMs}ms | ${searchPart} | 状态: ${status} | 问题: ${String(question || '').slice(0, 40)}`);
       emitTrace({
-        traceId, stage: 'http_total', durationMs: Date.now() - startedAt,
+        traceId, stage: 'http_total', durationMs: totalMs,
         queryHash: qh, status, ...extra,
       });
     };
+    // Timing fields surfaced to the web UI via the SSE `done` event.
+    const timingFields = () => ({
+      totalMs: Date.now() - startedAt,
+      searchMs: turnSearchMs,
+      searchCalls: turnSearchCalls,
+    });
     try {
       // Buffer.concat + single decode preserves multi-byte UTF-8 characters
       // even when they are split across TCP chunks; naive string concat
       // decodes each Buffer fragment independently and corrupts CJK text.
       const body = Buffer.concat(chunks).toString('utf8');
       const parsed = JSON.parse(body || '{}');
-      const question = (parsed.question || '').trim();
+      const questionText = (parsed.question || '').trim();
+      question = questionText;
       const history = Array.isArray(parsed.history) ? parsed.history.slice(-10) : [];
       const prevResults = sanitizePrevResults(parsed.prevResults);
       if (!question) {
@@ -1975,7 +2029,7 @@ async function handleAsk(req, res) {
         sendSSE(res, 'phase', { step: 'llm', text: '正在回复…', progress: 60, model });
         sendSSE(res, 'delta', { text: CHITCHAT_ANSWER });
         sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model });
-        sendSSE(res, 'done', { model });
+        sendSSE(res, 'done', { model, ...timingFields() });
         res.end();
         emitTrace({
           traceId, stage: 'chitchat', durationMs: Date.now() - ccStart,
@@ -1994,7 +2048,7 @@ async function handleAsk(req, res) {
           'X-Accel-Buffering': 'no',
         });
         const cacheStart = Date.now();
-        replayCachedAnswer(res, exactAnswer, question, false);
+        replayCachedAnswer(res, exactAnswer, question, false, startedAt);
         res.end();
         emitTrace({
           traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
@@ -2032,7 +2086,7 @@ async function handleAsk(req, res) {
         const semHit = await getSemanticCachedAnswer(question, model, url);
         if (semHit) {
           const cacheStart = Date.now();
-          replayCachedAnswer(res, semHit.cached, question, true);
+          replayCachedAnswer(res, semHit.cached, question, true, startedAt);
           res.end();
           emitTrace({
             traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
@@ -2162,6 +2216,8 @@ async function handleAsk(req, res) {
             queryHash: qh, status: 'ok', calls: 2 + docsFocusQueries.length + subQueries.length,
             subQueries: subQueries.length, validSubQueries: subResps.length,
           });
+          turnSearchMs = Date.now() - searchStart;
+          turnSearchCalls = 2 + docsFocusQueries.length + subQueries.length;
           searchResp = mainResp;
           const docsResults = (docsResp && docsResp.body && docsResp.body.results) || [];
           const docsFocusResults = docsFocusResps.flatMap(r => (r && r.body && r.body.results) || []);
@@ -2789,9 +2845,40 @@ async function handleAsk(req, res) {
         }
       }
       sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model, tokens: tokenCount });
+      // Guard against degenerate (looping) model output. If detected, retry the
+      // generation ONCE with a stronger frequency_penalty. The retry result is
+      // delivered via the `answer_revision` SSE event, which the client uses to
+      // REPLACE the already-streamed (garbage) answer — so the user only ever
+      // sees the clean text. Degenerate answers are never cached (caching poison
+      // would make every future ask return the broken answer).
+      if (isDegenerate(fullAnswer)) {
+        emitTrace({ traceId, stage: 'answer_degenerate', durationMs: 0, queryHash: qh, status: 'retry', tokens: tokenCount });
+        const savedFp = process.env.LLM_FREQUENCY_PENALTY;
+        let retryText = '';
+        try {
+          process.env.LLM_FREQUENCY_PENALTY = '2.0';
+          const retryMessages = buildMessages(question, results, history, prevResults, { lowCoverage: coverage.low, tier });
+          await raceLlmOnce(retryMessages, {
+            onDelta: (t) => { retryText += t; },
+            timeoutMs: LLM_STREAM_TIMEOUT_MS,
+            maxTokens: LLM_MAX_TOKENS,
+            signal: null,
+          });
+        } catch (e) {
+          emitTrace({ traceId, stage: 'answer_degenerate', durationMs: 0, queryHash: qh, status: 'retry_failed', error: String((e && e.message) || e) });
+        } finally {
+          process.env.LLM_FREQUENCY_PENALTY = savedFp;
+        }
+        if (retryText && !isDegenerate(retryText)) {
+          fullAnswer = retryText;
+        } else {
+          fullAnswer = truncateDegenerate(fullAnswer);
+        }
+        sendSSE(res, 'answer_revision', { answer: fullAnswer });
+      }
       // Store the completed self-contained answer for future replays.
       const selfContained = !history.length && !prevResults.length && parsed.fresh !== true;
-      if (selfContained && fullAnswer) {
+      if (selfContained && fullAnswer && !isDegenerate(fullAnswer) && !fullAnswer.includes('已截断')) {
         await storeAnswerCache(question, model, {
           answer: fullAnswer,
           results: results.slice(0, 10),
@@ -2803,7 +2890,7 @@ async function handleAsk(req, res) {
           status: 'ok', hit: false, tokens: tokenCount,
         });
       }
-      sendSSE(res, 'done', { model, tokens: tokenCount, from_cache: fromCache, unverifiedCitations: cit.invalid, tier });
+      sendSSE(res, 'done', { model, tokens: tokenCount, from_cache: fromCache, unverifiedCitations: cit.invalid, tier, ...timingFields() });
       res.end();
       finishTotal('ok', { tokens: tokenCount, from_cache: fromCache });
     } catch (e) {
