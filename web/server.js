@@ -296,7 +296,7 @@ function truncateDegenerate(text) {
     seen.set(key, c);
   }
   if (cut <= 0) return text;
-  return parts.slice(0, cut).join('').trim() + '（回答在生成时检测到重复内容，已截断）';
+  return parts.slice(0, cut).join('').trim();
 }
 
 function storeAnswerCache(question, model, data, daemonUrl) {
@@ -1480,6 +1480,7 @@ function buildMessages(question, results, history, prevResults, opts = {}) {
     '- 配置 / 规范 / PCD / INF / DEC / DSC 类：给出关键字段与约束，并附**最小可参考的片段或真实写法**（如 DEC/DSC/INF 的 section 写法、C 代码中的访问宏），让工程师能照着落地。',
     '- 故障 / 报错类：先描述可复现现象（只描述现象，不虚构报错码），再给按可能性排序的根因排查清单与可观测手段（build log / map / UEFI Shell / SCT 等）。',
     '- 概念 / 机制类：先用一句话点出本质，再画清关系模型（从属、数据流、调用关系），必要时列关键步骤。',
+    '- 若问题询问"某字段 / 参数有什么用、可以用来做什么"：必须点出该字段**实际控制的具体行为**——如排序 / 优先级、启用禁用、选择分支、匹配规则等，并标注依据编号。若上下文明确写到该字段决定驱动连接 / 加载的优先级顺序，必须把"决定优先级排序"这一结论直接写出，不要只说"供 XXX 参考"或"用于标识版本"。',
     '- 有规范原文 shall/must 依据的结论标【强制要求】；社区经验或推导结论标【最佳实践】。任何无法在单个条目里逐字核对的断言，一律标【综合推导】并注明"由多条文档综合推导，原文无直接表述"，且不得展开成具体细节（细节必须回到有依据的部分）。',
     '- 语言紧凑、不注水：不写与问题无关的内容、不自我重复；但信息密度要高——该列的全列、该给片段的给片段。紧凑不等于删减应覆盖的内容（见上方"详略分级"）。',
     '',
@@ -1898,6 +1899,137 @@ async function analyzeQuery(question, tier) {
   return data;
 }
 
+// P0: relational query expansion. A literal translation captures the surface
+// wording but misses associated protocols/functions the answer actually
+// needs (e.g. "driver binding version" should also检索 "ConnectController
+// priority" / "option ROM loading order"). Ask the LLM for 3-4 related-concept
+// queries that bridge to the DEFINITION, the CONSUMING PROCESS, and the
+// BOOT/RUNTIME SCENARIO, and merge them into the retrieval pool.
+async function expandRelationalQueries(question) {
+  const key = 'rel:' + normalizeQuery(question);
+  const hit = translationCache.get(key);
+  if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.data;
+  const prompt = `You expand search queries for an EDK2/TianoCore documentation RAG system. The user asks a question (often in Chinese) about a UEFI/EDK2 concept: a protocol, a struct field/member, a function, or a boot/runtime mechanism.
+
+Output 3-4 ADDITIONAL English search queries that retrieve the documentation the user actually needs but a literal translation would miss. Bridge vocabulary gaps by covering:
+1. DEFINITION: the protocol/struct/field itself and its members.
+2. CONSUMER/PROCESS: the function or boot/runtime process that USES or is driven by the concept (e.g. a question about a protocol field's "version" must also query "ConnectController driver binding connection process" and "UEFI option ROM driver loading order priority" that consume it).
+3. SCENARIO: when/where the concept matters at boot or runtime.
+
+Use precise EDK2 terminology (ConnectController, Driver Binding, option ROM, HII, PCD, etc.). Do NOT repeat the user's question. Output ONLY minified JSON: {"queries":["...","...","..."]}.`;
+  let queries = [];
+  try {
+    const text = await llmComplete([
+      { role: 'system', content: prompt },
+      { role: 'user', content: question },
+    ], { timeoutMs: 60000, maxTokens: 400 });
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) {
+      const data = JSON.parse(m[0]);
+      if (Array.isArray(data.queries)) {
+        queries = data.queries.map(s => String(s).slice(0, 200)).filter(Boolean);
+      }
+    }
+  } catch { /* non-fatal */ }
+  const out = queries.slice(0, 4);
+  translationCache.set(key, { data: out, timestamp: Date.now() });
+  return out;
+}
+
+// P2: directory-neighbor expansion. Related content often lives in the same
+// section folder but wasn't lexically aligned with the query. After retrieval,
+// pull sibling chunks from the most frequent parent directories among the top
+// results (skipping generic folders like "source").
+async function neighborExpand(results, url, traceId) {
+  if (!Array.isArray(results) || !results.length) return [];
+  const top = results.slice(0, 14);
+  const dirCount = new Map();
+  for (const r of top) {
+    const f = r.file || r.title || '';
+    if (!f) continue;
+    const parts = f.split(/[\\/]/);
+    if (parts.length < 2) continue;
+    const dir = parts.slice(0, -1).join('/');
+    dirCount.set(dir, (dirCount.get(dir) || 0) + 1);
+  }
+  const ranked = [...dirCount.entries()].sort((a, b) => b[1] - a[1]);
+  const generic = /^(source|docs?|markdown|content|files?|assets|images?|md)$/i;
+  const chosen = [];
+  for (const [d] of ranked) {
+    const lastSeg = d.split(/[\\/]/).pop().replace(/[_-]+/g, '').toLowerCase();
+    if (generic.test(lastSeg)) continue;
+    chosen.push(d);
+    if (chosen.length >= 2) break;
+  }
+  if (!chosen.length) return [];
+  const out = [];
+  const seen = new Set(results.map(r => chunkKey(r)));
+  for (const dir of chosen) {
+    const q = dir.replace(/[\\/_-]+/g, ' ');
+    try {
+      const resp = await httpJson(`${url}/search?query=${encodeURIComponent(q)}&top_k=10`, { timeoutMs: 60000, headers: { 'X-Trace-Id': traceId } });
+      const hits = (resp && resp.body && resp.body.results) || [];
+      for (const r of hits) {
+        const f = r.file || r.title || '';
+        const parent = f.split(/[\\/]/).slice(0, -1).join('/');
+        if (parent === dir && !seen.has(chunkKey(r))) {
+          seen.add(chunkKey(r));
+          out.push(r);
+        }
+        if (out.length >= 10) break;
+      }
+    } catch { /* ignore */ }
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+// P3/Rerank (b): LLM cross-encoder-style reranker. After P0+P2 the merged
+// candidate pool contains the right docs (e.g. ConnectController / option-ROM
+// chapters for a "driver binding version" question) but lexical ranking may
+// bury them below broader hits. This reorders the pool so the chunks most
+// relevant to the QUESTION surface to the top of the LLM context (not just the
+// on-screen source panel). Non-fatal: on any failure the fused order is kept.
+async function rerankResults(question, results, keep) {
+  if (!Array.isArray(results) || results.length < 6) return results;
+  const cand = results.slice(0, 50);
+  const payload = cand.map((r, i) => {
+    const src = r.file || r.title || '';
+    const txt = (r.text || r.content || '').replace(/\s+/g, ' ').slice(0, 220);
+    return `${i}|${src}|${txt}`;
+  }).join('\n');
+  const prompt = `You are a reranker for an EDK2/TianoCore documentation RAG system. Given the user QUESTION and the numbered DOCUMENT CHUNKS below, rank ALL chunks by how well they help answer the question (most relevant first). Prefer chunks that directly define the concept, explain its purpose/usage, or describe the mechanism/process that uses it. Return ONLY a minified JSON array of ALL candidate indices (0..N-1) in descending relevance order. Example: [3,0,7,1,2,...].`;
+  try {
+    const text = await llmComplete([
+      { role: 'system', content: prompt },
+      { role: 'user', content: `QUESTION: ${question}\n\nCHUNKS:\n${payload}` },
+    ], { timeoutMs: 60000, maxTokens: 400 });
+    const m = text.match(/\[[\s\S]*\]/);
+    if (m) {
+      const idx = JSON.parse(m[0]);
+      if (Array.isArray(idx) && idx.length) {
+        const picked = [];
+        const seenIdx = new Set();
+        for (const i of idx) {
+          const n = Number(i);
+          if (Number.isInteger(n) && n >= 0 && n < cand.length && !seenIdx.has(n)) {
+            seenIdx.add(n);
+            picked.push(cand[n]);
+          }
+        }
+        // Guarantee every candidate is represented: a full reorder must never
+        // drop a doc. Dropping the lexically-distant-but-correct answer chunk
+        // is exactly the recall bug we are fixing, so append any unranked index.
+        for (let i = 0; i < cand.length; i++) {
+          if (!seenIdx.has(i)) { seenIdx.add(i); picked.push(cand[i]); }
+        }
+        if (picked.length) return picked;
+      }
+    }
+  } catch { /* non-fatal: keep fused order */ }
+  return results;
+}
+
 async function llmAnswer(question, results, history, prevResults) {
   const { apiKey, baseUrl, model } = llmConfig();
   if (!apiKey || !baseUrl || !model) {
@@ -2121,7 +2253,11 @@ async function handleAsk(req, res) {
           const translateStart = Date.now();
           // P1: one LLM call yields the English translation AND (for complex
           // tier) the sub-query decomposition — no extra round-trip.
-          const analysis = await analyzeQuery(question, tier);
+          const [analysis, relationalRaw] = await Promise.all([
+            analyzeQuery(question, tier),
+            expandRelationalQueries(question),
+          ]);
+          const relationalQueries = (relationalRaw || []).slice(0, 4);
           const subQueries = (analysis.subQueries || []).slice(0, MAX_SUB_QUERIES);
           emitTrace({
             traceId, stage: 'llm_translate', durationMs: Date.now() - translateStart,
@@ -2189,9 +2325,13 @@ async function handleAsk(req, res) {
           // the full index; each sub-question then has its own evidence window.
           const subPromises = subQueries.map(sq =>
             httpJson(`${url}/search?query=${encodeURIComponent(sq)}&top_k=10&dedup=false`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
-          const [mainResp, docsResp, ...restResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises, ...subPromises]);
+          const relationalPromises = relationalQueries.map(rq =>
+            httpJson(`${url}/search?query=${encodeURIComponent(rq)}&top_k=15&dedup=false`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
+          const [mainResp, docsResp, ...restResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises, ...subPromises, ...relationalPromises]);
           const docsFocusResps = restResps.slice(0, docsFocusQueries.length);
-          let subResps = restResps.slice(docsFocusQueries.length);
+          const subRespsRaw = restResps.slice(docsFocusQueries.length, docsFocusQueries.length + subQueries.length);
+          const relationalResps = restResps.slice(docsFocusQueries.length + subQueries.length);
+          let subResps = subRespsRaw;
           // P2-8: retrieval-gain validation for simple-tier paraphrases. A
           // paraphrase is kept only if (a) it shares >=1 document with the
           // main search (topic anchor — the paraphrase did not drift) AND
@@ -2213,11 +2353,12 @@ async function handleAsk(req, res) {
           }
           emitTrace({
             traceId, stage: 'mcp_search', durationMs: Date.now() - searchStart,
-            queryHash: qh, status: 'ok', calls: 2 + docsFocusQueries.length + subQueries.length,
-            subQueries: subQueries.length, validSubQueries: subResps.length,
+            queryHash: qh, status: 'ok', calls: 2 + docsFocusQueries.length + subQueries.length + relationalPromises.length,
+            subQueries: subQueries.length, validSubQueries: subResps.length, relational: relationalQueries.length,
+            relationalQueries: relationalQueries,
           });
           turnSearchMs = Date.now() - searchStart;
-          turnSearchCalls = 2 + docsFocusQueries.length + subQueries.length;
+          turnSearchCalls = 2 + docsFocusQueries.length + subQueries.length + relationalPromises.length;
           searchResp = mainResp;
           const docsResults = (docsResp && docsResp.body && docsResp.body.results) || [];
           const docsFocusResults = docsFocusResps.flatMap(r => (r && r.body && r.body.results) || []);
@@ -2230,55 +2371,39 @@ async function handleAsk(req, res) {
               if (!seen.has(k)) { seen.add(k); docsCombined.push(r); }
             }
           }
-          if (docsCombined.length > 0) {
-            // Merge: docs-source chunks are authoritative for spec questions,
-            // so keep every unique docs chunk that the broad query missed,
-            // interleaved by their docs rank after the broad top-3.
+          {
             const broad = (searchResp.body && searchResp.body.results) || [];
             const seen = new Set(broad.map(r => chunkKey(r)));
-            const merged = broad.slice(0, 3);
-            const docSeen = new Set(merged.map(r => chunkKey(r)));
-            const docsOnly = docsCombined.filter(r => {
-              const k = chunkKey(r);
-              if (seen.has(k) || docSeen.has(k)) return false;
-              docSeen.add(k);
-              return true;
-            });
-            merged.push(...docsOnly.slice(0, 15));
-            for (const r of broad.slice(3)) {
-              const k = chunkKey(r);
-              if (merged.length >= 35) break;
-              if (!docSeen.has(k)) { docSeen.add(k); merged.push(r); }
-            }
-            // Append sub-query hits (dedup by chunk key) so every decomposed
-            // sub-question contributes its own evidence before the broad tail.
+            const docsOnly = docsCombined.filter(r => !seen.has(chunkKey(r)));
             const subHits = subResps.flatMap(r => (r && r.body && r.body.results) || []);
-            if (subHits.length) {
-              for (const r of subHits) {
-                if (merged.length >= 35) break;
-                const k = chunkKey(r);
-                if (!docSeen.has(k)) { docSeen.add(k); merged.push(r); }
-              }
+            const relHits = [];
+            for (const r of relationalResps) {
+              const hits = (r && r.body && r.body.results) || [];
+              for (const h of hits.slice(0, 6)) relHits.push(h);
             }
-            searchResp = { body: { results: merged } };
-          } else if (subResps.length) {
-            // No docs-source results at all: still merge sub-query hits behind
-            // the broad retrieval order.
-            const broad = (searchResp.body && searchResp.body.results) || [];
-            const merged = broad.slice(0, 3);
-            const docSeen = new Set(merged.map(r => chunkKey(r)));
-            const subHits = subResps.flatMap(r => (r && r.body && r.body.results) || []);
-            for (const r of subHits) {
-              if (merged.length >= 35) break;
+            // Unified, deduped candidate pool. Interleave all sources so no
+            // single source (e.g. decomposed sub-queries) can starve the
+            // relational expansion that carries the semantically-correct but
+            // lexically-distant docs (ConnectController / option-ROM chapters).
+            // One global cap then feeds the LLM reranker, which reorders by
+            // true relevance before the LLM answers.
+            const poolSeen = new Set();
+            const pool = [];
+            const add = (r) => {
               const k = chunkKey(r);
-              if (!docSeen.has(k)) { docSeen.add(k); merged.push(r); }
-            }
-            for (const r of broad.slice(3)) {
-              const k = chunkKey(r);
-              if (merged.length >= 35) break;
-              if (!docSeen.has(k)) { docSeen.add(k); merged.push(r); }
-            }
-            searchResp = { body: { results: merged } };
+              if (!poolSeen.has(k)) { poolSeen.add(k); pool.push(r); }
+            };
+            const take = (arr, n) => (n == null ? arr : arr.slice(0, n));
+            // Per-source caps so no single source starves the relational
+            // expansion (the bridge to lexically-distant answer docs like
+            // ConnectController / option-ROM chapters). Relational gets the
+            // largest share on purpose.
+            for (const r of broad.slice(0, 3)) add(r);
+            for (const r of take(relHits, 25)) add(r);
+            for (const r of take(docsOnly, 8)) add(r);
+            for (const r of take(subHits, 10)) add(r);
+            for (const r of broad.slice(3, 7)) add(r);
+            searchResp = { body: { results: pool.slice(0, 50) } };
           }
 
           // General title-shell expansion: detect blocks that are just section headers
@@ -2301,7 +2426,34 @@ async function handleAsk(req, res) {
         // identifiers or distinctive expansion keywords. This counters the
         // "semantically close but wrong symbol" failures of pure vector search
         // BEFORE the expensive rerank stage sees them.
-        results = pruneByMetadata(question, results);
+         results = pruneByMetadata(question, results);
+         // P2: directory-neighbor expansion (after pruning so supplements
+         // survive). Pulls same-section siblings the query didn't align with.
+         try {
+           const neigh = await neighborExpand(results, url, traceId);
+           if (neigh.length) {
+             const seen = new Set(results.map(r => chunkKey(r)));
+             for (const r of neigh) {
+               if (results.length >= 45) break;
+               const k = chunkKey(r);
+               if (!seen.has(k)) { seen.add(k); results.push(r); }
+             }
+           }
+         } catch (e) { /* non-fatal */ }
+
+         // (b) LLM reranker: promote the most question-relevant chunks to the
+         // top of the context the LLM answers from (recovers correct-but-low-
+         // ranked docs like ConnectController/option-ROM chapters). Skipped for
+         // the free tier to save cost; non-fatal.
+         if (results.length > 12 && tier !== 'free') {
+           try {
+             const reranked = await rerankResults(question, results, 40);
+             if (reranked && reranked.length) {
+               results = reranked;
+               emitTrace({ traceId, stage: 'llm_rerank', durationMs: 0, queryHash: qh, status: 'ok', docs: reranked.length });
+             }
+           } catch (e) { /* non-fatal: keep fused order */ }
+         }
         
         // Assign every result a stable citation id (sha1 of the chunk identity)
         // BEFORE any parallel rerank can reorder things, so the LLM cites by an
@@ -2878,7 +3030,7 @@ async function handleAsk(req, res) {
       }
       // Store the completed self-contained answer for future replays.
       const selfContained = !history.length && !prevResults.length && parsed.fresh !== true;
-      if (selfContained && fullAnswer && !isDegenerate(fullAnswer) && !fullAnswer.includes('已截断')) {
+      if (selfContained && fullAnswer && !isDegenerate(fullAnswer)) {
         await storeAnswerCache(question, model, {
           answer: fullAnswer,
           results: results.slice(0, 10),

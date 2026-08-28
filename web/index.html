@@ -118,6 +118,8 @@
   .warnbox { color: #fcd34d; background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.35); padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-top: 10px; line-height: 1.6; word-break: break-word; }
   .warnbox ul { margin: 6px 0 0 0; padding-left: 20px; }
   .typing { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+  .turn-meta { font-size: 12px; color: var(--muted); margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--border); }
+  .turn-meta b { color: var(--text); font-weight: 600; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; vertical-align: middle; margin-right: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -462,6 +464,20 @@ async function refreshStatus() {
   }
 }
 
+function renderTurnMeta(div, d) {
+  if (!div) return;
+  const total = ((d.totalMs || 0) / 1000).toFixed(1);
+  let s = '本轮耗时 <b>' + total + 's</b>';
+  if (d.searchMs != null) {
+    s += ' · 检索 <b>' + (d.searchMs / 1000).toFixed(1) + 's</b>';
+    if (d.searchCalls) s += '（' + d.searchCalls + ' 次检索）';
+  } else {
+    s += ' · 检索：跳过（命中缓存/闲聊）';
+  }
+  if (d.from_cache) s += ' · 命中缓存';
+  div.innerHTML = s;
+}
+
 async function ask(question) {
   addUserMsg(question);
   const body = addAssistantTurn();
@@ -479,8 +495,10 @@ async function ask(question) {
   card.innerHTML =
     '<div class="h"><strong>回答</strong>' +
     '<span class="tag" id="modelTag" style="display:none"></span></div>' +
-    '<div class="answer"></div>';
+    '<div class="answer"></div>' +
+    '<div class="turn-meta"></div>';
   const answerDiv = card.querySelector('.answer');
+  const metaDiv = card.querySelector('.turn-meta');
   body.appendChild(card);
   answerDiv.innerHTML = '<div class="typing"><span class="spinner"></span>正在检索知识库…</div>';
 
@@ -556,6 +574,7 @@ async function ask(question) {
         } else if (type === 'done') {
           const tag = el('modelTag');
           if (d.model) { tag.textContent = d.model; tag.style.display = ''; }
+          renderTurnMeta(metaDiv, d);
         } else if (type === 'faithfulness_warn') {
           const claims = (d.claims || []).filter(Boolean);
           if (claims.length) {
