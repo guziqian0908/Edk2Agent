@@ -72,6 +72,7 @@ def trace_emit(trace_id: Optional[str], stage: str, duration_ms: float,
 
 SOURCE_DISPLAY = {
     'tianocore-wiki': 'TianoCore Wiki (官网)',
+    'tianocore-wiki-git': 'TianoCore Wiki (补全页)',
     'tianocore-docs': 'tianocore-docs (仓库)',
 }
 
@@ -145,6 +146,21 @@ BM25_WEIGHT = float(os.environ.get("EDK2_BM25_WEIGHT", "1.5"))
 # and both the JSON payload and the HTTP transfer stay small.
 MAX_CANDIDATES = int(os.environ.get("EDK2_MAX_CANDIDATES", "200"))
 
+# Recall depth. The dense leg fetches top_k * CHROMA_MULT candidates and the
+# fusion hands top_k * WINDOW_MULT to the reranker. Short/vague queries often
+# have the correct document below the first few dozen dense hits (generic
+# generated headers crowd the top), so a deeper window materially improves
+# recall; the cross-encoder then re-orders it. Both are env-tunable.
+CHROMA_MULT = float(os.environ.get("EDK2_CHROMA_MULT", "10"))
+WINDOW_MULT = float(os.environ.get("EDK2_WINDOW_MULT", "5"))
+
+# Lexical title/filename boost. A large share of questions name a page (e.g.
+# "372 drivers" -> 372_drivers.md, "hardware input" -> hardware_input.md) but
+# the dense leg ranks generic chunks above the page. This adds a bonus to the
+# fused score proportional to how much of the query is literally present in
+# the hit's file/title/section. 0 disables it.
+TITLE_BOOST = float(os.environ.get("EDK2_TITLE_BOOST", "0.35"))
+
 # Commit/PR freshness decay (P2). Requires the 'date' metadata added by the
 # v2 chunking pipeline (init_kb stores commit/PR dates in documents.json and
 # Chroma metadata). Disable with EDK2_COMMIT_DECAY=0.
@@ -166,6 +182,66 @@ def _minmax(values):
 
 def _doc_key(item):
     return (item.get('source'), item.get('file') or item.get('title'))
+
+
+def _parse_source_weights() -> dict:
+    """Optional per-source score multipliers for retrieval.
+
+    Set EDK2_SOURCE_WEIGHTS to a comma-separated "source:weight" list, e.g.
+    ``EDK2_SOURCE_WEIGHTS="edk2-mdepkg:0.6,edk2-commits:0.6"``. Sources not
+    listed default to 1.0 (neutral), so leaving the variable unset preserves
+    the original behaviour exactly. Used to down-rank high-volume, low-signal
+    sources (generated headers, commit logs) without removing them from the
+    index, so they still answer exact-identifier questions.
+    """
+    raw = os.environ.get("EDK2_SOURCE_WEIGHTS", "")
+    weights = {}
+    for part in raw.split(","):
+        part = part.strip()
+        if not part or ":" not in part:
+            continue
+        name, _, val = part.partition(":")
+        try:
+            weights[name.strip()] = float(val)
+        except ValueError:
+            continue
+    return weights
+
+
+SOURCE_WEIGHTS = _parse_source_weights()
+
+
+def _source_weight(item: Dict[str, Any]) -> float:
+    if not SOURCE_WEIGHTS:
+        return 1.0
+    return SOURCE_WEIGHTS.get(item.get('source') or "", 1.0)
+
+
+def _lexical_overlap(query: str, item: Dict[str, Any]) -> float:
+    """Fraction (0..1) of the query's content tokens literally present in the
+    hit's file basename / title / section.
+
+    Many questions name a page ("372 drivers", "hardware input"); this cheap
+    lexical signal lets those pages out-rank generic chunks that merely embed
+    similarly, without any model call.
+    """
+    import re as _re
+    # The supplementary mdBook wiki source shares file/title vocabulary with many
+    # natural-language queries; boosting it displaced correct spec docs, so it is
+    # excluded from the lexical boost (still fully searchable otherwise).
+    if item.get("repo") == "tianocore-wiki.github.io":
+        return 0.0
+    toks = {t for t in _re.split(r"[\s\W_]+", (query or "").lower())
+            if len(t) > 2}
+    if not toks:
+        return 0.0
+    fname = os.path.basename((item.get("file") or "").replace("\\", "/"))
+    hay = " ".join([fname, item.get("title") or "",
+                    item.get("section") or ""]).lower()
+    hay_toks = {t for t in _re.split(r"[\s\W_]+", hay) if t}
+    if not hay_toks:
+        return 0.0
+    return len(toks & hay_toks) / len(toks)
 
 # Confidence thresholds are model-specific. bge rerankers emit a sigmoid
 # relevance in [0, 1]; ms-marco emits unbounded logits (observed: >4 strong,
@@ -806,8 +882,8 @@ class SearchEngine:
             # query so each index contributes more diverse candidates.
             queries = list(dict.fromkeys([query, expanded_query]))
             groups: List[List[Dict[str, Any]]] = []
-            chroma_cands = min(top_k * 6, MAX_CANDIDATES)
-            bm25_cands = min(top_k * 3, MAX_CANDIDATES)
+            chroma_cands = min(int(top_k * CHROMA_MULT), MAX_CANDIDATES)
+            bm25_cands = min(int(top_k * WINDOW_MULT), MAX_CANDIDATES)
             _chroma_ms = 0.0
             _bm25_ms = 0.0
             _t = time.monotonic()
@@ -826,7 +902,8 @@ class SearchEngine:
             # documents the dense leg missed (exact EDK2 identifiers, PCD/GUID
             # names the embeddings blur), never displacing dense hits.
             candidates = self._fuse_dense_first(
-                groups, min(top_k * 3, MAX_CANDIDATES), dedup=dedup)
+                groups, min(int(top_k * WINDOW_MULT), MAX_CANDIDATES),
+                dedup=dedup, query=query)
             # BM25 candidates currently carry only pid+score; read their full
             # chunk text now, for the surviving set only (deferred 回表).
             self._attach_content(candidates)
@@ -932,6 +1009,17 @@ class SearchEngine:
                 (1.0 - RERANK_HYBRID_BETA) * a + RERANK_HYBRID_BETA * b
                 for a, b in zip(rer_n, rrf_n)
             ]
+            # Optional per-source re-weighting (EDK2_SOURCE_WEIGHTS): lets the
+            # authoritative docs out-rank high-volume low-signal sources.
+            if SOURCE_WEIGHTS:
+                fused = [f * _source_weight(c)
+                         for f, c in zip(fused, candidates)]
+            # Lexical title/filename boost (EDK2_TITLE_BOOST): rescues
+            # page-title style queries where the dense leg prefers generic
+            # chunks over the page the user actually named.
+            if TITLE_BOOST:
+                fused = [f + TITLE_BOOST * _lexical_overlap(query, c)
+                         for f, c in zip(fused, candidates)]
 
             # Sort by fused score, keep the raw rerank score for confidence.
             scored = list(zip(candidates, fused, rer_scores))
@@ -1295,7 +1383,8 @@ class SearchEngine:
     def _fuse_dense_first(self,
                           ranked_groups: List[List[Dict[str, Any]]],
                           limit: int,
-                          dedup: bool = True) -> List[Dict[str, Any]]:
+                          dedup: bool = True,
+                          query: str = "") -> List[Dict[str, Any]]:
         """Fuse dense + BM25 results, dense-first.
 
         The groups list alternates [chroma_q1, bm25_q1, chroma_q2, bm25_q2, ...]
@@ -1324,8 +1413,14 @@ class SearchEngine:
         # than whichever query ran first. score is the Chroma distance which
         # is LOWER = closer, so ascending order.
         chroma_items = [it for g in chroma_groups for it in g if it is not None]
-        chroma_items.sort(key=lambda it: float(it.get('score', -1e9)),
-                          reverse=True)
+
+        def _dense_key(it: Dict[str, Any]) -> float:
+            base = float(it.get('score', -1e9)) * _source_weight(it)
+            if TITLE_BOOST:
+                base += TITLE_BOOST * _lexical_overlap(query, it)
+            return base
+
+        chroma_items.sort(key=_dense_key, reverse=True)
 
         out: List[Dict[str, Any]] = []
         seen: set = set()

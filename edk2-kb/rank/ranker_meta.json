@@ -1,0 +1,27 @@
+{
+  "feature_names": [
+    "retrieval_score",
+    "rerank_score",
+    "authoritative",
+    "doc_type_priority",
+    "section_depth",
+    "title_overlap",
+    "content_overlap",
+    "age_years",
+    "snippet_len"
+  ],
+  "rows": 379,
+  "queries": 80,
+  "positive_ratio": 1.0,
+  "feature_importance_gain": {
+    "retrieval_score": 325.46,
+    "rerank_score": 0.0,
+    "authoritative": 1.71,
+    "doc_type_priority": 28.52,
+    "section_depth": 22.63,
+    "title_overlap": 91.03,
+    "content_overlap": 510.11,
+    "age_years": 0.0,
+    "snippet_len": 68.14
+  }
+}

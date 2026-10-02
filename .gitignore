@@ -11,3 +11,5 @@ web/test_*.js
 # Knowledge base data (built locally, ~800MB+; see setup_kb.ps1/.sh)
 edk2-kb/data/
 data/
+# Local caches (pip / HuggingFace / npm) - keep off the repo
+.cache/

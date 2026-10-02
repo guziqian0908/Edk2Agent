@@ -790,12 +790,31 @@ const DOCS_FOCUS_TOPICS = [
     re: /spacing|formatting|indentation|排版|空白|缩进|风格|style|vertical|horizontal|coding.?standard|编码规范/i,
     queries: [
       'C Coding Standards 5.2 Spacing Vertical Spacing blank lines Horizontal Spacing indentation File Heading section rules',
-      'vertical spacing blank lines make code more readable group logically related sections one statement on a line open brace predicate expression alignment continuation line',
-      'Formatting: General Rules Formatting: Vertical spacing Formatting: Horizontal spacing Formatting: Predicate Expressions 5.2.2 Horizontal Spacing 5.2.3 File Heading Predicate Expressions quick reference source_files',
-      '5.2.2.1 space one or more spaces long 5.2.2.2 binary operators space',
-      '5.2.2.3 unary operators 5.2.2.4 multi-line function calls line up',
-      '5.2.2.5 commas semicolons 5.2.2.6 open parenthesis 5.2.2.7 open brace',
-      '5.2.2.8 structure member 5.2.2.9 array subscripts 5.2.2.10 parentheses precedence 5.2.2.11 align continuation',
+      'Formatting General Rules Vertical spacing Horizontal spacing Predicate Expressions quick reference source_files',
+      '5.2.2.1 spaces binary operators unary operators multi-line function calls alignment commas semicolons open parenthesis open brace array subscripts',
+    ],
+  },
+  {
+    re: /naming|命名|identifier|标识符|hungarian|匈牙利|大小写|name space/i,
+    queries: [
+      'C Coding Standards naming conventions identifiers Hungarian prefixes function and data names type and macro names',
+      'global and module variables recommendations naming rules 4.4 4.5 name space rules file names directory names',
+    ],
+  },
+  {
+    re: /function layout|函数|注释|comment|doxygen|文件头|函数头|documenting/i,
+    queries: [
+      'C Programming function definition layout function headings parameter modifiers EFIAPI VOID parameter list',
+      'what you must comment Doxygen file heading copyright SPDX-License-Identifier Specification Reference',
+      'code file structure file header comment block what not to comment spurious variable assignment',
+    ],
+  },
+  {
+    re: /flow control|goto|assert|流程控制|注释禁忌|error handling/i,
+    queries: [
+      'Flow Control Statements compound statement Goto Statements should not be used',
+      'Error Handling and ASSERT assertion not for error handling PcdDebugPropertyMask',
+      'what not to comment BUGBUG FIX_THIS markers comments',
     ],
   },
   {
@@ -809,14 +828,116 @@ const DOCS_FOCUS_TOPICS = [
     re: /depex|依赖表达式|dependency expression/i,
     queries: [
       '[Depex] section dependency expression INF grammar TRUE AND OR NOT module dispatch',
-      'dependency expression depex module dispatch order PPI protocol',
+      'dependency expression depex module dispatch order PPI protocol inherited from libraries',
     ],
   },
   {
-    re: /driver binding|driverbinding|驱动绑定|驱动模型|Supported\(|Start\(|Stop\(|EFI_DRIVER_BINDING/i,
+    re: /module type|module_type|library class|library instance|库类|库实例|entry point|入口点/i,
     queries: [
-      'UEFI Driver Model Driver Binding Protocol Supported Start Stop EFI_DRIVER_BINDING_PROTOCOL',
-      'driver binding Supported Start Stop implementation UEFI driver',
+      'EDK II Module Types table module type PEIM DXE_DRIVER UEFI_APPLICATION entry point library',
+      'library class library instance DSC LibraryClasses mapping LIBRARY_CLASS constructor destructor produced library class',
+      'what is an EDK II module adding a module directory module meta file INF',
+    ],
+  },
+  {
+    re: /driver binding|driverbinding|驱动绑定|驱动模型|Supported\(|Start\(|Stop\(|EFI_DRIVER_BINDING|总线驱动|设备驱动/i,
+    queries: [
+      'UEFI Driver Writers Guide Driver Binding Protocol Template Supported Start Stop EFI_DRIVER_BINDING_PROTOCOL',
+      'Driver Binding Protocol implementations UEFI driver categories device drivers bus drivers required features',
+      'PCI driver Start order open protocol allocate private context PciIo Attributes Enable Command register DMA RemainingDevicePath',
+      'Start and Stop PCI drivers PciIo Attributes EfiPciIoAttributeOperationSet OriginalPciAttributes Example 171 172',
+      'multiple Driver Binding instances sum of products Version ConnectController priority verification Shell load dh connect disconnect reconnect drivers devices devtree openinfo unload',
+      'Driver Binding Protocol and Child Management BY_CHILD_CONTROLLER DevicePath RemainingDevicePath Start order',
+    ],
+  },
+  {
+    re: /locateprotocol|locatehandle|openprotocol|closeprotocol|protocol|协议|handle|句柄/i,
+    queries: [
+      'Handle Database and Protocol Services LocateHandleBuffer LocateProtocol OpenProtocol CloseProtocol Attributes',
+      'EFI_OPEN_PROTOCOL TEST_PROTOCOL GET_PROTOCOL BY_DRIVER BY_CHILD_CONTROLLER EXCLUSIVE usage return codes EFI_ACCESS_DENIED EFI_ALREADY_STARTED',
+      'InstallMultipleProtocolInterfaces UninstallMultipleProtocolInterfaces rollback handle database',
+    ],
+  },
+  {
+    re: /build|编译|AutoGen|PatchCheck|报错|LNK2001|error 4000|调试|debug|DEBUG\(|debugging/i,
+    queries: [
+      'Building the module Add the module INF in package DSC build command BuildOptions build module image AutoGen',
+      'Common build module breaks error 4000 Value of Guid is not found LNK2001 unresolved external symbol File name case mismatch',
+      'Debugging a Module required steps PcdDebugPropertyMask PcdDebugPrintErrorLevel DebugLib CpuDeadLoop map file',
+    ],
+  },
+  {
+    source: 'tianocore-wiki',
+    re: /commit|贡献|contribution|patch|uncrustify|\bci\b|review|签名|sign|pr\b|拆分|partition|格式化/i,
+    queries: [
+      'Commit Message Format Commit Signature Format commit partitioning contribution guide',
+      'commit message format Pkg-Module Brief single line summary Signed-off-by Reviewed-by signatures length',
+      'EDK II Code Formatting Uncrustify developer workflow uncrustify.cfg tianocore-uncrustify stuart_update stuart_ci_build',
+      'EDK II Continuous Integration PatchCheck UncrustifyCheck SpellCheck Mergify push label',
+      'EDK II Development Process Contributor Process Maintainer Process',
+    ],
+  },
+  {
+    source: 'all',
+    re: /启动流程|boot flow|boot sequence|启动阶段|PEI|PPI|HOB|SEC\b|DXE\b|BDS\b|TSL\b|PEIM|pre-efi/i,
+    queries: [
+      'PI boot flow SEC PEI DXE BDS TSL RT phases overview',
+      'PEIM-to-PEIM Interfaces PPI Services PEI Services Table HOB Hand-Off Block PEI to DXE handoff',
+      'PEI Services CreateHob GetHobList InstallPpi LocatePpi NotifyPpi Firmware Volume PEI Memory InstallPeiMemory',
+    ],
+  },
+  {
+    source: 'all',
+    re: /boot services|runtime services|exitbootservices|运行时|启动服务|system table/i,
+    queries: [
+      'Boot Services Runtime Services difference ExitBootServices memory map runtime drivers',
+      'Runtime Services rules and restrictions SetVirtualAddressMap EVT_SIGNAL_VIRTUAL_ADDRESS_CHANGE Event Group',
+    ],
+  },
+  {
+    source: 'all',
+    re: /\bTPL\b|raisetpl|restoretpl|event\b|事件|EVT_|timer|notify/i,
+    queries: [
+      'Task Priority Level RaiseTPL RestoreTPL event notification TPL restrictions table',
+      'CreateEvent CreateEventEx SetTimer EVT_TIMER EVT_NOTIFY_SIGNAL EVT_NOTIFY_WAIT EVT_SIGNAL_EXIT_BOOT_SERVICES event group',
+    ],
+  },
+  {
+    source: 'all',
+    re: /allocatepages|allocatepool|memory type|内存|EfiLoaderData|EfiBootServicesData|EfiRuntimeServicesData|allocate/i,
+    queries: [
+      'AllocatePages AllocatePool memory allocation services memory type EfiLoaderData EfiBootServicesData EfiRuntimeServicesData GetMemoryMap FreePages FreePool',
+    ],
+  },
+  {
+    source: 'all',
+    re: /variable|变量|getvariable|setvariable|non_volatile|attributes/i,
+    queries: [
+      'Variable Services GetVariable SetVariable QueryVariableInfo attributes NON_VOLATILE BOOTSERVICE_ACCESS RUNTIME_ACCESS APPEND_WRITE time based authenticated',
+    ],
+  },
+  {
+    source: 'all',
+    re: /\bSMM\b|management mode|standalone mm|mm_standalone|munblockmemoryrequest|mmst/i,
+    queries: [
+      'Standalone MM introduction Management Mode traditional SMM DXE_SMM_DRIVER differences',
+      'MM Core Interface MMST MmUnblockMemoryRequest CommBuffer shadow buffer TOCTOU',
+    ],
+  },
+  {
+    source: 'all',
+    re: /\bHII\b|\bVFR\b|human interface|form browser|setup|界面|配置界面|ifr/i,
+    queries: [
+      'HII Human Interface Infrastructure overview forms strings VFR IFR HiiDatabase HiiAddPackages',
+      'VFR description in BNF formset form oneof numeric checkbox question varstore EFI_HII_CONFIG_ACCESS_PROTOCOL ExtractConfig RouteConfig',
+    ],
+  },
+  {
+    source: 'all',
+    re: /secure boot|trusted boot|measured boot|\bpk\b|kek|dbx|安全启动|trusted/i,
+    queries: [
+      'Secure Boot chain integrity models PK KEK db dbx authorized forbidden image database verification',
+      'Trusted Boot measured boot TPM PCR event log remote attestation',
     ],
   },
 ];
@@ -992,6 +1113,16 @@ function routeQuery(question) {
   }
   // Multiple sub-questions (>=2 question marks) imply multi-part reasoning.
   if ((q.match(/[?？]/g) || []).length >= 2) return 'complex';
+
+  // Broad enumerative / rules / process / how-to questions answer many
+  // sub-parts (lists of rules, step sequences, requirement sets). Treat them
+  // as complex so they get dedup=false (several sections of one doc), deeper
+  // retrieval and a larger context/token budget. Measured on the custom
+  // question set: these were being routed to simple/standard, which returned
+  // one chunk per doc and made comprehensive rule answers impossible.
+  if (/(有哪些|哪些|列举|列出|分别|各自|规则|规定|要求|约束|流程|步骤|规范|标准|禁忌|注意事项|边界|怎么|如何|怎样|为什么|原理|区别|不同|几个|哪些方面)/i.test(q)) {
+    return 'complex';
+  }
 
   const cls = classifyQuestion(q);
   const short = q.length <= 22; // a single focused lookup
@@ -2299,7 +2430,7 @@ async function handleAsk(req, res) {
           const searchStart = Date.now();
           // Routing (2a): shrink recall for simple factual queries (fast path),
           // widen it for complex multi-hop/comparison queries (quality).
-          const mainTopK = tier === 'simple' ? 12 : tier === 'complex' ? 22 : 18;
+          const mainTopK = tier === 'simple' ? 15 : tier === 'complex' ? 30 : 22;
           // Complex tier keeps multiple chunks per document (dedup=false) so
           // enumerative multi-section questions can collect several chapters
           // of one doc instead of collapsing to a single chunk (P1-4).
@@ -2309,18 +2440,23 @@ async function handleAsk(req, res) {
           // pin the concrete rule sub-chunks the broad queries miss.
           const qBlob = [question, translatedQ, expanded].join(' ');
           const docsFocusQueries = [];
+          const seenFq = new Set();
           for (const t of DOCS_FOCUS_TOPICS) {
             if (!t.re.test(qBlob)) continue;
+            const fsrc = t.source || 'tianocore-docs';
             for (const fq of t.queries) {
-              if (!docsFocusQueries.includes(fq)) docsFocusQueries.push(fq);
+              const k = fsrc + '|' + fq;
+              if (seenFq.has(k)) continue;
+              seenFq.add(k);
+              docsFocusQueries.push({ q: fq, source: fsrc });
             }
           }
           const docsPromise = docsQuery
             ? httpJson(`${url}/search?query=${encodeURIComponent(docsQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } })
               .catch(() => null)
             : Promise.resolve(null);
-          const docsFocusPromises = docsFocusQueries.map(fq =>
-            httpJson(`${url}/search?query=${encodeURIComponent(fq)}&top_k=20&source=tianocore-docs${mainDedup}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
+          const docsFocusPromises = docsFocusQueries.map(({ q: fq, source: fsrc }) =>
+            httpJson(`${url}/search?query=${encodeURIComponent(fq)}&top_k=20&source=${encodeURIComponent(fsrc)}${mainDedup}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
           // P1-2: decomposed sub-queries (complex tier) run in parallel against
           // the full index; each sub-question then has its own evidence window.
           const subPromises = subQueries.map(sq =>

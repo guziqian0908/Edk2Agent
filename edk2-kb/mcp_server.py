@@ -47,6 +47,12 @@ DEFAULT_STATE_FILE = HERE / "daemon.json"
 
 PKG_VERSION = "6.0.22"
 
+# Cross-encoder reranking for the daemon endpoints. The wiki documents /search
+# as returning `confidence` labels, but those only exist after the reranker
+# runs; reranking also materially improves the evidence an MCP client sees
+# (top-5 precision). Set EDK2_DAEMON_RERANK=0 to disable (lower latency).
+DAEMON_RERANK = os.environ.get("EDK2_DAEMON_RERANK", "1") != "0"
+
 CITATION_GUIDE = """# EDK2 Knowledge Base Answering Guide
 
 Follow these rules whenever you answer an EDK2 question using the knowledge base.
@@ -127,7 +133,7 @@ def build_fastmcp(engine: SearchEngine) -> FastMCP:
         qh = trace_query_hash(query)
         _t = time.monotonic()
         try:
-            results = engine.search(query, top_k, src, rerank=False,
+            results = engine.search(query, top_k, src, rerank=DAEMON_RERANK,
                                     trace_id=trace_id)
             trace_emit(trace_id, "search_total",
                        (time.monotonic() - _t) * 1000, qh,
@@ -243,8 +249,9 @@ Question: {question}
         qh = trace_query_hash(query_text)
         _t = time.monotonic()
         try:
-            results = engine.search(query_text, top_k, src, rerank=False,
-                                    dedup=dedup, trace_id=trace_id)
+            results = engine.search(query_text, top_k, src,
+                                    rerank=DAEMON_RERANK, dedup=dedup,
+                                    trace_id=trace_id)
             trace_emit(trace_id, "search_total",
                        (time.monotonic() - _t) * 1000, qh,
                        status="ok", results=len(results))

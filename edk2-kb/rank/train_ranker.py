@@ -52,8 +52,10 @@ def train(rows: List[Dict[str, Any]], out_model: Path, out_meta: Path) -> None:
 
     groups = [len([1 for r in rows if r["qid"] == qid])
               for qid in sorted({r["qid"] for r in rows})]
-    X = [r["features"] for r in rows]
-    y = [r["label"] for r in rows]
+    # lightgbm >= 4.x rejects a plain Python list of lists; pass ndarrays.
+    import numpy as np
+    X = np.asarray([r["features"] for r in rows], dtype=float)
+    y = np.asarray([r["label"] for r in rows], dtype=int)
 
     train_data = lgb.Dataset(X, label=y, group=groups,
                              feature_name=FEATURE_NAMES)
@@ -78,7 +80,7 @@ def train(rows: List[Dict[str, Any]], out_model: Path, out_meta: Path) -> None:
         "feature_names": FEATURE_NAMES,
         "rows": len(rows),
         "queries": len(set(r["qid"] for r in rows)),
-        "positive_ratio": round(statistics.mean(y), 3),
+        "positive_ratio": round(float(statistics.mean([int(v) for v in y])), 3),
         "feature_importance_gain": importance,
     }, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"model -> {out_model}")

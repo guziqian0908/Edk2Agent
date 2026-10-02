@@ -6,28 +6,28 @@ Date: 2026-08-04  Queries: 330  top_k: 10
 
 | baseline | hit@5 | MRR@10 |
 |---|---|---|
-| vector | 87.9% | 0.776 |
-| bm25 | 27.6% | 0.247 |
-| hybrid | 83.9% | 0.6 |
-| hybrid+rerank | 92.7% | 0.742 |
+| vector | 73.9% | 0.625 |
+| bm25 | 62.1% | 0.49 |
+| hybrid | 79.1% | 0.712 |
+| hybrid+rerank | 87.9% | 0.803 |
 
 ## Manual labeled questions
 
 | baseline | hit@5 | MRR@10 |
 |---|---|---|
-| vector | 83.1% | 0.681 |
-| bm25 | 26.2% | 0.237 |
-| hybrid | 72.3% | 0.561 |
-| hybrid+rerank | 89.2% | 0.664 |
+| vector | 73.1% | 0.574 |
+| bm25 | 50.0% | 0.39 |
+| hybrid | 59.2% | 0.438 |
+| hybrid+rerank | 80.8% | 0.65 |
 
 ## Auto title questions
 
 | baseline | hit@5 | MRR@10 |
 |---|---|---|
-| vector | 91.0% | 0.839 |
-| bm25 | 28.5% | 0.254 |
-| hybrid | 91.5% | 0.625 |
-| hybrid+rerank | 95.0% | 0.793 |
+| vector | 74.5% | 0.657 |
+| bm25 | 70.0% | 0.555 |
+| hybrid | 92.0% | 0.889 |
+| hybrid+rerank | 92.5% | 0.903 |
 
 ## Reranker comparison
 

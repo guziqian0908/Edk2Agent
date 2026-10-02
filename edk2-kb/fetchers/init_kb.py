@@ -81,9 +81,14 @@ TEXT_EXTENSIONS = {'.md', '.txt', '.html', '.htm', '.pdf'}
 SKIP_DIR_PARTS = ('_layouts', '_includes', '_site', 'node_modules', '.git')
 
 # File names that are licensing/process boilerplate rather than content.
+# NOTE: no trailing \b — a prefix match is intended so that plurals/variants
+# like CONTRIBUTIONS.txt, CONTRIBUTING.txt, LICENSE.txt, NOTICE.txt are skipped.
+# (A previous \b made 'contributions' NOT match 'contribut', so boilerplate
+# contribution-agreement files leaked into the KB and the answer model cited
+# the outdated 'Contributed-under' clause.)
 _SKIP_NAME_PATTERNS = re.compile(
     r'^(license|licence|contribut|notice|copying|copyright|readme|authors'
-    r'|maintainers|changelog|release_notes|code_of_conduct|security)\b',
+    r'|maintainers|changelog|release_notes|code_of_conduct|security)',
     re.IGNORECASE,
 )
 
