@@ -34,10 +34,17 @@
  *                          faithfulness fact-check on complex-tier answers
  *                          (default on: LLM-judge flags unsupported claims)
  *   ANSWER_CACHE_MAX    answer-cache LRU entries (default 300)
- *   ANSWER_CACHE_TTL_MS answer-cache TTL ms (default 30 min)
+ *   ANSWER_CACHE_TTL_MS answer-cache TTL ms (default 30 min). In-memory only;
+ *                       restarting the process drops every entry immediately.
+ *                       {"fresh":true} skips lookup and stores the new answer.
  *   RERANK_ADAPTIVE_SKIP set 'false' to disable confidence-based rerank skip
  *                         (default on: skip cross-encoder when retrieval already
  *                         pinned an authoritative #1 chunk)
+ *   SIMILAR_CACHE      set 'false' to disable lexical near-duplicate matching
+ *                      (punctuation, spacing, polite edges, 怎么/如何, 哪几种/哪些,
+ *                      是什么/什么是). Exact matches still hit. No daemon call.
+ *   SIMILAR_CACHE_JACCARD  token Jaccard for a lexical hit (default 0.72).
+ *                      Latin identifiers must also be identical.
  *   SEMANTIC_CACHE     set 'false' to disable semantic (embedding) answer cache
  *   SEMANTIC_CACHE_THRESHOLD cosine similarity to reuse a cached answer (0.93)
  *   KB_DATA_DIR       override knowledge base root (default ~/.edk2-opencode/kb)
@@ -51,6 +58,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
+const { createAnswerCache, isFollowUpQuestion } = require('./similar-cache');
 
 const WEB_DIR = __dirname;
 const DEFAULT_KB_DIR = path.join(os.homedir(), '.edk2-opencode', 'kb');
@@ -170,57 +178,25 @@ function setCachedContext(query, data) {
 }
 
 // ---- answer cache: short-circuits the WHOLE pipeline on repeat questions ----
-// The dominant cost (LLM generation, ~64% of p50) is paid even when the
-// search/rerank stages are already cached. So the final answer is cached too
-// and, on a hit, replayed to the client as SSE deltas — the same event
-// sequence the real LLM stream produces, so the frontend needs no changes.
+// The dominant cost (LLM generation) is paid even when the search/rerank
+// stages are already cached. The final answer is cached too and, on a hit,
+// replayed as SSE deltas — the same event sequence the real LLM stream
+// produces, so the frontend needs no changes.
 //
-// Safety rules:
-//   * Only answers generated from a SELF-CONTAINED turn are stored (no
-//     history and no prevResults): such an answer depends solely on the
-//     question + retrieved docs, so replaying it under any later history is
-//     still correct for that exact question text.
-//   * Keyed by (model, normalized question) — switching models invalidates.
-//   * TTL (default 30 min) bounds staleness against KB updates; LRU caps
-//     memory. Client can force a fresh generation with {"fresh":true}.
-const answerCache = new Map();
-const ANSWER_CACHE_MAX = parseInt(process.env.ANSWER_CACHE_MAX || '300', 10);
-const ANSWER_CACHE_TTL_MS = parseInt(
-  process.env.ANSWER_CACHE_TTL_MS || String(30 * 60 * 1000), 10);
-
-function answerCacheKey(question, model) {
-  return `${model || '?'}|${normalizeQuery(question)}`;
-}
-
-function getCachedAnswer(question, model) {
-  const key = answerCacheKey(question, model);
-  const hit = answerCache.get(key);
-  if (hit && (Date.now() - hit.timestamp) < ANSWER_CACHE_TTL_MS) {
-    hit.hitCount = (hit.hitCount || 0) + 1;
-    return hit;
-  }
-  answerCache.delete(key);
-  return null;
-}
-
-function setCachedAnswer(question, model, data) {
-  const key = answerCacheKey(question, model);
-  if (answerCache.size >= ANSWER_CACHE_MAX) {
-    const oldestKey = answerCache.keys().next().value;
-    answerCache.delete(oldestKey);
-  }
-  answerCache.set(key, { ...data, timestamp: Date.now(), hitCount: 0 });
-}
-
-// Semantic answer cache (doc P1 / 3): on top of the exact (model+normalized
-// question) cache, a near-paraphrase query whose bge-m3 embedding is within
-// SEMANTIC_CACHE_THRESHOLD cosine of a stored question reuses the stored answer.
-// Zero hardware — it reuses the daemon's local /embed endpoint. The KB is a
-// static doc corpus, so staleness risk is low; the threshold (0.93) is kept
-// strict and the feature is fully disableable (SEMANTIC_CACHE=false).
+// Tiers (see similar-cache.js):
+//   * exact   — normalized question text. Checked before the daemon starts.
+//   * lexical — near-duplicate wording (spacing, punctuation, a few Chinese
+//               paraphrases) with identical Latin identifiers. Also before
+//               the daemon, so it does not pay embed or retrieval.
+//   * semantic— bge-m3 cosine >= SEMANTIC_CACHE_THRESHOLD via daemon /embed.
+//
+// The web UI always attaches localStorage history, so storage is NOT gated
+// on an empty history. Follow-up turns (isFollowUpQuestion) are neither
+// stored nor replayed: "详细说说" is not a stable question. Keyed by model.
+// TTL (default 30 min) and process restart bound staleness; {"fresh":true}
+// skips lookup and the new answer replaces the entry.
 const SEMANTIC_CACHE = process.env.SEMANTIC_CACHE !== 'false';
-const SEMANTIC_CACHE_THRESHOLD = parseFloat(
-  process.env.SEMANTIC_CACHE_THRESHOLD || '0.93');
+const answerCache = createAnswerCache();
 
 // Embed a query via the daemon's /embed endpoint (bge-m3, L2-normalized).
 // Returns null on any failure so callers degrade to exact match / live gen.
@@ -238,33 +214,6 @@ async function embedQuery(text, daemonUrl) {
   return null;
 }
 
-// Look up a semantic (paraphrase) cache hit. Returns
-// { cached, similarity } or null. Embeddings from bge-m3 with
-// normalize_embeddings=True are unit vectors, so cosine == dot product.
-async function getSemanticCachedAnswer(question, model, daemonUrl) {
-  if (!SEMANTIC_CACHE) return null;
-  const vec = await embedQuery(question, daemonUrl);
-  if (!vec || !vec.length) return null;
-  let best = null;
-  let bestSim = SEMANTIC_CACHE_THRESHOLD;
-  const now = Date.now();
-  for (const hit of answerCache.values()) {
-    if (hit.model && hit.model !== model) continue;
-    if (now - hit.timestamp >= ANSWER_CACHE_TTL_MS) continue;
-    const e = hit.queryEmbedding;
-    if (!Array.isArray(e) || e.length !== vec.length) continue;
-    let dot = 0;
-    for (let i = 0; i < e.length; i++) dot += e[i] * vec[i];
-    if (dot > bestSim) { bestSim = dot; best = hit; }
-  }
-  if (best) return { cached: best, similarity: bestSim };
-  return null;
-}
-
-// Store an answer for exact-match reuse and, in the background, attach the
-// query embedding so the semantic cache can match future paraphrases. The
-// embedding is computed asynchronously so it never delays the final `done`
-// event; embedding failure is non-fatal (exact-match reuse still works).
 // Detect degenerate / looping model output (heavy repetition). Used so we never
 // cache or display garbage answers.
 function isDegenerate(text) {
@@ -299,17 +248,16 @@ function truncateDegenerate(text) {
   return parts.slice(0, cut).join('').trim();
 }
 
+// Store an answer and, in the background, attach the query embedding so the
+// semantic tier can match paraphrases the lexical tier does not cover
+// ("MdePkg 里 PCD 怎么定义" vs "MdePkg 中 PCD 如何定义"). The embedding is
+// asynchronous so it never delays the final `done` event; embedding failure
+// leaves exact and lexical reuse working.
 function storeAnswerCache(question, model, data, daemonUrl) {
-  const key = answerCacheKey(question, model);
-  if (answerCache.size >= ANSWER_CACHE_MAX) {
-    const oldestKey = answerCache.keys().next().value;
-    answerCache.delete(oldestKey);
-  }
-  const entry = { ...data, queryEmbedding: null, timestamp: Date.now(), hitCount: 0 };
-  answerCache.set(key, entry);
+  const entry = answerCache.store(question, model, data);
   if (SEMANTIC_CACHE && daemonUrl) {
     embedQuery(question, daemonUrl)
-      .then((embedding) => { if (embedding) entry.queryEmbedding = embedding; })
+      .then((embedding) => answerCache.attachEmbedding(entry, embedding))
       .catch(() => {});
   }
   return entry;
@@ -317,28 +265,47 @@ function storeAnswerCache(question, model, data, daemonUrl) {
 
 // Replay a cached answer as the same SSE stream a live LLM call emits:
 // phase(cache_hit) -> results -> phase(llm) -> delta* -> phase(llm_done) -> done.
-function replayCachedAnswer(res, cached, question, semantic = false, startTs = null) {
+// `match` is 'exact' | 'lexical' | 'semantic'.
+function replayCachedAnswer(res, cached, question, match = 'exact', startTs = null, similarity = null) {
   const tier = routeQuery(question);
+  const semantic = match === 'semantic';
+  const text = match === 'semantic'
+    ? '命中语义缓存（近义问法），直接返回…'
+    : match === 'lexical'
+      ? '命中相似问题缓存，直接返回…'
+      : '命中历史回答，直接返回…';
   sendSSE(res, 'phase', {
     step: 'cache_hit',
-    text: semantic ? '命中语义缓存（近义问法），直接返回…' : '命中历史回答，直接返回…',
+    text,
     progress: 10,
     semantic,
+    cache_match: match,
   });
-  sendSSE(res, 'results', { results: (cached.results || []).slice(0, 10), daemon: null, from_cache: true, semantic });
+  sendSSE(res, 'results', {
+    results: (cached.results || []).slice(0, 10),
+    daemon: null,
+    from_cache: true,
+    semantic,
+    cache_match: match,
+  });
   sendSSE(res, 'phase', { step: 'llm', text: '正在生成回答…', progress: 60, model: cached.model, semantic });
   const answer = cached.answer || '';
   const CHUNK = 64;
   for (let i = 0; i < answer.length; i += CHUNK) {
     sendSSE(res, 'delta', { text: answer.slice(i, i + CHUNK) });
   }
-  sendSSE(res, 'phase', { step: 'llm_done', text: '回答完成', progress: 100, model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic });
-  sendSSE(res, 'done', {
-    model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic, tier,
+  sendSSE(res, 'phase', {
+    step: 'llm_done', text: '回答完成', progress: 100,
+    model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic, cache_match: match,
+  });
+  const done = {
+    model: cached.model, tokens: cached.tokens || 0, from_cache: true, semantic, cache_match: match, tier,
     totalMs: startTs != null ? Date.now() - startTs : 0,
     searchMs: null,
     searchCalls: 0,
-  });
+  };
+  if (typeof similarity === 'number') done.similarity = Number(similarity.toFixed(4));
+  sendSSE(res, 'done', done);
 }
 
 // Rerank documents using BGE-reranker-v2-m3
@@ -2302,8 +2269,11 @@ async function handleAsk(req, res) {
         return;
       }
 
-      const exactAnswer = !fresh ? getCachedAnswer(question, model) : null;
-      if (exactAnswer) {
+      // Exact and lexical hits skip the daemon entirely. Follow-ups are not
+      // replayed (their wording is not a stable question). fresh:true bypasses
+      // lookup; the regenerated answer still replaces the cache entry later.
+      const followUp = isFollowUpQuestion(question);
+      const replayHit = (cached, match, similarity) => {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream; charset=utf-8',
           'Cache-Control': 'no-cache, no-transform',
@@ -2311,14 +2281,31 @@ async function handleAsk(req, res) {
           'X-Accel-Buffering': 'no',
         });
         const cacheStart = Date.now();
-        replayCachedAnswer(res, exactAnswer, question, false, startedAt);
+        replayCachedAnswer(res, cached, question, match, startedAt, similarity);
         res.end();
         emitTrace({
           traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
-          queryHash: qh, status: 'ok', hit: true, hits: exactAnswer.hitCount,
+          queryHash: qh, status: 'ok', hit: true, hits: cached.hitCount,
+          cache_match: match,
+          ...(typeof similarity === 'number'
+            ? { similarity: Number(similarity.toFixed(4)) } : {}),
         });
-        finishTotal('ok', { tokens: exactAnswer.tokens || 0, from_cache: true, answer_cache: true });
-        return;
+        finishTotal('ok', {
+          tokens: cached.tokens || 0, from_cache: true, answer_cache: true,
+          cache_match: match,
+        });
+      };
+      if (!fresh && !followUp) {
+        const exactAnswer = answerCache.getExact(question, model);
+        if (exactAnswer) {
+          replayHit(exactAnswer, 'exact', null);
+          return;
+        }
+        const lexicalHit = answerCache.getLexical(question, model);
+        if (lexicalHit) {
+          replayHit(lexicalHit.entry, 'lexical', lexicalHit.similarity);
+          return;
+        }
       }
 
       const daemonUrl = await getHealthyDaemonUrl();
@@ -2342,24 +2329,25 @@ async function handleAsk(req, res) {
       // Check cache first
       sendSSE(res, 'phase', { step: 'cache', text: '检查缓存…', progress: 10 });
 
-      // Semantic (paraphrase) cache: only reached on an exact miss. Embedding
-      // the incoming query and comparing against stored embeddings is ~tens of
-      // ms and lets near-synonym questions reuse a prior generation.
-      if (!fresh && SEMANTIC_CACHE) {
-        const semHit = await getSemanticCachedAnswer(question, model, url);
+      // Semantic (paraphrase) cache: only reached on an exact and lexical miss.
+      // Embedding the query is ~tens of ms and lets near-synonym questions
+      // reuse a prior generation when the lexical rules do not cover them.
+      if (!fresh && !followUp && SEMANTIC_CACHE) {
+        const semHit = answerCache.bestSemantic(await embedQuery(question, url), model);
         if (semHit) {
           const cacheStart = Date.now();
-          replayCachedAnswer(res, semHit.cached, question, true, startedAt);
+          replayCachedAnswer(res, semHit.entry, question, 'semantic', startedAt, semHit.similarity);
           res.end();
           emitTrace({
             traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
             queryHash: qh, status: 'ok', hit: true, semantic: true,
+            cache_match: 'semantic',
             similarity: Number(semHit.similarity.toFixed(4)),
-            hits: semHit.cached.hitCount,
+            hits: semHit.entry.hitCount,
           });
           finishTotal('ok', {
-            tokens: semHit.cached.tokens || 0, from_cache: true,
-            answer_cache: true, semantic: true,
+            tokens: semHit.entry.tokens || 0, from_cache: true,
+            answer_cache: true, semantic: true, cache_match: 'semantic',
           });
           return;
         }
@@ -3164,9 +3152,11 @@ async function handleAsk(req, res) {
         }
         sendSSE(res, 'answer_revision', { answer: fullAnswer });
       }
-      // Store the completed self-contained answer for future replays.
-      const selfContained = !history.length && !prevResults.length && parsed.fresh !== true;
-      if (selfContained && fullAnswer && !isDegenerate(fullAnswer)) {
+      // Cache standalone questions even when the UI sends history/prevResults
+      // (it always does, from localStorage). Follow-ups stay uncached because
+      // the answer depends on the previous turn. fresh:true skipped the lookup
+      // above but still refreshes this entry.
+      if (!isFollowUpQuestion(question) && fullAnswer && !isDegenerate(fullAnswer)) {
         await storeAnswerCache(question, model, {
           answer: fullAnswer,
           results: results.slice(0, 10),
@@ -3257,4 +3247,4 @@ server.listen(port, host, () => {
   console.log(`LLM configured: ${!!(process.env.LLM_API_KEY && process.env.LLM_BASE_URL && process.env.LLM_MODEL)}`);
 });
 
-module.exports = { server };
+module.exports = { server, answerCache };

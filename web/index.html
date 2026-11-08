@@ -474,7 +474,12 @@ function renderTurnMeta(div, d) {
   } else {
     s += ' · 检索：跳过（命中缓存/闲聊）';
   }
-  if (d.from_cache) s += ' · 命中缓存';
+  if (d.from_cache) {
+    const kind = d.cache_match === 'semantic' ? '语义相似'
+      : d.cache_match === 'lexical' ? '相似问法'
+      : '相同问题';
+    s += ' · 命中缓存（' + kind + '）';
+  }
   div.innerHTML = s;
 }
 
