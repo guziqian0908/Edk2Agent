@@ -69,6 +69,43 @@ node server.js
 | `RERANK_SPAWN_COOLDOWN_MS` | `300000` | 重排服务自动拉起冷却时间（毫秒） |
 | `L3_FAITHFULNESS_CHECK` | 开 | 设为 `false` 关闭 complex 档生成后忠实度校验（LLM-judge） |
 | `L3_REVISION` | 开 | 设为 `false` 关闭批评-修订循环（被标记断言按上下文改写并替换回答） |
+| `ANSWER_CACHE_MAX` | `300` | 答案缓存 LRU 条数 |
+| `ANSWER_CACHE_TTL_MS` | `1800000` | 答案缓存 TTL（默认 30 分钟） |
+| `SIMILAR_CACHE` | 开 | 设为 `false` 关闭词面相似问法匹配（仍保留完全相同问题的命中） |
+| `SIMILAR_CACHE_JACCARD` | `0.72` | 词面 Jaccard 命中阈值（拉丁标识符还必须完全一致） |
+| `SEMANTIC_CACHE` | 开 | 设为 `false` 关闭 bge-m3 近义问法匹配 |
+| `SEMANTIC_CACHE_THRESHOLD` | `0.93` | 近义问法余弦相似度阈值（越高越严） |
+
+## 相似问题缓存
+
+重复或措辞接近的问题会跳过检索、重排和 LLM，把已生成的回答按原 SSE 事件回放。实现见 `similar-cache.js`。
+
+命中分三档，从便宜到贵：
+
+1. **exact**：大小写和空白规范化后问题文本相同。在联系知识库 daemon 之前返回。
+2. **lexical**：标点、空格、礼貌前后缀（「请问…呢」），以及少量高频中文改写（「怎么 / 如何」「哪几种 / 哪些」「是什么 / 什么是」）。同样不访问 daemon。拉丁标识符必须一致，因此「如何编写 INF」不会复用「如何编写 DEC」的答案；「不是什么是 PCD」也不会复用「什么是 PCD」。
+3. **semantic**：daemon `/embed`（bge-m3）余弦相似度 **大于** `0.93`。只在前两档未命中时计算；向量在回答写完后异步挂上，失败只影响这一档。
+
+不会缓存、也不会回放追问（「详细说说」「上面那个」「它和 PCD 的区别」）。网页每次都会带上 `history`，独立技术问题仍然写入缓存。`{"fresh":true}` 跳过查找，并用新回答覆盖该问题的旧条目。
+
+失效：默认 30 分钟 TTL；进程内 Map，重启 Web 服务立即清空。知识库重建后重启服务，或对同一问题发一次 `fresh:true`。
+
+验证（不需要知识库或 LLM）：
+
+```powershell
+node --test web/similar-cache.test.js web/similar-cache.http.test.js
+```
+
+服务已启动时，第二次以及近义问法的 SSE `done` 事件里 `from_cache` 为 true，`cache_match` 为 `exact` / `lexical` / `semantic`，且 `searchCalls` 为 0：
+
+```powershell
+curl -N -X POST http://127.0.0.1:8080/api/ask -H "Content-Type: application/json" `
+  -d '{"question":"PCD 有哪些类型"}'
+curl -N -X POST http://127.0.0.1:8080/api/ask -H "Content-Type: application/json" `
+  -d '{"question":"PCD有哪几种类型？"}'
+curl -N -X POST http://127.0.0.1:8080/api/ask -H "Content-Type: application/json" `
+  -d '{"question":"PCD 有哪些类型","fresh":true}'
+```
 
 ## 接口
 
