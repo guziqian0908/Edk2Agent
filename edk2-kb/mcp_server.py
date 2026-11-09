@@ -239,7 +239,9 @@ Question: {question}
         if not query or not query.strip():
             return JSONResponse(_cors({"error": "Missing query parameter"}), 400)
         try:
-            top_k = max(1, min(int(top_k), 20))
+            # Web complex tier asks for top_k=30 (retrievalParams). The MCP
+            # tool search_kb() keeps its own cap of 20.
+            top_k = max(1, min(int(top_k), 30))
         except (TypeError, ValueError):
             top_k = 5
 

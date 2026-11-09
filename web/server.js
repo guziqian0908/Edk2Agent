@@ -48,6 +48,11 @@
  *   SEMANTIC_CACHE     set 'false' to disable semantic (embedding) answer cache
  *   SEMANTIC_CACHE_THRESHOLD cosine similarity to reuse a cached answer (0.93)
  *   KB_DATA_DIR       override knowledge base root (default ~/.edk2-opencode/kb)
+ *   FOCUS_TOPIC_ROUTING  set 'false' to restore spec topics searching source=all,
+ *                        skip the metadata-file and EFI data-type topics, drop
+ *                        the extra complex-tier cues (有几种/顺序/什么时候/职责),
+ *                        and use the old candidate interleave (default on)
+ *   FOCUS_QUERY_CAP   max focused /search calls per question (default 36)
  */
 'use strict';
 
@@ -59,6 +64,16 @@ const os = require('os');
 const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 const { createAnswerCache, isFollowUpQuestion } = require('./similar-cache');
+const {
+  selectFocusQueries,
+  classifyQuestion,
+  routeQuery,
+  retrievalParams,
+  chunkKey,
+  focusRoutingEnabled,
+  mergeRetrievalPool,
+  protectedChunkKeys,
+} = require('./retrieval-routing');
 
 const WEB_DIR = __dirname;
 const DEFAULT_KB_DIR = path.join(os.homedir(), '.edk2-opencode', 'kb');
@@ -745,169 +760,8 @@ function loadExpansionRules() {
 
 const KB_EXPANSION_RULES = loadExpansionRules();
 
-// Focused docs-source queries per enumerative topic. The broad retrieval
-// queries recall the chapter FAMILY but often miss the concrete rule
-// sub-chunks (5.2.1/5.2.2/..., PCD type sections, [Depex] grammar...), so each
-// matched topic fires a few precise English queries against tianocore-docs
-// that pin the sub-chunks. Matched against the original question + translation
-// + expansion so Chinese phrasing still triggers. Generalized from the
-// original style-only list (P1-4).
-const DOCS_FOCUS_TOPICS = [
-  {
-    re: /spacing|formatting|indentation|排版|空白|缩进|风格|style|vertical|horizontal|coding.?standard|编码规范/i,
-    queries: [
-      'C Coding Standards 5.2 Spacing Vertical Spacing blank lines Horizontal Spacing indentation File Heading section rules',
-      'Formatting General Rules Vertical spacing Horizontal spacing Predicate Expressions quick reference source_files',
-      '5.2.2.1 spaces binary operators unary operators multi-line function calls alignment commas semicolons open parenthesis open brace array subscripts',
-    ],
-  },
-  {
-    re: /naming|命名|identifier|标识符|hungarian|匈牙利|大小写|name space/i,
-    queries: [
-      'C Coding Standards naming conventions identifiers Hungarian prefixes function and data names type and macro names',
-      'global and module variables recommendations naming rules 4.4 4.5 name space rules file names directory names',
-    ],
-  },
-  {
-    re: /function layout|函数|注释|comment|doxygen|文件头|函数头|documenting/i,
-    queries: [
-      'C Programming function definition layout function headings parameter modifiers EFIAPI VOID parameter list',
-      'what you must comment Doxygen file heading copyright SPDX-License-Identifier Specification Reference',
-      'code file structure file header comment block what not to comment spurious variable assignment',
-    ],
-  },
-  {
-    re: /flow control|goto|assert|流程控制|注释禁忌|error handling/i,
-    queries: [
-      'Flow Control Statements compound statement Goto Statements should not be used',
-      'Error Handling and ASSERT assertion not for error handling PcdDebugPropertyMask',
-      'what not to comment BUGBUG FIX_THIS markers comments',
-    ],
-  },
-  {
-    re: /pcds|pcd\b|patchable|featureflag|fixedatbuild|dynamicex|pcd.*(类型|写法|怎么|如何|动态|固定)/i,
-    queries: [
-      'PCD types PcdsFeatureFlag PcdsFixedAtBuild PcdsPatchableInModule PcdsDynamic PcdsDynamicEx module declaration',
-      'DEC PCD declaration section DSC PCD section INF PCD section access macro FixedPcdGet PatchPcdGet PcdGet PcdSet DynamicEx',
-    ],
-  },
-  {
-    re: /depex|依赖表达式|dependency expression/i,
-    queries: [
-      '[Depex] section dependency expression INF grammar TRUE AND OR NOT module dispatch',
-      'dependency expression depex module dispatch order PPI protocol inherited from libraries',
-    ],
-  },
-  {
-    re: /module type|module_type|library class|library instance|库类|库实例|entry point|入口点/i,
-    queries: [
-      'EDK II Module Types table module type PEIM DXE_DRIVER UEFI_APPLICATION entry point library',
-      'library class library instance DSC LibraryClasses mapping LIBRARY_CLASS constructor destructor produced library class',
-      'what is an EDK II module adding a module directory module meta file INF',
-    ],
-  },
-  {
-    re: /driver binding|driverbinding|驱动绑定|驱动模型|Supported\(|Start\(|Stop\(|EFI_DRIVER_BINDING|总线驱动|设备驱动/i,
-    queries: [
-      'UEFI Driver Writers Guide Driver Binding Protocol Template Supported Start Stop EFI_DRIVER_BINDING_PROTOCOL',
-      'Driver Binding Protocol implementations UEFI driver categories device drivers bus drivers required features',
-      'PCI driver Start order open protocol allocate private context PciIo Attributes Enable Command register DMA RemainingDevicePath',
-      'Start and Stop PCI drivers PciIo Attributes EfiPciIoAttributeOperationSet OriginalPciAttributes Example 171 172',
-      'multiple Driver Binding instances sum of products Version ConnectController priority verification Shell load dh connect disconnect reconnect drivers devices devtree openinfo unload',
-      'Driver Binding Protocol and Child Management BY_CHILD_CONTROLLER DevicePath RemainingDevicePath Start order',
-    ],
-  },
-  {
-    re: /locateprotocol|locatehandle|openprotocol|closeprotocol|protocol|协议|handle|句柄/i,
-    queries: [
-      'Handle Database and Protocol Services LocateHandleBuffer LocateProtocol OpenProtocol CloseProtocol Attributes',
-      'EFI_OPEN_PROTOCOL TEST_PROTOCOL GET_PROTOCOL BY_DRIVER BY_CHILD_CONTROLLER EXCLUSIVE usage return codes EFI_ACCESS_DENIED EFI_ALREADY_STARTED',
-      'InstallMultipleProtocolInterfaces UninstallMultipleProtocolInterfaces rollback handle database',
-    ],
-  },
-  {
-    re: /build|编译|AutoGen|PatchCheck|报错|LNK2001|error 4000|调试|debug|DEBUG\(|debugging/i,
-    queries: [
-      'Building the module Add the module INF in package DSC build command BuildOptions build module image AutoGen',
-      'Common build module breaks error 4000 Value of Guid is not found LNK2001 unresolved external symbol File name case mismatch',
-      'Debugging a Module required steps PcdDebugPropertyMask PcdDebugPrintErrorLevel DebugLib CpuDeadLoop map file',
-    ],
-  },
-  {
-    source: 'tianocore-wiki',
-    re: /commit|贡献|contribution|patch|uncrustify|\bci\b|review|签名|sign|pr\b|拆分|partition|格式化/i,
-    queries: [
-      'Commit Message Format Commit Signature Format commit partitioning contribution guide',
-      'commit message format Pkg-Module Brief single line summary Signed-off-by Reviewed-by signatures length',
-      'EDK II Code Formatting Uncrustify developer workflow uncrustify.cfg tianocore-uncrustify stuart_update stuart_ci_build',
-      'EDK II Continuous Integration PatchCheck UncrustifyCheck SpellCheck Mergify push label',
-      'EDK II Development Process Contributor Process Maintainer Process',
-    ],
-  },
-  {
-    source: 'all',
-    re: /启动流程|boot flow|boot sequence|启动阶段|PEI|PPI|HOB|SEC\b|DXE\b|BDS\b|TSL\b|PEIM|pre-efi/i,
-    queries: [
-      'PI boot flow SEC PEI DXE BDS TSL RT phases overview',
-      'PEIM-to-PEIM Interfaces PPI Services PEI Services Table HOB Hand-Off Block PEI to DXE handoff',
-      'PEI Services CreateHob GetHobList InstallPpi LocatePpi NotifyPpi Firmware Volume PEI Memory InstallPeiMemory',
-    ],
-  },
-  {
-    source: 'all',
-    re: /boot services|runtime services|exitbootservices|运行时|启动服务|system table/i,
-    queries: [
-      'Boot Services Runtime Services difference ExitBootServices memory map runtime drivers',
-      'Runtime Services rules and restrictions SetVirtualAddressMap EVT_SIGNAL_VIRTUAL_ADDRESS_CHANGE Event Group',
-    ],
-  },
-  {
-    source: 'all',
-    re: /\bTPL\b|raisetpl|restoretpl|event\b|事件|EVT_|timer|notify/i,
-    queries: [
-      'Task Priority Level RaiseTPL RestoreTPL event notification TPL restrictions table',
-      'CreateEvent CreateEventEx SetTimer EVT_TIMER EVT_NOTIFY_SIGNAL EVT_NOTIFY_WAIT EVT_SIGNAL_EXIT_BOOT_SERVICES event group',
-    ],
-  },
-  {
-    source: 'all',
-    re: /allocatepages|allocatepool|memory type|内存|EfiLoaderData|EfiBootServicesData|EfiRuntimeServicesData|allocate/i,
-    queries: [
-      'AllocatePages AllocatePool memory allocation services memory type EfiLoaderData EfiBootServicesData EfiRuntimeServicesData GetMemoryMap FreePages FreePool',
-    ],
-  },
-  {
-    source: 'all',
-    re: /variable|变量|getvariable|setvariable|non_volatile|attributes/i,
-    queries: [
-      'Variable Services GetVariable SetVariable QueryVariableInfo attributes NON_VOLATILE BOOTSERVICE_ACCESS RUNTIME_ACCESS APPEND_WRITE time based authenticated',
-    ],
-  },
-  {
-    source: 'all',
-    re: /\bSMM\b|management mode|standalone mm|mm_standalone|munblockmemoryrequest|mmst/i,
-    queries: [
-      'Standalone MM introduction Management Mode traditional SMM DXE_SMM_DRIVER differences',
-      'MM Core Interface MMST MmUnblockMemoryRequest CommBuffer shadow buffer TOCTOU',
-    ],
-  },
-  {
-    source: 'all',
-    re: /\bHII\b|\bVFR\b|human interface|form browser|setup|界面|配置界面|ifr/i,
-    queries: [
-      'HII Human Interface Infrastructure overview forms strings VFR IFR HiiDatabase HiiAddPackages',
-      'VFR description in BNF formset form oneof numeric checkbox question varstore EFI_HII_CONFIG_ACCESS_PROTOCOL ExtractConfig RouteConfig',
-    ],
-  },
-  {
-    source: 'all',
-    re: /secure boot|trusted boot|measured boot|\bpk\b|kek|dbx|安全启动|trusted/i,
-    queries: [
-      'Secure Boot chain integrity models PK KEK db dbx authorized forbidden image database verification',
-      'Trusted Boot measured boot TPM PCR event log remote attestation',
-    ],
-  },
-];
+// Focused queries, tier routing and source selection live in
+// retrieval-routing.js (FOCUS_TOPIC_ROUTING=false rolls them back).
 
 function expandChineseQuery(q) {
   const lower = q.toLowerCase();
@@ -981,11 +835,12 @@ function metadataSignals(query) {
   return { identifiers: [...identifiers], words: [...words] };
 }
 
-function pruneByMetadata(query, results) {
+function pruneByMetadata(query, results, protectKeys) {
   if (!Array.isArray(results) || results.length <= PRUNE_FLOOR) return results;
   const signals = metadataSignals(query);
   const exactHits = signals.identifiers.length;
   if (signals.words.length + exactHits < PRUNE_MIN_SIGNALS) return results;
+  const protect = protectKeys instanceof Set ? protectKeys : new Set();
 
   const metaOf = (r) =>
     [r.title, r.section, r.file, r.url].filter(Boolean).join(' ').toLowerCase();
@@ -1011,8 +866,12 @@ function pruneByMetadata(query, results) {
   const keep = new Set();
   // 1) Never drop the top-ranked candidates.
   for (let i = 0; i < Math.min(PRUNE_TOP, results.length); i++) keep.add(i);
-  // 2) Keep every authoritative docs chunk regardless of metadata signals.
-  scored.forEach((s, i) => { if (isAuthoritativeDocs(s.r)) keep.add(i); });
+  // 2) Keep every authoritative docs chunk, plus chunks the focus router
+  //    pinned (wiki pages and exact-identifier spec hits are not all covered
+  //    by isAuthoritativeDocs, and a generic heading must not drop them).
+  scored.forEach((s, i) => {
+    if (isAuthoritativeDocs(s.r) || (protect.size && protect.has(chunkKey(s.r)))) keep.add(i);
+  });
   // 3) Keep everything with at least one metadata signal hit.
   scored.forEach((s, i) => { if (s.hits > 0) keep.add(i); });
   // 4) Floor: refill from the original ranking so vague/edge cases keep recall.
@@ -1025,89 +884,17 @@ function pruneByMetadata(query, results) {
 // guide / tianocore-docs repo) rather than commit/PR noise. Module-level so it
 // can be reused by both pruneByMetadata and the adaptive-rerank-skip check.
 function isAuthoritativeDocs(r) {
+  const id = String(r.source || '').toLowerCase();
   const src = String(r.source_display || r.source || r.repo || '').toLowerCase();
   const file = String(r.file || '').toLowerCase();
+  if (id === 'edk2-commits' || id === 'edk2-prs') return false;
   if (/(edk2-commits|edk2-prs|commit_|pr_)/.test(file)) return false;
+  // source id is authoritative even when source_display is a human label
+  // that does not contain "spec" or "tianocore-docs".
+  if (id === 'uefi-specs' || id === 'tianocore-docs') return true;
   return src.includes('tianocore-docs') || src.includes('tianocore-doc') ||
          src.includes('spec') || src.includes('guide') ||
          /^edk2-/.test(file);
-}
-
-// Classify question intent to optimize retrieval and answering strategy
-function classifyQuestion(question) {
-  const q = question.toLowerCase();
-  
-  const patterns = {
-    'howto': /^(如何|怎么|怎样|how to|how do i)/i,
-    'what': /^(是什么|什么是|what is|what are)/i,
-    'format': /^(格式|格式是什么|format|format of)/i,
-    'error': /^(错误|报错|失败|error|fail|cannot|问题)/i,
-    'example': /^(示例|例子|example|sample|demo)/i,
-    'list': /^(列出|列举|有哪些|list|what are the)/i,
-    'compare': /^(区别|差异|比较|compare|difference)/i,
-    'best': /^(最佳|推荐|建议|best|recommend)/i
-  };
-  
-  for (const [type, regex] of Object.entries(patterns)) {
-    if (regex.test(q)) return type;
-  }
-  
-  // Context-based classification
-  if (/commit|提交|签名|sign/.test(q)) return 'format';
-  if (/驱动|driver|protocol|协议/.test(q)) return 'howto';
-  if (/pcd|inf|dsc|dec/.test(q)) return 'format';
-  if (/启动|boot|pei|dxe/.test(q)) return 'what';
-  
-  return 'general';
-}
-
-// Query routing (doc 2a): turn the intent label into a retrieval/rerank
-// strategy, not just a prompt hint. Three tiers:
-//   simple   - short factual/enumerative, single concept -> small recall +
-//              rerank skipped (fast path, ~hundreds of ms)
-//   standard - default hybrid retrieval + adaptive rerank (current behavior)
-//   complex  - comparison / multi-hop / reasoning -> wider recall + rerank
-//              forced on (quality over latency)
-// Conservative: only clearly-simple or clearly-complex queries leave the
-// standard tier, so recall is never silently shrunk for ambiguous questions.
-function routeQuery(question) {
-  const q = String(question || '').trim();
-  if (!q) return 'standard';
-
-  // Complex: explicit comparison / multi-hop / reasoning signals.
-  if (/(比较|区别|差异|对比|compare|difference|vs\.?| versus |各自|分别.*和|和.*分别|为什么|原理|工作机制|底层|根因|root\s*cause|如何.*实现)/i.test(q)) {
-    return 'complex';
-  }
-  // Multiple sub-questions (>=2 question marks) imply multi-part reasoning.
-  if ((q.match(/[?？]/g) || []).length >= 2) return 'complex';
-
-  // Broad enumerative / rules / process / how-to questions answer many
-  // sub-parts (lists of rules, step sequences, requirement sets). Treat them
-  // as complex so they get dedup=false (several sections of one doc), deeper
-  // retrieval and a larger context/token budget. Measured on the custom
-  // question set: these were being routed to simple/standard, which returned
-  // one chunk per doc and made comprehensive rule answers impossible.
-  if (/(有哪些|哪些|列举|列出|分别|各自|规则|规定|要求|约束|流程|步骤|规范|标准|禁忌|注意事项|边界|怎么|如何|怎样|为什么|原理|区别|不同|几个|哪些方面)/i.test(q)) {
-    return 'complex';
-  }
-
-  const cls = classifyQuestion(q);
-  const short = q.length <= 22; // a single focused lookup
-
-  // Simple factual / enumerative, short and without how-to/error framing.
-  if (short && (cls === 'what' || cls === 'format' || cls === 'list' || cls === 'example')) {
-    return 'simple';
-  }
-  // Short, an EDK2 identifier but no actionable verb -> direct lookup.
-  if (short && cls !== 'howto' && cls !== 'error' && cls !== 'general') {
-    return 'simple';
-  }
-  // Very short and dominated by a single EDK2 identifier (e.g. "PcdLib 是什么").
-  const ids = (q.toLowerCase().match(/[a-z][a-z0-9_]{3,}/g) || []);
-  if (short && ids.length <= 2 && cls !== 'howto' && cls !== 'error') {
-    return 'simple';
-  }
-  return 'standard';
 }
 
 // Chit-chat / meta routing (doc 2b): questions that are NOT knowledge-base
@@ -1131,19 +918,7 @@ function isChitChat(question) {
     || /^(谢谢|感谢|多谢|再见|拜拜)/i.test(q);
 }
 
-// Daemon results carry a numeric _pid that uniquely identifies a chunk even
-// when url/file/title are all empty (common for tianocore-docs spec pages).
-// Use it as a dedup fallback so multiple same-source spec chunks survive
-// aggregation instead of all collapsing onto the empty-string key.
-// The key includes the section when a file is known, so with the daemon's
-// dedup=false several sections of ONE document can coexist (multi-section
-// enumerative questions) instead of collapsing to the first chunk.
-function chunkKey(r) {
-  if (r.url) return r.url;
-  const file = r.file || '';
-  if (file) return r.section ? `${file}#${r.section}` : file;
-  return r.title || r.section || (r._pid != null ? String(r._pid) : '') || '';
-}
+// chunkKey() is provided by retrieval-routing.js (section-aware dedup).
 
 // Stable citation id for a retrieved chunk. Rerank can reorder the display
 // while the LLM is already streaming, so the LLM must cite by an id that is
@@ -2362,6 +2137,7 @@ async function handleAsk(req, res) {
         // 1) search knowledge base (before streaming text, results arrive as one event)
         sendSSE(res, 'phase', { step: 'search', text: '正在检索知识库…', progress: 20 });
         let searchResp;
+        let docsFocusHits = [];
         try {
           // Cross-lingual vector recall is weak: Chinese queries ("排版/空白")
           // rank unrelated Summary/README chunks above the actual English spec
@@ -2418,27 +2194,15 @@ async function handleAsk(req, res) {
           const searchStart = Date.now();
           // Routing (2a): shrink recall for simple factual queries (fast path),
           // widen it for complex multi-hop/comparison queries (quality).
-          const mainTopK = tier === 'simple' ? 15 : tier === 'complex' ? 30 : 22;
-          // Complex tier keeps multiple chunks per document (dedup=false) so
-          // enumerative multi-section questions can collect several chapters
-          // of one doc instead of collapsing to a single chunk (P1-4).
-          const mainDedup = tier === 'complex' ? '&dedup=false' : '';
+          // complex keeps several sections of one document (dedup=false).
+          const { topK: mainTopK, dedup: mainDedupOn } = retrievalParams(tier);
+          const mainDedup = mainDedupOn ? '' : '&dedup=false';
+          const routingOn = focusRoutingEnabled();
           const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=${mainTopK}${mainDedup}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } });
-          // Focused docs queries for enumerative topics (see DOCS_FOCUS_TOPICS):
-          // pin the concrete rule sub-chunks the broad queries miss.
+          // Focused queries pin the rule sub-chunks the broad query misses,
+          // and pick a source that is not drowned by commits/prs.
           const qBlob = [question, translatedQ, expanded].join(' ');
-          const docsFocusQueries = [];
-          const seenFq = new Set();
-          for (const t of DOCS_FOCUS_TOPICS) {
-            if (!t.re.test(qBlob)) continue;
-            const fsrc = t.source || 'tianocore-docs';
-            for (const fq of t.queries) {
-              const k = fsrc + '|' + fq;
-              if (seenFq.has(k)) continue;
-              seenFq.add(k);
-              docsFocusQueries.push({ q: fq, source: fsrc });
-            }
-          }
+          const docsFocusQueries = selectFocusQueries(question, { blob: qBlob, enabled: routingOn });
           const docsPromise = docsQuery
             ? httpJson(`${url}/search?query=${encodeURIComponent(docsQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } })
               .catch(() => null)
@@ -2486,49 +2250,29 @@ async function handleAsk(req, res) {
           searchResp = mainResp;
           const docsResults = (docsResp && docsResp.body && docsResp.body.results) || [];
           const docsFocusResults = docsFocusResps.flatMap(r => (r && r.body && r.body.results) || []);
-          // Merge all docs-source responses, dedup by chunk key.
-          const docsCombined = [...docsResults];
-          {
-            const seen = new Set(docsResults.map(r => chunkKey(r)));
-            for (const r of docsFocusResults) {
-              const k = chunkKey(r);
-              if (!seen.has(k)) { seen.add(k); docsCombined.push(r); }
-            }
+          docsFocusHits = docsFocusResults;
+          const broad = (searchResp.body && searchResp.body.results) || [];
+          const subHits = subResps.flatMap(r => (r && r.body && r.body.results) || []);
+          const relHits = [];
+          for (const r of relationalResps) {
+            const hits = (r && r.body && r.body.results) || [];
+            for (const h of hits.slice(0, 6)) relHits.push(h);
           }
-          {
-            const broad = (searchResp.body && searchResp.body.results) || [];
-            const seen = new Set(broad.map(r => chunkKey(r)));
-            const docsOnly = docsCombined.filter(r => !seen.has(chunkKey(r)));
-            const subHits = subResps.flatMap(r => (r && r.body && r.body.results) || []);
-            const relHits = [];
-            for (const r of relationalResps) {
-              const hits = (r && r.body && r.body.results) || [];
-              for (const h of hits.slice(0, 6)) relHits.push(h);
-            }
-            // Unified, deduped candidate pool. Interleave all sources so no
-            // single source (e.g. decomposed sub-queries) can starve the
-            // relational expansion that carries the semantically-correct but
-            // lexically-distant docs (ConnectController / option-ROM chapters).
-            // One global cap then feeds the LLM reranker, which reorders by
-            // true relevance before the LLM answers.
-            const poolSeen = new Set();
-            const pool = [];
-            const add = (r) => {
-              const k = chunkKey(r);
-              if (!poolSeen.has(k)) { poolSeen.add(k); pool.push(r); }
-            };
-            const take = (arr, n) => (n == null ? arr : arr.slice(0, n));
-            // Per-source caps so no single source starves the relational
-            // expansion (the bridge to lexically-distant answer docs like
-            // ConnectController / option-ROM chapters). Relational gets the
-            // largest share on purpose.
-            for (const r of broad.slice(0, 3)) add(r);
-            for (const r of take(relHits, 25)) add(r);
-            for (const r of take(docsOnly, 8)) add(r);
-            for (const r of take(subHits, 10)) add(r);
-            for (const r of broad.slice(3, 7)) add(r);
-            searchResp = { body: { results: pool.slice(0, 50) } };
-          }
+          // Focused spec/docs/wiki chunks are reserved ahead of commit/PR
+          // noise when routing is on. With FOCUS_TOPIC_ROUTING=false (or a
+          // question that names one git object, or a question with no focus
+          // hit and no precise anchor) the historical interleave is used, so
+          // relational expansion can still surface ConnectController-style
+          // neighbors.
+          const pool = mergeRetrievalPool({
+            broad,
+            docs: docsResults,
+            focus: docsFocusResults,
+            sub: subHits,
+            relational: relHits,
+            question,
+          }, { enabled: routingOn });
+          searchResp = { body: { results: pool } };
 
           // General title-shell expansion: detect blocks that are just section headers
           // (short content for a section that has subsections) and expand them by
@@ -2550,7 +2294,11 @@ async function handleAsk(req, res) {
         // identifiers or distinctive expansion keywords. This counters the
         // "semantically close but wrong symbol" failures of pure vector search
         // BEFORE the expensive rerank stage sees them.
-         results = pruneByMetadata(question, results);
+         results = pruneByMetadata(
+           question,
+           results,
+           focusRoutingEnabled() ? protectedChunkKeys(results, docsFocusHits, question) : null,
+         );
          // P2: directory-neighbor expansion (after pruning so supplements
          // survive). Pulls same-section siblings the query didn't align with.
          try {
