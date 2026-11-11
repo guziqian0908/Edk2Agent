@@ -70,9 +70,9 @@
 
 ## 5. 本项目落地路线图
 
-- **阶段一（P0 + P2，约 1–2 天）**：关系型查询扩展 + 目录邻居扩展。改动集中于 `web/server.js` 的检索编排与扩展 prompt。预期：关联类问题召回显著改善。
-- **阶段二（P1，约 2–3 天）**：加宽 `top_k` + 强化/评估重排器；建立 golden query 评测集与 recall 指标（利用现有 `emitTrace` 可观测性）。
-- **阶段三（P3，按需）**：分块策略调整 + 混合检索，必要时重建索引。
+- **阶段一（P0 + P2）**：已落地，见第 9 节。改动在 `web/server.js` 与 `web/retrieval-expansion.js`，不改向量库。
+- **阶段二（P1）**：加宽 `top_k` + 强化/评估重排器；建立 golden query 评测集与 recall 指标（利用现有 `emitTrace` 可观测性）。未做。
+- **阶段三（P3，按需）**：分块策略调整 + 混合检索，必要时重建索引。未做。
 
 ---
 
@@ -94,3 +94,19 @@
 ## 8. 结论
 
 最高性价比路径：**先在查询侧做关系型扩展（P0）+ 目录邻居兜底（P2）**，再用"加宽 + 重排"（P1）收口；索引重建（P3）作为长期深化。整体**不改动向量库**即可显著改善"相关但被忽略"的问题。
+
+---
+
+## 9. 落地状态（P0 + P2）
+
+已实现，默认开启。回退：`RELATIONAL_QUERY_EXPANSION=false`（`0` / `off` / `no` 同样关闭）。`FOCUS_TOPIC_ROUTING` 不变。
+
+**P0。** 不再单独再打一次 LLM。翻译那次调用在原有 JSON 上增加 `related_queries`，规范化后最多 **3** 条：丢掉与译文近义的复述、非英文碎片、以及彼此过于相似的条目。每条只查 `source=tianocore-docs`、`top_k=15`（主查询的 top_k 没加宽），再从这 15 条里优先取最多 4 条非 commit/PR。有聚焦主题时，这路仍排在聚焦结果和 docs 路之后（`mergeRetrievalPool` 原有权重）；没有聚焦命中、也没有精确锚点时，仍走原来的交错合并，避免关联结果被 commits 挤掉之前先被丢掉。
+
+扩展词由模型写，不是词表。提示里只把「Driver Binding 的 Version 字段 → ConnectController 连接优先级，而不是 Driver Supported EFI Version Protocol」当作**问到这个缺口时才用**的例子。
+
+**P2。** 不再用目录名当查询去打 `/search`。种子是修剪后仍留下的文档（最多 3 篇，跳过 SUMMARY/README 和 commit/PR）。兄弟节来自 `SUMMARY.md`：优先读该仓库磁盘上的全文（召回片段经常被切断），否则用本轮已经召回的 SUMMARY chunk。GitBook 缩进区分不出 3.14.1 和 3.14.2，按链接的**父目录**分组，只取目录序上的前一节和后一节。正文优先用本轮候选池里已有的 chunk；池子里没有再读对应 markdown。没有 SUMMARY 时，只把候选池里同目录、尚未留下的 chunk 补上，最多 2 篇。总补充不超过 4。`9.1` 的邻居是 `9.2`，不会因为例子里写过就把 `3141` 和 `91` 焊死。
+
+**明确没做：** P1（主查询加宽 top_k、加强重排）、P3（重建索引、改分块、改 FTS/Chroma）。向量库、`web/.env`、`web/.env.ollama`、模型推荐字符串都没动。
+
+**验证：** `node --test web/retrieval-expansion.test.js web/retrieval-routing.test.js web/similar-cache.test.js web/similar-cache.http.test.js`（不调用 DeepSeek）。`question.txt` 全量 Q 需要本地索引和 Key，这次没跑，因此没有新的 Q 数字。
