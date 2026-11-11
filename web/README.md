@@ -75,6 +75,20 @@ node server.js
 | `SIMILAR_CACHE_JACCARD` | `0.72` | 词面 Jaccard 命中阈值（拉丁标识符还必须完全一致） |
 | `SEMANTIC_CACHE` | 开 | 设为 `false` 关闭 bge-m3 近义问法匹配 |
 | `SEMANTIC_CACHE_THRESHOLD` | `0.93` | 近义问法余弦相似度阈值（越高越严） |
+| `FOCUS_TOPIC_ROUTING` | 开 | 设为 `false` 回退：规范类重新用 `source=all` 单次查询，关掉元数据文件 / EFI 数据类型主题、额外综合题分档（有几种 / 顺序 / 什么时候 / 职责），以及「聚焦结果优先于 commits/prs」的合并 |
+| `FOCUS_QUERY_CAP` | `36` | 单题聚焦查询条数上限 |
+
+## 聚焦查询与数据源路由
+
+中文综合题会走 `complex`（`dedup=false`，`top_k=30`）。规范类（启动流程、PPI/HOB、Boot/Runtime Services、Event/TPL、内存、变量、SMM、HII、Secure Boot）的聚焦查询打到 `uefi-specs`、`tianocore-wiki` 和 `tianocore-docs`，不把 `edk2-commits` / `edk2-prs` 放进这路。代码规范、PCD、Depex、驱动、构建仍查 `tianocore-docs`；commit / Uncrustify / CI 仍查 `tianocore-wiki`。带下划线或驼峰的标识符、以及 `5.2.2` 这类章节号，在合并时排在提交记录前面。
+
+不需要知识库或 LLM：
+
+```powershell
+node --test web/retrieval-routing.test.js
+```
+
+`FOCUS_TOPIC_ROUTING=false` 恢复旧的 `source=all` 与旧合并顺序。
 
 ## 相似问题缓存
 
