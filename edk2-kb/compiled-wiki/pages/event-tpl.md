@@ -1,34 +1,46 @@
 ---
 id: event-tpl
-title: Event 与 Task Priority Level
+title: Event 与 TPL
 topic: event-tpl
-canonical: EFI_TPL
+canonical: UEFI Events and TPL
 aliases:
-  - task priority level
+  - Event 和 TPL
+  - Events and TPL
+  - Events and task priority levels
+  - UEFI Event
+  - CreateEvent
+  - SignalEvent
+  - WaitForEvent
+  - TPL
+  - Task Priority Level
   - RaiseTPL
   - RestoreTPL
-  - TPL
+  - TPL_NOTIFY
+  - TPL_CALLBACK
+  - 任务优先级
+  - 事件和 TPL
 sense: >-
-  UEFI 事件回调的任务优先级。RaiseTPL 抬高当前优先级，RestoreTPL 恢复
-distinguishes_from:
-  - id: boot-services
-    canonical: EFI_BOOT_SERVICES
-    aliases:
-      - boot services
-    source_paths:
-      - source: uefi-specs
-        repo: UEFI_2.11
-        file: UEFI_2.11/source/07_Services_Boot_Services.rst
+  Event 是可等待或可通知的对象（Wait、Signal、Timer、Exit Boot Services、
+  Set Virtual Address Map 等）。每个事件都有通知函数、通知上下文和 TPL。
+  TPL（TPL_APPLICATION / TPL_CALLBACK / TPL_NOTIFY / TPL_HIGH_LEVEL）既决定通知函数
+  的执行优先级，也用于构造锁；它不是事件类型本身。
 source_paths:
   - source: tianocore-docs
     repo: edk2-UefiDriverWritersGuide
-    file: edk2-UefiDriverWritersGuide/3_foundation/38_events_and_task_priority_levels/381_defining_priority.md
+    file: edk2-UefiDriverWritersGuide/3_foundation/38_events_and_task_priority_levels/README.8.md
+    url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/3_foundation/38_events_and_task_priority_levels/README.8.html
   - source: tianocore-docs
     repo: edk2-UefiDriverWritersGuide
-    file: edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/514_task_priority_leveltpl_services.md
+    file: edk2-UefiDriverWritersGuide/3_foundation/38_events_and_task_priority_levels/381_defining_priority.md
+    url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/3_foundation/38_events_and_task_priority_levels/381_defining_priority.html
   - source: tianocore-docs
     repo: edk2-UefiDriverWritersGuide
     file: edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/515_event_services.md
+    url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/5_uefi_services/51_services_that_uefi_drivers_commonly_use/515_event_services.html
+  - source: tianocore-docs
+    repo: edk2-UefiDriverWritersGuide
+    file: edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/514_task_priority_leveltpl_services.md
+    url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/5_uefi_services/51_services_that_uefi_drivers_commonly_use/514_task_priority_leveltpl_services.html
 ---
 
-TPL 决定事件回调能不能打断当前代码。更高的优先级先运行，RestoreTPL 回到原来的级别。
+Event 是通知对象，TPL 是通知函数运行的优先级（也用于加锁）。创建/等待事件走 Event Services，提升/恢复优先级走 RaiseTPL/RestoreTPL。证据只引用原文。

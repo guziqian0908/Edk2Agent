@@ -1,34 +1,47 @@
 ---
 id: runtime-services
-title: UEFI Runtime Services
+title: Runtime Services 与 Runtime Driver
 topic: boot-runtime
-canonical: EFI_RUNTIME_SERVICES
+canonical: UEFI Runtime Services
 aliases:
-  - runtime services
+  - Runtime Services
   - UEFI Runtime Services
-  - EFI_RUNTIME_SERVICES
+  - Runtime Driver
+  - DXE Runtime Driver
+  - gRT
+  - SetVirtualAddressMap
+  - 运行时服务
+  - 运行时驱动
 sense: >-
-  ExitBootServices 之后仍然可用的 Runtime Services，包括变量、时间与虚拟地址映射
+  Runtime Services 在 ExitBootServices() 之后仍然可用（Get/SetVariable、时间、复位、
+  SetVirtualAddressMap、UpdateCapsule 等）。Runtime Driver 必须能在预启动和启动后环境执行，
+  通常要注册 Exit Boot Services 与 Set Virtual Address Map 事件，且之后不得再调用 Boot Services。
 distinguishes_from:
   - id: boot-services
-    canonical: EFI_BOOT_SERVICES
+    canonical: UEFI Boot Services
+    name: Boot Services
     aliases:
-      - boot services
+      - Boot Services
       - UEFI Boot Services
+      - gBS
+      - ExitBootServices
     source_paths:
-      - source: uefi-specs
-        repo: UEFI_2.11
-        file: UEFI_2.11/source/07_Services_Boot_Services.rst
+      - source: tianocore-docs
+        repo: edk2-UefiDriverWritersGuide
+        file: edk2-UefiDriverWritersGuide/7_driver_entry_point/77_adding_the_exit_boot_services_feature.md
 source_paths:
-  - source: uefi-specs
-    repo: UEFI_2.11
-    file: UEFI_2.11/source/08_Services_Runtime_Services.rst
-  - source: tianocore-docs
-    repo: edk2-UefiDriverWritersGuide
-    file: edk2-UefiDriverWritersGuide/5_uefi_services/53_services_that_uefi_drivers_should_not_use/5313_setvirtualaddressmap.md
   - source: tianocore-docs
     repo: edk2-UefiDriverWritersGuide
     file: edk2-UefiDriverWritersGuide/7_driver_entry_point/711_runtime_drivers.md
+    url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/7_driver_entry_point/711_runtime_drivers.html
+  - source: tianocore-docs
+    repo: edk2-UefiDriverWritersGuide
+    file: edk2-UefiDriverWritersGuide/8_dxe_drivers_non-uefi_drivers/88_dxe_runtime_driver.md
+    url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/8_dxe_drivers_non-uefi_drivers/88_dxe_runtime_driver.html
+  - source: tianocore-docs
+    repo: edk2-UefiDriverWritersGuide
+    file: edk2-UefiDriverWritersGuide/5_uefi_services/README.md
+    url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/5_uefi_services/
 ---
 
-Runtime Services 在 ExitBootServices 之后仍然存在。SetVirtualAddressMap 把运行时指针改到操作系统给出的虚拟地址。
+Runtime Services / Runtime Driver 活过 `ExitBootServices()`。Boot Services（包括 CreateEvent、ConnectController、普通内存分配）在此之后不能再用。证据只引用原文。

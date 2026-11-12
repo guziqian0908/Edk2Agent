@@ -40,8 +40,7 @@ aliases:                          # required, non-empty
 sense: >-                         # required: the disambiguated meaning
   Driver Binding Protocol 的 Version 字段，决定 ConnectController 连接优先级
 distinguishes_from:               # optional, but required when there is a known confounder
-  - id: optional
-stable-id
+  - id: optional-stable-id
     canonical: EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL
     aliases:
       - Driver Supported EFI Version
@@ -62,8 +61,7 @@ source_paths:                     # required, non-empty; original docs only
 | Field | Matcher use |
 | --- | --- |
 | `canonical` | Official name used when rewriting the query after a hit. |
-| `aliases` | Deterministic phrase match against the user query and its translation. Case-insensitive; collapse whitespace; keep punctuation
-stripping conservative (do not strip digits or dots in `9.1` / `3.14.1`). Prefer the longest alias hit. |
+| `aliases` | Deterministic phrase match against the user query and its translation. Case-insensitive; collapse whitespace; keep punctuation-stripping conservative (do not strip digits or dots in `9.1` / `3.14.1`). Prefer the longest alias hit. |
 | `sense` | The disambiguated meaning. Topic routing and relational expansion run from this sense, not the raw surface form, after a high-confidence hit. |
 | `distinguishes_from.source_paths` | Downweight these original paths in the candidate pool (they are still originals, just the wrong sense). |
 | `source_paths` | Seed the existing exact-anchor merge, ahead of focus-topic hits and the docs path. `file` must equal the KB metadata `file` field: for `tianocore-docs` this is `{repo}/{path-inside-repo}` (see `init_kb.py`, `rel_path` relative to `tianocore-docs/repos/`). |

@@ -97,7 +97,9 @@ test('real seed pages load, and driver binding version hits the Version field', 
     assert.equal(Object.prototype.hasOwnProperty.call(hit, 'body'), false);
     const raw = fs.readFileSync(path.join(WIKI, 'pages', 'driver-binding-version.md'), 'utf8');
     const body = raw.split(/^---\s*$/m).slice(2).join('---');
-    assert.match(body, /3141/);
+    assert.match(body, /3\.14\.1/);
+    assert.match(body, /不引用本页/);
+    assert.equal(JSON.stringify(hit).includes('不引用本页'), false);
     assert.equal(JSON.stringify(hit).includes(body.trim()), false);
   }
 });
