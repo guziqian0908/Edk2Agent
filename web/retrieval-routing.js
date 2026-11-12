@@ -499,13 +499,17 @@ function chunkMatchesAnchors(r, anchors) {
   return anchors.some((a) => hay.includes(a));
 }
 
-function protectedChunkKeys(results, focusResults, question) {
+function protectedChunkKeys(results, focusResults, question, extraAnchors) {
   const keys = new Set();
   for (const r of focusResults || []) {
     const k = chunkKey(r);
     if (k) keys.add(k);
   }
   const anchors = preciseAnchors(question);
+  for (const a of extraAnchors || []) {
+    const s = String(a || '').trim().toLowerCase();
+    if (s.length >= 4 && !anchors.includes(s)) anchors.push(s);
+  }
   if (!anchors.length) return keys;
   for (const r of results || []) {
     if (!r || isNoiseChunk(r)) continue;
@@ -555,6 +559,20 @@ function legacyMerge(lanes) {
  * kept (relational expansion still has to surface ConnectController-style
  * neighbors that no focus rule names).
  */
+function extraAnchorList(lanes, opts) {
+  return []
+    .concat((lanes && lanes.anchors) || [], (opts && opts.anchors) || [])
+    .map((a) => String(a || '').trim().toLowerCase())
+    .filter((a) => a.length >= 4);
+}
+
+function downrankList(lanes, opts) {
+  return []
+    .concat((lanes && lanes.downrank) || [], (opts && opts.downrank) || [])
+    .map((a) => String(a || '').trim().toLowerCase())
+    .filter((a) => a.length >= 8);
+}
+
 function mergeRetrievalPool(lanes, opts = {}) {
   const enabled = routingEnabled(opts);
   const question = (lanes && lanes.question) || '';
@@ -565,7 +583,12 @@ function mergeRetrievalPool(lanes, opts = {}) {
   const focus = (lanes && lanes.focus) || [];
   const sub = (lanes && lanes.sub) || [];
   const relational = (lanes && lanes.relational) || [];
+  const extra = extraAnchorList(lanes, opts);
+  const downrank = downrankList(lanes, opts);
   const anchors = preciseAnchors(question);
+  for (const a of extra) {
+    if (!anchors.includes(a)) anchors.push(a);
+  }
   if (!focus.length && !anchors.length) return legacyMerge(lanes || {});
 
   const pool = [];
@@ -586,7 +609,15 @@ function mergeRetrievalPool(lanes, opts = {}) {
       if (add(r)) count += 1;
     }
   };
-  const nonNoise = (r) => !isNoiseChunk(r);
+  // distinguishes_from.source_paths stay in the pool but after the hit's
+  // source_paths anchors, the focus lane, and the docs lane.
+  const fileHeld = (r) => {
+    if (!downrank.length) return false;
+    if (extra.length && chunkMatchesAnchors(r, extra)) return false;
+    const f = String((r && r.file) || '').replace(/\\/g, '/').toLowerCase();
+    return !!f && downrank.some((d) => f.includes(d));
+  };
+  const nonNoise = (r) => !isNoiseChunk(r) && !fileHeld(r);
   const anchored = (r) => anchors.length > 0 && chunkMatchesAnchors(r, anchors) && nonNoise(r);
 
   take([...focus, ...docs, ...broad, ...sub, ...relational].filter(anchored), 12);
@@ -597,11 +628,13 @@ function mergeRetrievalPool(lanes, opts = {}) {
   take(broad.filter(nonNoise), 6);
   if (anchors.length) {
     take([...focus, ...docs, ...broad, ...relational, ...sub].filter(
-      (r) => isNoiseChunk(r) && chunkMatchesAnchors(r, anchors)), 3);
+      (r) => isNoiseChunk(r) && chunkMatchesAnchors(r, anchors) && !fileHeld(r)), 3);
   }
   if (pool.length < 8) {
-    take([...broad, ...relational].filter(isNoiseChunk), 2);
+    take([...broad, ...relational].filter((r) => isNoiseChunk(r) && !fileHeld(r)), 2);
   }
+  take([...focus, ...docs, ...broad, ...sub, ...relational].filter(
+    (r) => fileHeld(r) && !isNoiseChunk(r)), 4);
   const cap = opts.cap || 50;
   return pool.slice(0, cap);
 }
