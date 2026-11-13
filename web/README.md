@@ -82,6 +82,7 @@ node server.js
 | `SEMANTIC_CACHE` | 开 | 设为 `false` 关闭 bge-m3 近义问法匹配 |
 | `SEMANTIC_CACHE_THRESHOLD` | `0.93` | 近义问法余弦相似度阈值（越高越严） |
 | `FOCUS_TOPIC_ROUTING` | 开 | 设为 `false` 回退：规范类重新用 `source=all` 单次查询，关掉元数据文件 / EFI 数据类型主题、额外综合题分档（有几种 / 顺序 / 什么时候 / 职责），以及「聚焦结果优先于 commits/prs」的合并 |
+| `COMPILED_WIKI` | 开 | 设为 `false` / `0` / `off` / `no` 关闭 `edk2-kb/compiled-wiki/pages` 消歧；关闭后缓存不再要求 page id 与 source_paths |
 | `FOCUS_QUERY_CAP` | `36` | 单题聚焦查询条数上限 |
 | `RELATIONAL_QUERY_EXPANSION` | 开 | 设为 `false` 回退：翻译不再附带关联概念查询，也不再按 SUMMARY.md 补目录邻居。聚焦主题路由不受影响 |
 
@@ -96,6 +97,8 @@ node --test web/retrieval-routing.test.js
 ```
 
 `FOCUS_TOPIC_ROUTING=false` 恢复旧的 `source=all` 与旧合并顺序。
+
+`COMPILED_WIKI` 默认开启。命中 `edk2-kb/compiled-wiki/pages/*.md` 后，主题路由和关系扩展使用该页的 `canonical` 与 `sense`，`source_paths.file` 作为精确锚点排在聚焦结果和 docs 路前面，`distinguishes_from.source_paths` 降权。目录邻居只从这些原文出发。页面正文不进入生成上下文，也不写入向量或全文索引。相似缓存只回放相同 `id` 且相同 `source_paths.file` 集合的条目。`COMPILED_WIKI=false` 关闭这一层。
 
 ## 关系型查询扩展与目录邻居
 

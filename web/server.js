@@ -58,6 +58,8 @@
  *                        the extra complex-tier cues (有几种/顺序/什么时候/职责),
  *                        and use the old candidate interleave (default on)
  *   FOCUS_QUERY_CAP   max focused /search calls per question (default 36)
+ *   COMPILED_WIKI     set 'false'/'0'/'off'/'no' to disable compiled-wiki
+ *                     matching (default on). Cache then ignores page metadata.
  *   RELATIONAL_QUERY_EXPANSION  set 'false' to skip related-concept queries
  *                        and SUMMARY.md directory neighbors (default on).
  *                        Focus-topic routing is unchanged.
@@ -83,6 +85,23 @@ const {
   protectedChunkKeys,
 } = require('./retrieval-routing');
 const {
+  compiledWikiEnabled,
+  defaultCompiledWikiDir,
+  loadCompiledWiki,
+  matchCompiledWiki,
+  sourceFileSet,
+  sourcePathAnchors,
+  downrankFiles,
+  cacheReplayAllowed,
+  stampCacheMeta,
+  routingText,
+  relationalExpansionHint,
+  dropExcludedQueries,
+  neighborSeeds,
+  applyCompiledQuery,
+  considerCachedAnswer,
+} = require('./compiled-wiki');
+const {
   relationalExpansionEnabled,
   buildAnalysisSystemPrompt,
   relatedQueriesForSearch,
@@ -92,6 +111,13 @@ const {
   RELATIONAL_SOURCE,
   RELATIONAL_HITS_PER_QUERY,
 } = require('./retrieval-expansion');
+
+let compiledPages = [];
+try {
+  compiledPages = loadCompiledWiki(defaultCompiledWikiDir());
+} catch {
+  compiledPages = [];
+}
 
 const WEB_DIR = __dirname;
 const DEFAULT_KB_DIR = path.join(os.homedir(), '.edk2-opencode', 'kb');
@@ -188,8 +214,18 @@ function emitTrace({ traceId, stage, durationMs, queryHash, status = 'ok', ...ex
   } catch { /* never break the request because of trace logging */ }
 }
 
-function getCachedContext(query) {
-  const key = normalizeQuery(query);
+function contextCacheKey(query, keyExtra) {
+  const base = normalizeQuery(query);
+  return keyExtra ? `${base}\n${keyExtra}` : base;
+}
+
+function compiledContextKey(match) {
+  if (!match) return '';
+  return `compiled:${match.id}:${sourceFileSet(match).join('|')}`;
+}
+
+function getCachedContext(query, keyExtra) {
+  const key = contextCacheKey(query, keyExtra);
   const cached = contextCache.get(key);
   if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
     return cached.data;
@@ -198,8 +234,8 @@ function getCachedContext(query) {
   return null;
 }
 
-function setCachedContext(query, data) {
-  const key = normalizeQuery(query);
+function setCachedContext(query, data, keyExtra) {
+  const key = contextCacheKey(query, keyExtra);
   
   // LRU eviction if cache is full
   if (contextCache.size >= MAX_CACHE_SIZE) {
@@ -1762,6 +1798,7 @@ async function analyzeQuery(question, tier) {
 
 // P2: siblings of a hit, from SUMMARY.md chapter directories and from chunks
 // already in this turn's pool. No extra /search. Gated by the caller.
+// A compiled-wiki hit passes only its original source chunks as seeds.
 function directoryNeighbors(kept, pool) {
   return maybeExpandDirectoryNeighbors({
     kept,
@@ -1983,15 +2020,19 @@ async function handleAsk(req, res) {
           cache_match: match,
         });
       };
+      // Compiled-wiki match runs before similar-cache replay. A hit replays
+      // only an entry with the same page id and the same source_paths file
+      // set; older entries without that metadata miss and re-run retrieval.
+      // COMPILED_WIKI=false leaves the previous cache behavior in place.
+      const wikiOn = compiledWikiEnabled();
+      let compiledMatch = wikiOn
+        ? matchCompiledWiki(question, compiledPages, { extraText: expandChineseQuery(question) })
+        : null;
       if (!fresh && !followUp) {
-        const exactAnswer = answerCache.getExact(question, model);
-        if (exactAnswer) {
-          replayHit(exactAnswer, 'exact', null);
-          return;
-        }
-        const lexicalHit = answerCache.getLexical(question, model);
-        if (lexicalHit) {
-          replayHit(lexicalHit.entry, 'lexical', lexicalHit.similarity);
+        const cachedAnswer = considerCachedAnswer(
+          answerCache, question, model, compiledMatch, { enabled: wikiOn });
+        if (cachedAnswer) {
+          replayHit(cachedAnswer.entry, cachedAnswer.match, cachedAnswer.similarity);
           return;
         }
       }
@@ -2022,7 +2063,7 @@ async function handleAsk(req, res) {
       // reuse a prior generation when the lexical rules do not cover them.
       if (!fresh && !followUp && SEMANTIC_CACHE) {
         const semHit = answerCache.bestSemantic(await embedQuery(question, url), model);
-        if (semHit) {
+        if (semHit && cacheReplayAllowed(semHit.entry, compiledMatch, { enabled: wikiOn })) {
           const cacheStart = Date.now();
           replayCachedAnswer(res, semHit.entry, question, 'semantic', startedAt, semHit.similarity);
           res.end();
@@ -2040,7 +2081,7 @@ async function handleAsk(req, res) {
           return;
         }
       }
-      let results = getCachedContext(question);
+      let results = getCachedContext(question, compiledContextKey(compiledMatch));
       let fromCache = false;
       
       if (results) {
@@ -2062,11 +2103,29 @@ async function handleAsk(req, res) {
           const translateStart = Date.now();
           // One LLM call yields the English translation, complex-tier
           // sub-queries, and (unless RELATIONAL_QUERY_EXPANSION=false) 2–3
-          // related-concept queries. No second round-trip.
-          const analysis = await analyzeQuery(question, tier);
+          // related-concept queries. A compiled-wiki hit asks that call about
+          // canonical + sense, then drops distinguishes_from phrases.
+          const wikiHintEarly = compiledMatch ? relationalExpansionHint(compiledMatch) : null;
+          let analysisInput = wikiHintEarly ? wikiHintEarly.subject : question;
+          if (wikiHintEarly && wikiHintEarly.exclude.length) {
+            analysisInput += '\nDo not search these different senses: ' + wikiHintEarly.exclude.join('; ');
+          }
+          const analysis = await analyzeQuery(analysisInput, tier);
+          if (wikiOn && !compiledMatch) {
+            const translatedEarly = (analysis.translation && analysis.translation !== analysisInput)
+              ? analysis.translation : '';
+            if (translatedEarly) {
+              compiledMatch = matchCompiledWiki(question, compiledPages, { extraText: translatedEarly });
+            }
+          }
           const relationalOn = relationalExpansionEnabled();
-          const relationalQueries = relationalOn ? (analysis.relatedQueries || []) : [];
-          const subQueries = (analysis.subQueries || []).slice(0, MAX_SUB_QUERIES);
+          const wikiHint = compiledMatch ? relationalExpansionHint(compiledMatch) : null;
+          let relationalQueries = relationalOn ? (analysis.relatedQueries || []) : [];
+          let subQueries = (analysis.subQueries || []).slice(0, MAX_SUB_QUERIES);
+          if (wikiHint) {
+            relationalQueries = dropExcludedQueries(relationalQueries, wikiHint.exclude);
+            subQueries = dropExcludedQueries(subQueries, wikiHint.exclude);
+          }
           emitTrace({
             traceId, stage: 'llm_translate', durationMs: Date.now() - translateStart,
             queryHash: qh, status: 'ok', subQueries: subQueries.length,
@@ -2096,8 +2155,15 @@ async function handleAsk(req, res) {
           // Main search: if nothing English is available (translation failed and
           // no expansion rule matched), fall back to the raw question so the
           // search still runs. Docs search: English-only; skipped when empty.
-          const searchQuery = engQuery || question;
-          const docsQuery = engQuery || null;
+          let searchQuery = engQuery || question;
+          let docsQuery = engQuery || null;
+          if (compiledMatch) {
+            const compiledQ = applyCompiledQuery(engQuery || translatedQ || question, compiledMatch);
+            if (compiledQ) {
+              searchQuery = compiledQ;
+              docsQuery = compiledQ;
+            }
+          }
           // Parallel dual-source retrieval. The knowledge base is dominated by
           // tianocore/edk2 commit records (36k+ chunks): for build/error/commit
           // topics their "Fix ... build error" subjects outrank the real spec
@@ -2114,8 +2180,9 @@ async function handleAsk(req, res) {
           const mainPromise = httpJson(`${url}/search?query=${encodeURIComponent(searchQuery)}&top_k=${mainTopK}${mainDedup}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } });
           // Focused queries pin the rule sub-chunks the broad query misses,
           // and pick a source that is not drowned by commits/prs.
-          const qBlob = [question, translatedQ, expanded].join(' ');
-          const docsFocusQueries = selectFocusQueries(question, { blob: qBlob, enabled: routingOn });
+          const routeQuestion = compiledMatch ? routingText(question, compiledMatch) : question;
+          const qBlob = compiledMatch ? routeQuestion : [question, translatedQ, expanded].join(' ');
+          const docsFocusQueries = selectFocusQueries(routeQuestion, { blob: qBlob, enabled: routingOn });
           const docsPromise = docsQuery
             ? httpJson(`${url}/search?query=${encodeURIComponent(docsQuery)}&top_k=20&source=tianocore-docs`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } })
               .catch(() => null)
@@ -2185,6 +2252,8 @@ async function handleAsk(req, res) {
           // hit and no precise anchor) the historical interleave is used, so
           // relational expansion can still surface ConnectController-style
           // neighbors.
+          const wikiAnchors = compiledMatch ? sourcePathAnchors(compiledMatch) : [];
+          const wikiDown = compiledMatch ? downrankFiles(compiledMatch) : [];
           const pool = mergeRetrievalPool({
             broad,
             docs: docsResults,
@@ -2192,6 +2261,8 @@ async function handleAsk(req, res) {
             sub: subHits,
             relational: relHits,
             question,
+            anchors: wikiAnchors,
+            downrank: wikiDown,
           }, { enabled: routingOn });
           searchResp = { body: { results: pool } };
 
@@ -2218,15 +2289,19 @@ async function handleAsk(req, res) {
          results = pruneByMetadata(
            question,
            results,
-           focusRoutingEnabled() ? protectedChunkKeys(results, docsFocusHits, question) : null,
+           focusRoutingEnabled()
+             ? protectedChunkKeys(results, docsFocusHits, question, compiledMatch ? sourcePathAnchors(compiledMatch) : [])
+             : null,
          );
          // P2: directory neighbors after pruning, so a sibling the metadata
          // filter never saw can still be appended. Identity comes from
          // SUMMARY.md (recalled chunk or the repo file on disk) and from
-         // chunks already in recallPool. No extra /search.
+         // chunks already in recallPool. No extra /search. A compiled-wiki
+         // hit seeds that walk only from its original source files.
          try {
+           const neighborKept = compiledMatch ? neighborSeeds(results, compiledMatch) : results;
            const neigh = relationalExpansionEnabled()
-             ? directoryNeighbors(results, recallPool)
+             ? directoryNeighbors(neighborKept, recallPool)
              : [];
            if (neigh.length) {
              const seen = new Set(results.map(r => chunkKey(r)));
@@ -2244,7 +2319,8 @@ async function handleAsk(req, res) {
          // the free tier to save cost; non-fatal.
          if (results.length > 12 && tier !== 'free') {
            try {
-             const reranked = await rerankResults(question, results, 40);
+             const reranked = await rerankResults(
+               compiledMatch ? routingText(question, compiledMatch) : question, results, 40);
              if (reranked && reranked.length) {
                results = reranked;
                emitTrace({ traceId, stage: 'llm_rerank', durationMs: 0, queryHash: qh, status: 'ok', docs: reranked.length });
@@ -2392,7 +2468,7 @@ async function handleAsk(req, res) {
         }
         
         // Cache the results
-        setCachedContext(question, results);
+        setCachedContext(question, results, compiledContextKey(compiledMatch));
         sendSSE(res, 'phase', { step: 'cache_stored', text: '结果已缓存', progress: 30 });
       }
       // Both cache-hit and fresh paths converge here. Ensure a stable cid for
@@ -2830,12 +2906,12 @@ async function handleAsk(req, res) {
       // the answer depends on the previous turn. fresh:true skipped the lookup
       // above but still refreshes this entry.
       if (!isFollowUpQuestion(question) && fullAnswer && !isDegenerate(fullAnswer)) {
-        await storeAnswerCache(question, model, {
+        await storeAnswerCache(question, model, stampCacheMeta({
           answer: fullAnswer,
           results: results.slice(0, 10),
           tokens: tokenCount,
           model,
-        }, url);
+        }, compiledMatch, { enabled: wikiOn }), url);
         emitTrace({
           traceId, stage: 'answer_cache', durationMs: 0, queryHash: qh,
           status: 'ok', hit: false, tokens: tokenCount,
