@@ -18,7 +18,12 @@ Usage:
     python edk2-kb/eval/run_web_eval.py [--web http://127.0.0.1:8080]
                                        [--limit N] [--judge-only existing.json]
 
+    # Gold source/section recall from a recorded retrieval list.
+    # No web server, no vector index, no LLM.
+    python edk2-kb/eval/run_web_eval.py --gold-recall --retrievals recorded.json
+
 Output: run_web_eval_results.json + RUN_WEB_EVAL_REPORT.md next to this script.
+``--gold-recall`` prints the recall report and does not run the judge.
 """
 
 import argparse
@@ -165,9 +170,10 @@ def route_tier(q: str) -> str:
 # ---------------------------------------------------------------- LLM judge
 def llm(env: Dict[str, str], system: str,
         max_tokens: int = 500) -> str:
-    # JUDGE_MODEL overrides the default model for judging: a stronger judge
-    # (e.g. deepseek-chat) gives lower-variance, fairer scores than the flash
-    # model that generated the answers.
+    # JUDGE_MODEL overrides LLM_MODEL for judging only. Generation uses
+    # whatever LLM_MODEL the deployment set (DeepSeek cloud recommendation:
+    # deepseek-v4-pro; no hardcoded fallback here). A separate judge
+    # (e.g. deepseek-chat) can still score with lower variance.
     model = env.get("JUDGE_MODEL") or env.get("LLM_MODEL", "")
     payload = json.dumps({
         "model": model,
@@ -304,6 +310,18 @@ def _mean(xs: List[float]) -> float:
     return round(statistics.mean(xs), 2) if xs else 0.0
 
 
+def _with_gold_note(report: str, rows: List[Dict[str, Any]]) -> str:
+    """Append a pointer to gold recall. Judge scores are left unchanged."""
+    try:
+        from gold_recall import gold_recall_note_for_judge_rows
+        note = gold_recall_note_for_judge_rows(rows)
+    except Exception:
+        return report
+    if not note:
+        return report
+    return report.rstrip() + "\n" + note
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--web", default="http://127.0.0.1:8080")
@@ -322,7 +340,33 @@ def main() -> None:
                     help="global relevancy gate (default 4.4 == RAGAS 0.85)")
     ap.add_argument("--judge-runs", type=int, default=2,
                     help="judge votes per question, averaged (default 2)")
+    ap.add_argument("--gold-recall", action="store_true",
+                    help="score gold source/section recall from --retrievals; "
+                         "does not call the LLM or the web server")
+    ap.add_argument("--retrievals", default="",
+                    help="recorded retrieval/citation JSON for --gold-recall")
+    ap.add_argument("--include-additions", action="store_true",
+                    help="count suggested_additions_for_question_txt as extra gold")
+    ap.add_argument("--missing-as-empty", action="store_true",
+                    help="gold questions missing from --retrievals count as misses")
+    ap.add_argument("--gold-report", default="",
+                    help="write the gold-recall markdown report to this path")
     args = ap.parse_args()
+
+    if args.gold_recall:
+        # Import locally so the judge path stays independent, and so this
+        # branch never touches web/.env, the daemon, or an LLM.
+        from gold_recall import run_gold_recall
+        extra = []
+        if args.retrievals:
+            extra.extend(["--retrievals", args.retrievals])
+        if args.include_additions:
+            extra.append("--include-additions")
+        if args.missing_as_empty:
+            extra.append("--missing-as-empty")
+        if args.gold_report:
+            extra.extend(["--report", args.gold_report])
+        sys.exit(run_gold_recall(extra))
 
     env = load_env()
     if not (env.get("LLM_API_KEY") and env.get("LLM_BASE_URL")
@@ -394,7 +438,7 @@ def main() -> None:
             print(f"TIER {tier}: {'PASS' if ok else 'FAIL'} "
                   f"(faith {f}>={fg}, relev {rv}>={rg}, n={len(grp)})")
         REPORT_FILE.write_text(
-            render_report(rows, None, tier_gates, tier_status),
+            _with_gold_note(render_report(rows, None, tier_gates, tier_status), rows),
             encoding="utf-8")
         print(f"\nresults -> {RESULTS_FILE}")
         print(f"report  -> {REPORT_FILE}")
@@ -402,7 +446,8 @@ def main() -> None:
         sys.exit(0 if all_pass else 1)
 
     gate = (args.gate_faith, args.gate_relev) if args.gate else None
-    REPORT_FILE.write_text(render_report(rows, gate), encoding="utf-8")
+    REPORT_FILE.write_text(
+        _with_gold_note(render_report(rows, gate), rows), encoding="utf-8")
     print(f"\nresults -> {RESULTS_FILE}")
     print(f"report  -> {REPORT_FILE}")
 
