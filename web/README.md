@@ -33,9 +33,15 @@ SearchEngine（向量 + FTS + RRF + 重排 + 置信度 + citation）
 cd edk2-opencode-v3\web
 
 # （可选）配置 LLM——不配置时网页只显示检索结果列表
-$env:LLM_API_KEY = "你的API Key"
-$env:LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"   # OpenAI 兼容接口
-$env:LLM_MODEL    = "glm-4-flash"
+# 云端 DeepSeek 仍走官方 OpenAI 兼容接口。推荐生成模型是 deepseek-v4-pro，
+# 由 LLM_MODEL 覆盖；其它提供方继续用自己的模型名。
+$env:LLM_API_KEY  = "你的API Key"
+$env:LLM_BASE_URL = "https://api.deepseek.com"
+$env:LLM_MODEL    = "deepseek-v4-pro"
+
+# 其它提供方示例（智谱）：
+# $env:LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+# $env:LLM_MODEL    = "glm-4-flash"
 
 # 启动（默认监听 0.0.0.0:8080，局域网可访问）
 node server.js
@@ -57,8 +63,8 @@ node server.js
 | `KB_HOST` | `127.0.0.1` | daemon 绑定地址（设 `0.0.0.0` 时 daemon 也对外监听，供其他机器直连 /search） |
 | `KB_DATA_DIR` | `~/.edk2-opencode/kb` | 知识库数据目录 |
 | `LLM_API_KEY` | — | LLM API Key（不配置则只显示检索结果） |
-| `LLM_BASE_URL` | — | OpenAI 兼容接口地址（如智谱/DeepSeek/vLLM） |
-| `LLM_MODEL` | — | 模型名（如 `glm-4-flash`） |
+| `LLM_BASE_URL` | — | OpenAI 兼容接口地址。云端 DeepSeek 为 `https://api.deepseek.com`；智谱、vLLM 等继续用各自地址 |
+| `LLM_MODEL` | — | 模型名，只从环境变量读取，服务端不写死。DeepSeek 官方（`api.deepseek.com`）推荐 `deepseek-v4-pro`；其它端点用各自模型名（如 `glm-4-flash`） |
 | `LLM_MAX_TOKENS` | `3000` | standard 档单次回答最大 token 数 |
 | `LLM_MAX_TOKENS_SIMPLE` | `1600` | simple 档（单点/短问题）最大 token 数 |
 | `LLM_MAX_TOKENS_COMPLEX` | `6000` | complex 档（多子问题/对比）最大 token 数 |
@@ -153,6 +159,7 @@ curl -N -X POST http://127.0.0.1:8080/api/ask -H "Content-Type: application/json
 
 - daemon 无鉴权。`KB_HOST=0.0.0.0` 时，局域网内任何知道端口者均可调用 `/search`（只读检索）。敏感环境请仅在可信内网部署，或后续在 web 服务加 token 校验。
 - LLM API Key 保存在服务器环境变量中，不会下发到浏览器。
+- 已有部署的 `web/.env` 被 gitignore，仓库更新不会改到它。云端 DeepSeek 路径请在本机把 `LLM_MODEL` 改为 `deepseek-v4-pro` 后重启 Web 服务。离线配置 `web/.env.ollama` 仍是 `qwen2.5:14b`。
 
 ## 公网 MCP 服务（供 opencode 用户使用）
 

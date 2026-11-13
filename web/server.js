@@ -13,8 +13,13 @@
  *   HOST              web bind address (default 0.0.0.0)
  *   KB_HOST           daemon bind override (default 127.0.0.1)
  *   LLM_API_KEY       OpenAI-compatible API key (required for LLM answers)
- *   LLM_BASE_URL      base URL, e.g. https://open.bigmodel.cn/api/paas/v4
- *   LLM_MODEL         model name, e.g. glm-4-flash
+ *   LLM_BASE_URL      base URL. DeepSeek official: https://api.deepseek.com
+ *                     Other OpenAI-compatible endpoints keep their own URL,
+ *                     e.g. https://open.bigmodel.cn/api/paas/v4
+ *   LLM_MODEL         model id from the environment. There is no built-in
+ *                     fallback. Recommended when LLM_BASE_URL is
+ *                     api.deepseek.com: deepseek-v4-pro. Other endpoints keep
+ *                     their own ids, e.g. glm-4-flash.
  *   LLM_MAX_TOKENS    max answer tokens, standard tier (default 3000; lower = faster; one pass covers most answers, continuation handles the rest)
  *   LLM_MAX_TOKENS_SIMPLE  max answer tokens, simple tier (default 1600)
  *   LLM_MAX_TOKENS_COMPLEX max answer tokens, complex tier (default 6000; complex questions must cover every sub-question)
