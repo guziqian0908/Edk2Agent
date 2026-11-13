@@ -83,6 +83,7 @@ node server.js
 | `SEMANTIC_CACHE_THRESHOLD` | `0.93` | 近义问法余弦相似度阈值（越高越严） |
 | `FOCUS_TOPIC_ROUTING` | 开 | 设为 `false` 回退：规范类重新用 `source=all` 单次查询，关掉元数据文件 / EFI 数据类型主题、额外综合题分档（有几种 / 顺序 / 什么时候 / 职责），以及「聚焦结果优先于 commits/prs」的合并 |
 | `FOCUS_QUERY_CAP` | `36` | 单题聚焦查询条数上限 |
+| `RELATIONAL_QUERY_EXPANSION` | 开 | 设为 `false` 回退：翻译不再附带关联概念查询，也不再按 SUMMARY.md 补目录邻居。聚焦主题路由不受影响 |
 
 ## 聚焦查询与数据源路由
 
@@ -95,6 +96,24 @@ node --test web/retrieval-routing.test.js
 ```
 
 `FOCUS_TOPIC_ROUTING=false` 恢复旧的 `source=all` 与旧合并顺序。
+
+## 关系型查询扩展与目录邻居
+
+字面翻译对得上「Driver Supported EFI Version Protocol」，但对不上 `3141_connectcontroller.md` 里「Version 决定 ConnectController 连接顺序」这种换了说法的章节。开启时（默认），同一次查询分析在翻译之外再给 **2 或 3 条**英文关联查询；纯英文问题也会走这一次调用，否则没有地方挂上关联概念。这路只打 `tianocore-docs`，每路最多留下 4 条非 commit/PR 命中。合并顺序仍由聚焦路由决定：有主题或精确锚点时，关联命中排在聚焦结果和 docs 路之后；否则走原来的交错合并。
+
+目录邻居不再按目录名另发 `/search`。已召回的 `SUMMARY.md` 片段，或该文档仓库磁盘上的 `SUMMARY.md`，按链接的父目录认兄弟节（GitBook 的缩进经常把 3.14.1 和 3.14.2 写成同一级）。正文优先用本轮已经召回的 chunk；没有的话再读仓库里的 markdown，不重建向量索引。`3141` 的邻居是同目录的 `3142`，不是第 9 章的结构体页；跨章的那一跳靠关联查询，不靠死规则。
+
+```powershell
+$env:RELATIONAL_QUERY_EXPANSION = "false"   # 关掉关联查询和目录邻居
+```
+
+不需要知识库或 LLM：
+
+```powershell
+node --test web/retrieval-expansion.test.js web/retrieval-routing.test.js web/similar-cache.test.js web/similar-cache.http.test.js
+```
+
+`question.txt` 的全量 Q 评测需要本地索引和 LLM Key，这里没有跑。
 
 ## 相似问题缓存
 

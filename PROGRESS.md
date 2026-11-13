@@ -491,9 +491,11 @@ Wiki `Commit Message Format` 页只排在第 8 位 → 被评审判为错误。
 ### 12.5 下一步（仍指向同一目标，按损失贡献排序）
 1. **生成端**：云端 DeepSeek（`LLM_BASE_URL` 指向 `api.deepseek.com`）的推荐生成模型已从 flash 改为 `deepseek-v4-pro`。仓库里的实际字符串原先不一致：进度记录写作 `deepseek-flash`，`web/.env.example` 与 `wiki/Home.md` 写作 `deepseek-v4-flash`。`web/.env.example`、`web/README.md`、`wiki/Home.md` 现已对齐到 `deepseek-v4-pro`。`LLM_MODEL` 仍只从环境变量读取，服务端没有模型名回退，因此不会把非 DeepSeek 部署改过去。离线 `web/.env.ollama` 仍是 `qwen2.5:14b`。
    已有部署不会自动跟上：本机被 gitignore 的 `web/.env` 需要把 `LLM_MODEL` 改为 `deepseek-v4-pro` 并重启 Web 服务。此前 Q 基线是在 flash 生成上测的。合入后要在已配好索引和 Key 的环境重跑 `question.txt` 评测，才能量到 Q 变化。在那之前，「上下文正确仍答漏」仍是待验证的最大剩余损失。
-2. **检索召回**：为仍缺口的 4–6 题继续加"逐主题聚焦查询 + 数据源路由"。
+2. **检索召回**：漏题主题路由已在 #18 落地。用词对不上的缺口（Driver Binding 的 Version 字段 vs ConnectController 优先级）改为编排层的关系型扩展，见下；全量 Q 尚未复测。P1（加宽 top_k）和索引重建仍未做。
 3. **覆盖**：把 PDF 版规范（UEFI 2.11 / PI）与 wiki 全量页补齐并统一命名映射。
 4. 每次只动一项，复测 Q（双票）与守卫指标，记录到本节。
+
+**编排层已落地（2026-11-11，未复测 Q）。** `web/server.js` 把翻译那一次 LLM 调用扩成「翻译 + 最多 3 条关联概念查询」，只检索 `tianocore-docs`，并在合并前丢掉占满窗口的 commit/PR。目录邻居从已召回结果和 `SUMMARY.md` 的父目录推导（`3141` ↔ `3142`），兄弟正文用本轮 chunk 或磁盘上的 markdown，不再按目录名打 `/search`，也不重建向量库。`RELATIONAL_QUERY_EXPANSION=false` 同时关掉这两步，`FOCUS_TOPIC_ROUTING` 保持原样。单元测试：`node --test web/retrieval-expansion.test.js web/retrieval-routing.test.js web/similar-cache.test.js web/similar-cache.http.test.js`。`question.txt` 双票 Q 需要本地索引和 Key，这次没跑，所以这里不记新的 Q 数字。
 
 > 运行期加载：`EDK2_LTR_MODEL` 在 `search_engine.py` **导入时**读取，故每个进程需
 > 重新设置环境变量；daemon 的工作目录是 `edk2-kb/`，因此**务必用绝对路径**

@@ -58,6 +58,9 @@
  *                        the extra complex-tier cues (有几种/顺序/什么时候/职责),
  *                        and use the old candidate interleave (default on)
  *   FOCUS_QUERY_CAP   max focused /search calls per question (default 36)
+ *   RELATIONAL_QUERY_EXPANSION  set 'false' to skip related-concept queries
+ *                        and SUMMARY.md directory neighbors (default on).
+ *                        Focus-topic routing is unchanged.
  */
 'use strict';
 
@@ -79,6 +82,16 @@ const {
   mergeRetrievalPool,
   protectedChunkKeys,
 } = require('./retrieval-routing');
+const {
+  relationalExpansionEnabled,
+  buildAnalysisSystemPrompt,
+  relatedQueriesForSearch,
+  parseAnalysisPayload,
+  selectRelationalHits,
+  maybeExpandDirectoryNeighbors,
+  RELATIONAL_SOURCE,
+  RELATIONAL_HITS_PER_QUERY,
+} = require('./retrieval-expansion');
 
 const WEB_DIR = __dirname;
 const DEFAULT_KB_DIR = path.join(os.homedir(), '.edk2-opencode', 'kb');
@@ -1697,169 +1710,64 @@ const translationCache = new Map();
 const TRANSLATION_TTL_MS = 30 * 60 * 1000;
 const MAX_SUB_QUERIES = 4;
 
-const ANALYZE_SYSTEM_TRANSLATE =
-  'You are a translation engine. Translate the user question from Chinese into concise, technically accurate English suitable for searching EDK2/TianoCore documentation. Keep EDK2 terms (INF, DSC, DEC, FDF, PCD, SMM, HII, protocol, GUID...) as-is. Output ONLY the English translation, no explanation, no quotes.';
-
-const ANALYZE_SYSTEM_DECOMPOSE =
-  'You are a query analysis engine for an EDK2/TianoCore documentation knowledge base. The user question may contain several sub-questions. Do BOTH: ' +
-  '1) Translate the WHOLE question into concise, technically accurate English for document retrieval, keeping EDK2 terms (INF, DSC, DEC, FDF, PCD, SMM, HII, protocol, GUID...) as-is. ' +
-  '2) Decompose the question into 2-4 independent English retrieval sub-queries, each focused on ONE sub-question or comparison dimension, keeping EDK2 terms as-is. If the question is a single point, return an empty list. ' +
-  'Output ONLY strict JSON, no markdown fences, no explanation: {"translation": "...", "sub_queries": ["...", "..."]}';
-
 // P2-8: for short Chinese questions, the LLM also writes 2-3 English
 // rephrasings (different angle, same meaning). Each paraphrase is later
 // validated by RETRIEVAL GAIN (not cosine similarity): it must share >=1
 // document with the main search (topic anchor) AND surface >=1 new document
 // (actual recall gain), otherwise it is discarded.
-const ANALYZE_SYSTEM_PARAPHRASE =
-  'You are a query analysis engine for an EDK2/TianoCore documentation knowledge base. Do BOTH: ' +
-  '1) Translate the user question into concise, technically accurate English for document retrieval, keeping EDK2 terms (INF, DSC, DEC, FDF, PCD, SMM, HII, protocol, GUID...) as-is. ' +
-  '2) Write 2-3 ALTERNATIVE English rephrasings of the SAME question (different wording or angle, same meaning), keeping EDK2 terms as-is. ' +
-  'Output ONLY strict JSON, no markdown fences, no explanation: {"translation": "...", "sub_queries": ["...", "..."]}';
-
-function parseAnalysis(text, question, decompose) {
-  const data = { translation: question, subQueries: [] };
-  const raw = String(text || '').trim();
-  if (!raw) return data;
-  let jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  // The model occasionally wraps the JSON with a preamble; keep only the part
-  // between the first { and the last }.
-  const lo = jsonText.indexOf('{');
-  const hi = jsonText.lastIndexOf('}');
-  if (lo >= 0 && hi > lo) jsonText = jsonText.slice(lo, hi + 1);
-  try {
-    const j = JSON.parse(jsonText);
-    if (typeof j.translation === 'string' && j.translation.trim()) {
-      data.translation = j.translation.trim().slice(0, 300);
-    }
-    if (Array.isArray(j.sub_queries)) {
-      data.subQueries = j.sub_queries
-        .filter((s) => typeof s === 'string' && s.trim())
-        .map((s) => s.trim().slice(0, 200))
-        .slice(0, MAX_SUB_QUERIES);
-    }
-  } catch {
-    // Non-JSON output: in translation mode the whole text is the translation;
-    // in decompose mode a broken JSON is useless, so drop back to the original.
-    if (!decompose && !/[{}]/.test(jsonText)) data.translation = raw;
-  }
-  return data;
-}
+//
+// When RELATIONAL_QUERY_EXPANSION is on, that same call also asks for 2-3
+// related-concept queries (P0). The prompt text lives in retrieval-expansion.js
+// so the rollback path is the original translation / decompose / paraphrase
+// prompts with no second LLM round-trip.
 
 async function analyzeQuery(question, tier) {
-  const key = normalizeQuery(question);
-  const hit = translationCache.get(key);
-  if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.data;
+  const relational = relationalExpansionEnabled();
   const decompose = tier === 'complex';
   const paraphrase = tier === 'simple';
+  const key = normalizeQuery(question) + '\n' + tier + '\n' + (relational ? '1' : '0');
+  const hit = translationCache.get(key);
+  if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.data;
   // The corpus is English-only: a question that is already pure ASCII (English
   // phrasing, EDK2 identifiers, error codes) is used verbatim, skipping a full
-  // LLM round-trip (~2s) that would only rephrase it — unless decomposition /
-  // paraphrase expansion is wanted for this tier.
-  if (!decompose && !paraphrase &&
-      /^[\x00-\x7F\s]+$/.test(question) && /[a-zA-Z]{3,}/.test(question)) {
-    const data = { translation: question, subQueries: [] };
+  // LLM round-trip (~2s) that would only rephrase it — unless decomposition,
+  // paraphrase, or related-concept expansion is wanted.
+  const ascii = /^[\x00-\x7F\s]+$/.test(question) && /[a-zA-Z]{3,}/.test(question);
+  if (!relational && !decompose && !paraphrase && ascii) {
+    const data = { translation: question, subQueries: [], relatedQueries: [] };
     translationCache.set(key, { data, timestamp: Date.now() });
     return data;
   }
-  const systemPrompt = decompose ? ANALYZE_SYSTEM_DECOMPOSE
-    : paraphrase ? ANALYZE_SYSTEM_PARAPHRASE
-    : ANALYZE_SYSTEM_TRANSLATE;
+  const systemPrompt = buildAnalysisSystemPrompt({ decompose, paraphrase, relational });
   const text = await llmComplete([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: question },
-  ], { timeoutMs: 60000, maxTokens: decompose || paraphrase ? 500 : 300 });
-  const data = parseAnalysis(text, question, decompose);
+  ], { timeoutMs: 60000, maxTokens: decompose || paraphrase || relational ? 500 : 300 });
+  const data = parseAnalysisPayload(text, question, {
+    structured: decompose || paraphrase || relational,
+    // Standard tier still accepts a bare English sentence if the model skips
+    // the JSON wrapper. Complex / paraphrase keep the old "broken JSON is
+    // not a translation" rule.
+    plainOk: !decompose && !paraphrase,
+  });
   if (!data.translation) data.translation = question;
+  if (!decompose && !paraphrase) data.subQueries = [];
   // Paraphrase mode must not silently degrade into decomposition: cap at 3.
   if (paraphrase) data.subQueries = data.subQueries.slice(0, 3);
+  data.subQueries = data.subQueries.slice(0, MAX_SUB_QUERIES);
+  data.relatedQueries = relatedQueriesForSearch(data);
   translationCache.set(key, { data, timestamp: Date.now() });
   return data;
 }
 
-// P0: relational query expansion. A literal translation captures the surface
-// wording but misses associated protocols/functions the answer actually
-// needs (e.g. "driver binding version" should also检索 "ConnectController
-// priority" / "option ROM loading order"). Ask the LLM for 3-4 related-concept
-// queries that bridge to the DEFINITION, the CONSUMING PROCESS, and the
-// BOOT/RUNTIME SCENARIO, and merge them into the retrieval pool.
-async function expandRelationalQueries(question) {
-  const key = 'rel:' + normalizeQuery(question);
-  const hit = translationCache.get(key);
-  if (hit && (Date.now() - hit.timestamp) < TRANSLATION_TTL_MS) return hit.data;
-  const prompt = `You expand search queries for an EDK2/TianoCore documentation RAG system. The user asks a question (often in Chinese) about a UEFI/EDK2 concept: a protocol, a struct field/member, a function, or a boot/runtime mechanism.
-
-Output 3-4 ADDITIONAL English search queries that retrieve the documentation the user actually needs but a literal translation would miss. Bridge vocabulary gaps by covering:
-1. DEFINITION: the protocol/struct/field itself and its members.
-2. CONSUMER/PROCESS: the function or boot/runtime process that USES or is driven by the concept (e.g. a question about a protocol field's "version" must also query "ConnectController driver binding connection process" and "UEFI option ROM driver loading order priority" that consume it).
-3. SCENARIO: when/where the concept matters at boot or runtime.
-
-Use precise EDK2 terminology (ConnectController, Driver Binding, option ROM, HII, PCD, etc.). Do NOT repeat the user's question. Output ONLY minified JSON: {"queries":["...","...","..."]}.`;
-  let queries = [];
-  try {
-    const text = await llmComplete([
-      { role: 'system', content: prompt },
-      { role: 'user', content: question },
-    ], { timeoutMs: 60000, maxTokens: 400 });
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) {
-      const data = JSON.parse(m[0]);
-      if (Array.isArray(data.queries)) {
-        queries = data.queries.map(s => String(s).slice(0, 200)).filter(Boolean);
-      }
-    }
-  } catch { /* non-fatal */ }
-  const out = queries.slice(0, 4);
-  translationCache.set(key, { data: out, timestamp: Date.now() });
-  return out;
-}
-
-// P2: directory-neighbor expansion. Related content often lives in the same
-// section folder but wasn't lexically aligned with the query. After retrieval,
-// pull sibling chunks from the most frequent parent directories among the top
-// results (skipping generic folders like "source").
-async function neighborExpand(results, url, traceId) {
-  if (!Array.isArray(results) || !results.length) return [];
-  const top = results.slice(0, 14);
-  const dirCount = new Map();
-  for (const r of top) {
-    const f = r.file || r.title || '';
-    if (!f) continue;
-    const parts = f.split(/[\\/]/);
-    if (parts.length < 2) continue;
-    const dir = parts.slice(0, -1).join('/');
-    dirCount.set(dir, (dirCount.get(dir) || 0) + 1);
-  }
-  const ranked = [...dirCount.entries()].sort((a, b) => b[1] - a[1]);
-  const generic = /^(source|docs?|markdown|content|files?|assets|images?|md)$/i;
-  const chosen = [];
-  for (const [d] of ranked) {
-    const lastSeg = d.split(/[\\/]/).pop().replace(/[_-]+/g, '').toLowerCase();
-    if (generic.test(lastSeg)) continue;
-    chosen.push(d);
-    if (chosen.length >= 2) break;
-  }
-  if (!chosen.length) return [];
-  const out = [];
-  const seen = new Set(results.map(r => chunkKey(r)));
-  for (const dir of chosen) {
-    const q = dir.replace(/[\\/_-]+/g, ' ');
-    try {
-      const resp = await httpJson(`${url}/search?query=${encodeURIComponent(q)}&top_k=10`, { timeoutMs: 60000, headers: { 'X-Trace-Id': traceId } });
-      const hits = (resp && resp.body && resp.body.results) || [];
-      for (const r of hits) {
-        const f = r.file || r.title || '';
-        const parent = f.split(/[\\/]/).slice(0, -1).join('/');
-        if (parent === dir && !seen.has(chunkKey(r))) {
-          seen.add(chunkKey(r));
-          out.push(r);
-        }
-        if (out.length >= 10) break;
-      }
-    } catch { /* ignore */ }
-    if (out.length >= 10) break;
-  }
-  return out;
+// P2: siblings of a hit, from SUMMARY.md chapter directories and from chunks
+// already in this turn's pool. No extra /search. Gated by the caller.
+function directoryNeighbors(kept, pool) {
+  return maybeExpandDirectoryNeighbors({
+    kept,
+    pool,
+    reposDir: path.join(getKbDir(), 'data', 'tianocore-docs', 'repos'),
+  });
 }
 
 // P3/Rerank (b): LLM cross-encoder-style reranker. After P0+P2 the merged
@@ -2143,6 +2051,7 @@ async function handleAsk(req, res) {
         sendSSE(res, 'phase', { step: 'search', text: '正在检索知识库…', progress: 20 });
         let searchResp;
         let docsFocusHits = [];
+        let recallPool = [];
         try {
           // Cross-lingual vector recall is weak: Chinese queries ("排版/空白")
           // rank unrelated Summary/README chunks above the actual English spec
@@ -2151,13 +2060,12 @@ async function handleAsk(req, res) {
           // translation failure).
           sendSSE(res, 'phase', { step: 'translate', text: '翻译检索查询…', progress: 15 });
           const translateStart = Date.now();
-          // P1: one LLM call yields the English translation AND (for complex
-          // tier) the sub-query decomposition — no extra round-trip.
-          const [analysis, relationalRaw] = await Promise.all([
-            analyzeQuery(question, tier),
-            expandRelationalQueries(question),
-          ]);
-          const relationalQueries = (relationalRaw || []).slice(0, 4);
+          // One LLM call yields the English translation, complex-tier
+          // sub-queries, and (unless RELATIONAL_QUERY_EXPANSION=false) 2–3
+          // related-concept queries. No second round-trip.
+          const analysis = await analyzeQuery(question, tier);
+          const relationalOn = relationalExpansionEnabled();
+          const relationalQueries = relationalOn ? (analysis.relatedQueries || []) : [];
           const subQueries = (analysis.subQueries || []).slice(0, MAX_SUB_QUERIES);
           emitTrace({
             traceId, stage: 'llm_translate', durationMs: Date.now() - translateStart,
@@ -2218,8 +2126,12 @@ async function handleAsk(req, res) {
           // the full index; each sub-question then has its own evidence window.
           const subPromises = subQueries.map(sq =>
             httpJson(`${url}/search?query=${encodeURIComponent(sq)}&top_k=10&dedup=false`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
+          // Related-concept lane stays on tianocore-docs (2–3 queries). The
+          // guide chapters that lose the vocabulary race live there; commits
+          // are not allowed to occupy this window. Spec topics still use the
+          // focus fan-out above.
           const relationalPromises = relationalQueries.map(rq =>
-            httpJson(`${url}/search?query=${encodeURIComponent(rq)}&top_k=15&dedup=false`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
+            httpJson(`${url}/search?query=${encodeURIComponent(rq)}&top_k=15&dedup=false&source=${encodeURIComponent(RELATIONAL_SOURCE)}`, { timeoutMs: 120000, headers: { 'X-Trace-Id': traceId } }).catch(() => null));
           const [mainResp, docsResp, ...restResps] = await Promise.all([mainPromise, docsPromise, ...docsFocusPromises, ...subPromises, ...relationalPromises]);
           const docsFocusResps = restResps.slice(0, docsFocusQueries.length);
           const subRespsRaw = restResps.slice(docsFocusQueries.length, docsFocusQueries.length + subQueries.length);
@@ -2248,6 +2160,7 @@ async function handleAsk(req, res) {
             traceId, stage: 'mcp_search', durationMs: Date.now() - searchStart,
             queryHash: qh, status: 'ok', calls: 2 + docsFocusQueries.length + subQueries.length + relationalPromises.length,
             subQueries: subQueries.length, validSubQueries: subResps.length, relational: relationalQueries.length,
+            relationalEnabled: relationalOn,
             relationalQueries: relationalQueries,
           });
           turnSearchMs = Date.now() - searchStart;
@@ -2261,8 +2174,11 @@ async function handleAsk(req, res) {
           const relHits = [];
           for (const r of relationalResps) {
             const hits = (r && r.body && r.body.results) || [];
-            for (const h of hits.slice(0, 6)) relHits.push(h);
+            for (const h of selectRelationalHits(hits, RELATIONAL_HITS_PER_QUERY)) relHits.push(h);
           }
+          recallPool = [broad, docsResults, docsFocusResults, subHits, relHits]
+            .flat()
+            .filter(Boolean);
           // Focused spec/docs/wiki chunks are reserved ahead of commit/PR
           // noise when routing is on. With FOCUS_TOPIC_ROUTING=false (or a
           // question that names one git object, or a question with no focus
@@ -2304,10 +2220,14 @@ async function handleAsk(req, res) {
            results,
            focusRoutingEnabled() ? protectedChunkKeys(results, docsFocusHits, question) : null,
          );
-         // P2: directory-neighbor expansion (after pruning so supplements
-         // survive). Pulls same-section siblings the query didn't align with.
+         // P2: directory neighbors after pruning, so a sibling the metadata
+         // filter never saw can still be appended. Identity comes from
+         // SUMMARY.md (recalled chunk or the repo file on disk) and from
+         // chunks already in recallPool. No extra /search.
          try {
-           const neigh = await neighborExpand(results, url, traceId);
+           const neigh = relationalExpansionEnabled()
+             ? directoryNeighbors(results, recallPool)
+             : [];
            if (neigh.length) {
              const seen = new Set(results.map(r => chunkKey(r)));
              for (const r of neigh) {
