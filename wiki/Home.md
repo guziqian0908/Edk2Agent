@@ -509,7 +509,7 @@ score = β · Chroma cosine 归一化得分 + (1 − β) · RRF 融合分
 | `GET /api/status` | 转发 daemon `/health` + LLM 配置状态 |
 | `GET /healthz` | Web 服务存活探针 |
 
-**Web 服务环境变量**：`LLM_BASE_URL`（如 `https://open.bigmodel.cn/api/paas/v4`）、`LLM_API_KEY`、`LLM_MODEL`、`LLM_MAX_TOKENS`（默认 8000）、`PORT`（默认 8080）、`HOST`（默认 0.0.0.0）、`RATE_LIMIT_ASK`（默认 10 次/窗口）。前端 `web/index.html` 会把最近 10 轮历史存入 `localStorage`，并在追问时携带上一轮 `prevResults` 实现同主题多轮对话。
+**Web 服务环境变量**：`LLM_BASE_URL`（云端 DeepSeek 为 `https://api.deepseek.com`；其它提供方如 `https://open.bigmodel.cn/api/paas/v4`）、`LLM_API_KEY`、`LLM_MODEL`（DeepSeek 官方推荐生成模型 `deepseek-v4-pro`，仍由环境变量覆盖；非 DeepSeek 端点用各自模型名）、`LLM_MAX_TOKENS`（默认 8000）、`PORT`（默认 8080）、`HOST`（默认 0.0.0.0）、`RATE_LIMIT_ASK`（默认 10 次/窗口）。前端 `web/index.html` 会把最近 10 轮历史存入 `localStorage`，并在追问时携带上一轮 `prevResults` 实现同主题多轮对话。
 
 ### 4.4 eval-query 命令与解读（含实操示例）
 
@@ -744,8 +744,11 @@ cp .env.example .env   # Windows: Copy-Item .env.example .env
 ```bash
 LLM_API_KEY=sk-your-api-key-here
 LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-v4-flash
+# 云端 DeepSeek 推荐生成模型。可改成该端点支持的其它模型名。
+LLM_MODEL=deepseek-v4-pro
 ```
+
+已有部署的 `web/.env` 被 gitignore，上面的模板不会改到它。请在本机把 `LLM_MODEL` 改为 `deepseek-v4-pro` 后重启 Web 服务。离线 `web/.env.ollama` 仍是 `qwen2.5:14b`。
 
 **3. 可选调优**（均有合理默认值）：
 ```bash

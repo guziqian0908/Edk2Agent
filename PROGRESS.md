@@ -1,6 +1,6 @@
 # EDK2-Agent 复现与优化 · 进度记录（交接文档）
 
-> 最后更新：2026-09-22
+> 最后更新：2026-11-11
 > 机器重启后，**先读本文档**即可无缝继续。
 > 一句话现状：**项目已完整复现并可运行；检索已优化；云端与本地 LLM 均已跑通。**
 
@@ -17,7 +17,7 @@
 | 模型 | bge-m3 + bge-reranker-v2-m3（D 盘，各 ~2.1GB）✅ |
 | daemon | **已停止**（明天用命令启动） |
 | Web 服务 | 可能在 8080 运行（重启后消失） |
-| 云端 LLM ② | ✅ 已跑通（DeepSeek 官方 `deepseek-flash`，`web/.env`） |
+| 云端 LLM ② | ✅ 接口已跑通。推荐生成模型为 DeepSeek 官方 `deepseek-v4-pro`（`LLM_MODEL` 可覆盖）。此前实测用 flash（本文旧称 `deepseek-flash`，模板为 `deepseek-v4-flash`）。本机 gitignore 的 `web/.env` 需手改并重启 |
 | 本地 LLM ③ | ✅ 已完成（Ollama + qwen2.5:14b，`web/.env.ollama` 一键切换） |
 | Wiki 补全 ④ | ✅ 已入库（2266 块），已改名为独立来源，**待重跑评测** |
 
@@ -116,7 +116,7 @@ Start-Process 'D:\tools\Ollama\ollama.exe' -ArgumentList 'serve' -WindowStyle Hi
 6. **索引**：ChromaDB（1024 维）+ FTS5（porter+unicode61）。
 7. **daemon**：动态端口、`/health`、`/search`、`/embed`、MCP `/mcp`（`search_kb` 等 3 个工具）全部验证通过。
 8. **Web**：`/healthz`、`/api/status`、`/api/ask`（含引用、忠实度校验、C' 修订）验证通过。
-9. **云端 LLM**：接 DeepSeek 官方，`deepseek-flash`，已生成带引用的真实回答。
+9. **云端 LLM**：接 DeepSeek 官方，已生成带引用的真实回答。当时生成模型是 flash（记录写作 `deepseek-flash`，配置模板为 `deepseek-v4-flash`）。推荐生成模型现为 `deepseek-v4-pro`（见 12.5）。
 10. **检索优化**：见第 4 节，全局 Hit@5 86.7% → 90.6%。
 
 ---
@@ -270,10 +270,13 @@ Copy-Item D:\edk2Agent\web\.env.ollama D:\edk2Agent\web\.env -Force
 # 然后重启 Web 服务（见 9.5）
 ```
 **切回云端 DeepSeek：** 恢复 `web/.env` 的 `LLM_BASE_URL=https://api.deepseek.com/v1`
-与 `LLM_MODEL=deepseek-flash`（Key 见文件内）。
+与 `LLM_MODEL=deepseek-v4-pro`（Key 见文件内；`LLM_MODEL` 仍可改成该端点支持的其它模型名）。
+`web/.env` 被 gitignore，仓库不会改这份文件，改完需重启 Web 服务。
 
-> 说明：`web/.env` 默认保留**云端 DeepSeek**（回答质量更高）；`web/.env.ollama` 是
-> 一键切换用的离线配置，两者都已验证可用。
+> 说明：`web/.env` 留给**云端 DeepSeek**（回答质量更高），推荐生成模型是
+> `deepseek-v4-pro`。`web/.env.ollama` 仍是一键切换用的离线配置（`qwen2.5:14b`）。
+> flash 配置此前已验证可用；换成 `deepseek-v4-pro` 之后的 Q 变化，要重跑
+> `question.txt` 评测才能量到。
 
 ### 9.4 最终索引/服务状态（2026-09-22）
 - `documents.json` 101,378；FTS5 101,378 行；Chroma 33,526（去噪：commits/prs 仅 BM25）。
@@ -486,8 +489,8 @@ Wiki `Commit Message Format` 页只排在第 8 位 → 被评审判为错误。
 - LTR = 尝试提升 Q 的**排序项**，实测无增益 → 关闭（负结果，已记录）。
 
 ### 12.5 下一步（仍指向同一目标，按损失贡献排序）
-1. **生成端**：当前用 `deepseek-flash` 生成；换 `deepseek-v4-pro` 生成可望减少细节遗漏
-   （是当前最大剩余损失，因为上下文正确时仍会答漏）。
+1. **生成端**：云端 DeepSeek（`LLM_BASE_URL` 指向 `api.deepseek.com`）的推荐生成模型已从 flash 改为 `deepseek-v4-pro`。仓库里的实际字符串原先不一致：进度记录写作 `deepseek-flash`，`web/.env.example` 与 `wiki/Home.md` 写作 `deepseek-v4-flash`。`web/.env.example`、`web/README.md`、`wiki/Home.md` 现已对齐到 `deepseek-v4-pro`。`LLM_MODEL` 仍只从环境变量读取，服务端没有模型名回退，因此不会把非 DeepSeek 部署改过去。离线 `web/.env.ollama` 仍是 `qwen2.5:14b`。
+   已有部署不会自动跟上：本机被 gitignore 的 `web/.env` 需要把 `LLM_MODEL` 改为 `deepseek-v4-pro` 并重启 Web 服务。此前 Q 基线是在 flash 生成上测的。合入后要在已配好索引和 Key 的环境重跑 `question.txt` 评测，才能量到 Q 变化。在那之前，「上下文正确仍答漏」仍是待验证的最大剩余损失。
 2. **检索召回**：为仍缺口的 4–6 题继续加"逐主题聚焦查询 + 数据源路由"。
 3. **覆盖**：把 PDF 版规范（UEFI 2.11 / PI）与 wiki 全量页补齐并统一命名映射。
 4. 每次只动一项，复测 Q（双票）与守卫指标，记录到本节。
