@@ -1,0 +1,1029 @@
+{
+  "schema": "edk2-gold-source-chapters/v1",
+  "notes": [
+    "question.txt 的 35 题已有 R: 金标路径和章节，这里按分号、顿号和“+ 同目录文件.md”拆成 expected[]，r_raw 原样保留便于核对。",
+    "run_web_eval.py 当前 18 题只做 LLM-judge，不比对 source/章节；qtest_eval_set.json 的 expected 仍是 qtest-Q0 占位，没有吃进 R。",
+    "spec 来源的 file 暂用 question.txt 里的 PDF 文件名（如 UEFI_Spec_Final_2.11.pdf），接入评测时请映射到知识库实际的 file 元数据。",
+    "tianocore-wiki 的 file 去掉了 tianocore-wiki.github.io/ 前缀，接入时请再对一下索引里的 title/file。",
+    "命中 confounders 应记为近义协议假阳性，不算金标命中。",
+    "suggested_additions_for_question_txt 是已核对的 tianocore-docs 原文路径，可作为 Q26/Q27/Q28/Q30 的可选增补，便与编译 Wiki 的 source_paths 对齐；默认仍以 r_raw 为准。"
+  ],
+  "question_txt": [
+    {
+      "id": "qtest-Q0",
+      "kind": "question-txt",
+      "query": "EDK II 里的 INF / DEC / DSC / FDF 四个元数据文件各自负责什么？模块(Module)、包(Package)、平台(Platform)又是什么关系？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/1_the_basics_of_edk_ii/11_overview.md",
+          "chapter": "1.1.1 Module, Package and Platform + 1.1.4 Build Infrastructure"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/2_an_edk_ii_package/21_introduction.md",
+          "chapter": "2.1.3 Package Declaration File + 2.1.4 Package DSC File"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/1_the_basics_of_edk_ii/11_overview.md 1.1.1 Module, Package and Platform + 1.1.4 Build Infrastructure; edk2-ModuleWriteGuide/2_an_edk_ii_package/21_introduction.md 2.1.3 Package Declaration File + 2.1.4 Package DSC File"
+    },
+    {
+      "id": "qtest-Q1",
+      "kind": "question-txt",
+      "query": "MODULE_TYPE 都有哪些？我该怎么给自己的模块选？入口函数又是怎么告诉构建系统的？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/31_what_is_an_edk_ii_module.md",
+          "chapter": "3.1.1 Module Type (Table 1 EDK II Module Types)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/32_creating_a_module.md",
+          "chapter": "3.2.1.2 Adding a Module Directory (Table 2) + 3.2.2 Sample: Module Meta File - INF"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/3_module_development/31_what_is_an_edk_ii_module.md 3.1.1 Module Type (Table 1 EDK II Module Types); edk2-ModuleWriteGuide/3_module_development/32_creating_a_module.md 3.2.1.2 Adding a Module Directory (Table 2) + 3.2.2 Sample: Module Meta File - INF"
+    },
+    {
+      "id": "qtest-Q2",
+      "kind": "question-txt",
+      "query": "库类(Library Class)和库实例(Library Instance)到底是什么关系？为什么 DSC 里非要写一行映射？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/33_additional_steps_for_library_instances.md",
+          "chapter": "3.3.1 Define Produced Library Class + 3.3.2 Define a Library Constructor + 3.3.3 Define a Library Destructor"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md",
+          "chapter": "3.7.2 Select Library Instances"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/3_module_development/33_additional_steps_for_library_instances.md 3.3.1 Define Produced Library Class + 3.3.2 Define a Library Constructor + 3.3.3 Define a Library Destructor; edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md 3.7.2 Select Library Instances"
+    },
+    {
+      "id": "qtest-Q3",
+      "kind": "question-txt",
+      "query": "PCD 有几种类型？在 DEC / DSC / INF / C 代码里分别怎么写？什么时候必须用 FixedPcd？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/32_creating_a_module.md",
+          "chapter": "3.2.6 Adding PCD References (Table 4 INF PCD Section Name, Table 5 PCD access functions)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md",
+          "chapter": "3.7.3 Configure PCDs"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/2_an_edk_ii_package/21_introduction.md",
+          "chapter": "2.1.3 Package Declaration File"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/3_module_development/32_creating_a_module.md 3.2.6 Adding PCD References (Table 4 INF PCD Section Name, Table 5 PCD access functions); edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md 3.7.3 Configure PCDs; edk2-ModuleWriteGuide/2_an_edk_ii_package/21_introduction.md 2.1.3 Package Declaration File"
+    },
+    {
+      "id": "qtest-Q4",
+      "kind": "question-txt",
+      "query": "[Depex] 是干什么用的？为什么我 INF 里写了 TRUE，驱动还是没在我期望的时机跑起来？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/8_dxe_drivers_non-uefi_drivers/86_dependency_expressions.md",
+          "chapter": "8.6 Dependency Expressions"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-InfSpecification/2_inf_overview/215_[depex]_section.md",
+          "chapter": "2.15 [Depex] Section"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/32_creating_a_module.md",
+          "chapter": "3.2.8 Adding a Dependency to a Module"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/8_dxe_drivers_non-uefi_drivers/86_dependency_expressions.md 8.6 Dependency Expressions; edk2-InfSpecification/2_inf_overview/215_[depex]_section.md 2.15 [Depex] Section; edk2-ModuleWriteGuide/3_module_development/32_creating_a_module.md 3.2.8 Adding a Dependency to a Module"
+    },
+    {
+      "id": "qtest-Q5",
+      "kind": "question-txt",
+      "query": "怎么只编译我自己写的那一个模块？build 命令参数怎么写？产物和 AutoGen 文件在哪？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md",
+          "chapter": "3.7.1 Add the module INF in package DSC + 3.7.4 Customize Build Options + 3.7.5 Build module image"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md 3.7.1 Add the module INF in package DSC + 3.7.4 Customize Build Options + 3.7.5 Build module image"
+    },
+    {
+      "id": "qtest-Q6",
+      "kind": "question-txt",
+      "query": "新手最常撞上的那几个编译/链接报错，分别是什么原因、怎么修？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md",
+          "chapter": "3.7.7 Common build module breaks"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md 3.7.7 Common build module breaks"
+    },
+    {
+      "id": "qtest-Q7",
+      "kind": "question-txt",
+      "query": "我想在代码里打印调试信息，DEBUG/ASSERT 要怎么配置才能真的输出？除了打印还有什么调试手段？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/38_debugging_a_module.md",
+          "chapter": "3.8.1 Required steps for debugging a module + 3.8.2 Basic debugging methods"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md",
+          "chapter": "3.7.4 Customize Build Options"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/92_driver_binding_protocol_template.md",
+          "chapter": "9.2 (console I/O restriction)"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/3_module_development/38_debugging_a_module.md 3.8.1 Required steps for debugging a module + 3.8.2 Basic debugging methods; edk2-ModuleWriteGuide/3_module_development/37_building_the_module.md 3.7.4 Customize Build Options; edk2-UefiDriverWritersGuide/9_driver_binding_protocol/92_driver_binding_protocol_template.md 9.2 (console I/O restriction)"
+    },
+    {
+      "id": "qtest-Q8",
+      "kind": "question-txt",
+      "query": "写一个遵循 UEFI Driver Model 的驱动，Supported/Start/Stop 分别该做什么？Driver Binding 协议怎么装上去？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/91_driver_binding_protocol_implementations.md",
+          "chapter": "9.1 Driver Binding Protocol Implementations (Examples 122-123)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/92_driver_binding_protocol_template.md",
+          "chapter": "9.2 Driver Binding Protocol Template"
+        }
+      ],
+      "r_raw": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/91_driver_binding_protocol_implementations.md 9.1 Driver Binding Protocol Implementations (Examples 122-123); edk2-UefiDriverWritersGuide/9_driver_binding_protocol/92_driver_binding_protocol_template.md 9.2 Driver Binding Protocol Template"
+    },
+    {
+      "id": "qtest-Q9",
+      "kind": "question-txt",
+      "query": "拿一个 Protocol 到底该用 LocateProtocol、LocateHandleBuffer 还是 OpenProtocol？OpenProtocol 的 Attributes 怎么选？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/513_handle_database_and_protocol_services.md",
+          "chapter": "5.1.3.1 InstallMultipleProtocolInterfaces() + 5.1.3.2 LocateHandleBuffer() + 5.1.3.3 LocateProtocol() + 5.1.3.4 OpenProtocol() and CloseProtocol()"
+        }
+      ],
+      "r_raw": "edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/513_handle_database_and_protocol_services.md 5.1.3.1 InstallMultipleProtocolInterfaces() + 5.1.3.2 LocateHandleBuffer() + 5.1.3.3 LocateProtocol() + 5.1.3.4 OpenProtocol() and CloseProtocol()"
+    },
+    {
+      "id": "qtest-Q10",
+      "kind": "question-txt",
+      "query": "我想给 edk2 上游提一个补丁，完整的贡献流程是什么样的？",
+      "expected": [
+        {
+          "source": "tianocore-wiki",
+          "file": "development/contribution-guides/edk_ii_development_process.md",
+          "chapter": "'EDK II Developer Onboarding' + 'Contributor Process'"
+        }
+      ],
+      "r_raw": "tianocore-wiki.github.io/development/contribution-guides/edk_ii_development_process.md 'EDK II Developer Onboarding' + 'Contributor Process'"
+    },
+    {
+      "id": "qtest-Q11",
+      "kind": "question-txt",
+      "query": "commit message 到底该怎么写？签名行有什么讲究？",
+      "expected": [
+        {
+          "source": "tianocore-wiki",
+          "file": "development/contribution-guides/commit_message_format.md",
+          "chapter": "(whole page)"
+        },
+        {
+          "source": "tianocore-wiki",
+          "file": "development/contribution-guides/commit_signature_format.md",
+          "chapter": "'Name format' + 'Where to add signatures' + 'Signed-off-by' + 'Reviewed-by' + 'Format Strictness'"
+        }
+      ],
+      "r_raw": "tianocore-wiki.github.io/development/contribution-guides/commit_message_format.md (whole page); tianocore-wiki.github.io/development/contribution-guides/commit_signature_format.md 'Name format' + 'Where to add signatures' + 'Signed-off-by' + 'Reviewed-by' + 'Format Strictness'"
+    },
+    {
+      "id": "qtest-Q12",
+      "kind": "question-txt",
+      "query": "一个改动该拆成几个 commit？拆分标准是什么？",
+      "expected": [
+        {
+          "source": "tianocore-wiki",
+          "file": "development/contribution-guides/commit_partitioning.md",
+          "chapter": "'Examples of what to commit separately' + 'Examples of what to not further sub-divide' + 'Dealing with bisect issues'"
+        }
+      ],
+      "r_raw": "tianocore-wiki.github.io/development/contribution-guides/commit_partitioning.md 'Examples of what to commit separately' + 'Examples of what to not further sub-divide' + 'Dealing with bisect issues'"
+    },
+    {
+      "id": "qtest-Q13",
+      "kind": "question-txt",
+      "query": "Uncrustify 是什么？怎么在本地把代码格式化成 CI 认可的样子？",
+      "expected": [
+        {
+          "source": "tianocore-wiki",
+          "file": "development/coding-standards/edk_ii_code_formatting.md",
+          "chapter": "'Developer Workflow' + 'Installing Uncrustify' + 'How to Run Uncrustify' + 'How to Find Uncrustify Formatting Errors in Continuous Integration (CI)' + 'Uncrustify in CI'"
+        }
+      ],
+      "r_raw": "tianocore-wiki.github.io/development/coding-standards/edk_ii_code_formatting.md 'Developer Workflow' + 'Installing Uncrustify' + 'How to Run Uncrustify' + 'How to Find Uncrustify Formatting Errors in Continuous Integration (CI)' + 'Uncrustify in CI'"
+    },
+    {
+      "id": "qtest-Q14",
+      "kind": "question-txt",
+      "query": "PR 提上去后 CI 会跑哪些检查？谁来 review？最后怎么合进 master？",
+      "expected": [
+        {
+          "source": "tianocore-wiki",
+          "file": "development/design-architecture/edk_ii_continuous_integration.md",
+          "chapter": "'Phase 1 (edk2 repository only)'"
+        },
+        {
+          "source": "tianocore-wiki",
+          "file": "development/contribution-guides/edk_ii_development_process.md",
+          "chapter": "'Maintainer Process' + 'PR Conversation Resolution Process'"
+        },
+        {
+          "source": "tianocore-wiki",
+          "file": "development/contribution-guides/code_reviews.md"
+        }
+      ],
+      "r_raw": "tianocore-wiki.github.io/development/design-architecture/edk_ii_continuous_integration.md 'Phase 1 (edk2 repository only)'; tianocore-wiki.github.io/development/contribution-guides/edk_ii_development_process.md 'Maintainer Process' + 'PR Conversation Resolution Process'; tianocore-wiki.github.io/development/contribution-guides/code_reviews.md"
+    },
+    {
+      "id": "qtest-Q15",
+      "kind": "question-txt",
+      "query": "EDK II 的命名规范有哪些硬性要求？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/3_quick_reference.md",
+          "chapter": "3.1 Naming"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/4_naming_conventions/44_identifiers.md",
+          "chapter": "4.4.3 Hungarian Prefixes + 4.4.4 Function and Data Names + 4.4.5 Type and Macro Names"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/4_naming_conventions/45_global_&_module_variables.md",
+          "chapter": "4.5.1 Recommendations for Global and Module Variables"
+        }
+      ],
+      "r_raw": "edk2-CCodingStandardsSpecification/3_quick_reference.md 3.1 Naming; edk2-CCodingStandardsSpecification/4_naming_conventions/44_identifiers.md 4.4.3 Hungarian Prefixes + 4.4.4 Function and Data Names + 4.4.5 Type and Macro Names; edk2-CCodingStandardsSpecification/4_naming_conventions/45_global_&_module_variables.md 4.5.1 Recommendations for Global and Module Variables"
+    },
+    {
+      "id": "qtest-Q16",
+      "kind": "question-txt",
+      "query": "排版和空白有哪些规定？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/3_quick_reference.md",
+          "chapter": "3.2 Formatting + 3.3 Files: General Rules + 3.3.1 Files: Horizontal Spacing + 3.3.2 Include Files + 3.2.4 Predicate Expressions"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/5_source_files/52_spacing.md",
+          "chapter": "5.2 Spacing"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/5_source_files/53_include_files.md",
+          "chapter": "5.3 Include Files"
+        }
+      ],
+      "r_raw": "edk2-CCodingStandardsSpecification/3_quick_reference.md 3.2 Formatting + 3.3 Files: General Rules + 3.3.1 Files: Horizontal Spacing + 3.3.2 Include Files + 3.2.4 Predicate Expressions; edk2-CCodingStandardsSpecification/5_source_files/52_spacing.md 5.2 Spacing; edk2-CCodingStandardsSpecification/5_source_files/53_include_files.md 5.3 Include Files"
+    },
+    {
+      "id": "qtest-Q17",
+      "kind": "question-txt",
+      "query": "为什么不能用 int、char 这些标准 C 类型？该用什么？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/5_source_files/56_declarations_and_types.md",
+          "chapter": "5.6.1 Common Data Types (Table 6 EFI Data Types, Table 7 Modifiers for Common EFI Data Types) + 5.6.2 Constants + 5.6.3 Structure Declaration"
+        }
+      ],
+      "r_raw": "edk2-CCodingStandardsSpecification/5_source_files/56_declarations_and_types.md 5.6.1 Common Data Types (Table 6 EFI Data Types, Table 7 Modifiers for Common EFI Data Types) + 5.6.2 Constants + 5.6.3 Structure Declaration"
+    },
+    {
+      "id": "qtest-Q18",
+      "kind": "question-txt",
+      "query": "函数该怎么排版？文件头和函数头注释有什么格式要求？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/5_source_files/57_c_programming.md",
+          "chapter": "5.7.1 Function Definition Layout + 5.7.1.15 Function Headings (Table 9 Parameter Modifiers)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/5_source_files/54_code_file_structure.md",
+          "chapter": "5.4 Code File Structure"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/6_documenting_software/64_what_you_must_comment.md",
+          "chapter": "6.4"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/3_quick_reference.md",
+          "chapter": "3.4.2 Doxygen"
+        }
+      ],
+      "r_raw": "edk2-CCodingStandardsSpecification/5_source_files/57_c_programming.md 5.7.1 Function Definition Layout + 5.7.1.15 Function Headings (Table 9 Parameter Modifiers); edk2-CCodingStandardsSpecification/5_source_files/54_code_file_structure.md 5.4 Code File Structure; edk2-CCodingStandardsSpecification/6_documenting_software/64_what_you_must_comment.md 6.4; edk2-CCodingStandardsSpecification/3_quick_reference.md 3.4.2 Doxygen"
+    },
+    {
+      "id": "qtest-Q19",
+      "kind": "question-txt",
+      "query": "流程控制语句、goto 和 ASSERT 有什么规定？注释有哪些禁忌？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/5_source_files/57_c_programming.md",
+          "chapter": "5.7.3 Flow Control Statements + 5.7.3.8 Goto Statements should not be used"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/5_source_files/58_error_handling_and_assert.md",
+          "chapter": "5.8 Error Handling and ASSERT"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/6_documenting_software/63_what_not_to_comment.md",
+          "chapter": "6.3"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/6_documenting_software/64_what_you_must_comment.md",
+          "chapter": "6.4.6 Comment spurious variable assignments"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-CCodingStandardsSpecification/3_quick_reference.md",
+          "chapter": "3.4.1 Documentation: Commenting"
+        }
+      ],
+      "r_raw": "edk2-CCodingStandardsSpecification/5_source_files/57_c_programming.md 5.7.3 Flow Control Statements + 5.7.3.8 Goto Statements should not be used; edk2-CCodingStandardsSpecification/5_source_files/58_error_handling_and_assert.md 5.8 Error Handling and ASSERT; edk2-CCodingStandardsSpecification/6_documenting_software/63_what_not_to_comment.md 6.3 + 64_what_you_must_comment.md 6.4.6 Comment spurious variable assignments; edk2-CCodingStandardsSpecification/3_quick_reference.md 3.4.1 Documentation: Commenting"
+    },
+    {
+      "id": "qtest-Q20",
+      "kind": "question-txt",
+      "query": "Driver Binding 的 Supported()、Start()、Stop() 三者职责边界怎么划分？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/92_driver_binding_protocol_template.md",
+          "chapter": "9.2 Driver Binding Protocol Template"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/6_uefi_driver_categories/61_device_drivers/611_required_device_driver_features.md",
+          "chapter": "6.1.1 Required Device Driver Features"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/6_uefi_driver_categories/62_bus_drivers/621_required_bus_driver_features.md",
+          "chapter": "6.2.1 Required Bus Driver Features"
+        }
+      ],
+      "r_raw": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/92_driver_binding_protocol_template.md 9.2 Driver Binding Protocol Template; edk2-UefiDriverWritersGuide/6_uefi_driver_categories/61_device_drivers/611_required_device_driver_features.md 6.1.1 Required Device Driver Features; edk2-UefiDriverWritersGuide/6_uefi_driver_categories/62_bus_drivers/621_required_bus_driver_features.md 6.2.1 Required Bus Driver Features"
+    },
+    {
+      "id": "qtest-Q21",
+      "kind": "question-txt",
+      "query": "Supported() 具体该怎么写？各个返回码是什么含义？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/18_pci_driver_design_guidelines/183_pci_drivers/1831_supported.md",
+          "chapter": "18.3.1 Supported() (Example 169)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/513_handle_database_and_protocol_services.md",
+          "chapter": "5.1.3.4 OpenProtocol() and CloseProtocol() (Example 38 return codes)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/23_graphics_driver_design_guidelines/232_graphics_output_protocol_implementation/2323_driver_binding_protocol_implementation.md",
+          "chapter": "23.2.3"
+        }
+      ],
+      "r_raw": "edk2-UefiDriverWritersGuide/18_pci_driver_design_guidelines/183_pci_drivers/1831_supported.md 18.3.1 Supported() (Example 169); edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/513_handle_database_and_protocol_services.md 5.1.3.4 OpenProtocol() and CloseProtocol() (Example 38 return codes); edk2-UefiDriverWritersGuide/23_graphics_driver_design_guidelines/232_graphics_output_protocol_implementation/2323_driver_binding_protocol_implementation.md 23.2.3"
+    },
+    {
+      "id": "qtest-Q22",
+      "kind": "question-txt",
+      "query": "Start() 里应该按什么顺序做事？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/18_pci_driver_design_guidelines/183_pci_drivers/1832_start_and_stop.md",
+          "chapter": "18.3.2 Start() and Stop() (Example 171)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/6_uefi_driver_categories/61_device_drivers/616_device_driver_protocol_management.md",
+          "chapter": "6.1.6"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/6_uefi_driver_categories/62_bus_drivers/625_bus_driver_protocol_and_child_management.md",
+          "chapter": "6.2.5"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/6_uefi_driver_categories/62_bus_drivers/622_optional_bus_driver_features.md",
+          "chapter": "6.2.2"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/8_private_context_data_structures/83_allocating_private_context_data_structures.md",
+          "chapter": "8.3"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/23_graphics_driver_design_guidelines/232_graphics_output_protocol_implementation/2323_driver_binding_protocol_implementation.md",
+          "chapter": "23.2.3"
+        }
+      ],
+      "r_raw": "edk2-UefiDriverWritersGuide/18_pci_driver_design_guidelines/183_pci_drivers/1832_start_and_stop.md 18.3.2 Start() and Stop() (Example 171); edk2-UefiDriverWritersGuide/6_uefi_driver_categories/61_device_drivers/616_device_driver_protocol_management.md 6.1.6; edk2-UefiDriverWritersGuide/6_uefi_driver_categories/62_bus_drivers/625_bus_driver_protocol_and_child_management.md 6.2.5 + 622_optional_bus_driver_features.md 6.2.2; edk2-UefiDriverWritersGuide/8_private_context_data_structures/83_allocating_private_context_data_structures.md 8.3; edk2-UefiDriverWritersGuide/23_graphics_driver_design_guidelines/232_graphics_output_protocol_implementation/2323_driver_binding_protocol_implementation.md 23.2.3"
+    },
+    {
+      "id": "qtest-Q23",
+      "kind": "question-txt",
+      "query": "Stop() 里要做什么？NumberOfChildren 和 ChildHandleBuffer 怎么用？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/8_private_context_data_structures/84_freeing_private_context_data_structures.md",
+          "chapter": "8.4 (Example 118)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/8_private_context_data_structures/81_containing_record_macro.md",
+          "chapter": "8.1 Containing Record Macro (Examples 111-112)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/18_pci_driver_design_guidelines/183_pci_drivers/1832_start_and_stop.md",
+          "chapter": "18.3.2 (Example 172)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/23_graphics_driver_design_guidelines/232_graphics_output_protocol_implementation/2323_driver_binding_protocol_implementation.md",
+          "chapter": "23.2.3"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/513_handle_database_and_protocol_services.md",
+          "chapter": "5.1.3.1 (DisconnectController re-entry caution)"
+        }
+      ],
+      "r_raw": "edk2-UefiDriverWritersGuide/8_private_context_data_structures/84_freeing_private_context_data_structures.md 8.4 (Example 118) + 81_containing_record_macro.md 8.1 Containing Record Macro (Examples 111-112); edk2-UefiDriverWritersGuide/18_pci_driver_design_guidelines/183_pci_drivers/1832_start_and_stop.md 18.3.2 (Example 172); edk2-UefiDriverWritersGuide/23_graphics_driver_design_guidelines/232_graphics_output_protocol_implementation/2323_driver_binding_protocol_implementation.md 23.2.3; edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/513_handle_database_and_protocol_services.md 5.1.3.1 (DisconnectController re-entry caution)"
+    },
+    {
+      "id": "qtest-Q24",
+      "kind": "question-txt",
+      "query": "什么时候一个驱动需要多个 Driver Binding 实例？写完怎么验证三个服务是对的？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/6_uefi_driver_categories/61_device_drivers/616_device_driver_protocol_management.md",
+          "chapter": "6.1.6 (sum-of-products rule)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/91_driver_binding_protocol_implementations.md",
+          "chapter": "9.1"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/93_testing_driver_binding_protocol.md",
+          "chapter": "9.3 Testing Driver Binding Protocol"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/3_foundation/314_uefi_driver_model_connection_process/3141_connectcontroller.md",
+          "chapter": "3.14.1 ConnectController()"
+        }
+      ],
+      "r_raw": "edk2-UefiDriverWritersGuide/6_uefi_driver_categories/61_device_drivers/616_device_driver_protocol_management.md 6.1.6 (sum-of-products rule); edk2-UefiDriverWritersGuide/9_driver_binding_protocol/91_driver_binding_protocol_implementations.md 9.1; edk2-UefiDriverWritersGuide/9_driver_binding_protocol/93_testing_driver_binding_protocol.md 9.3 Testing Driver Binding Protocol; edk2-UefiDriverWritersGuide/3_foundation/314_uefi_driver_model_connection_process/3141_connectcontroller.md 3.14.1 ConnectController()"
+    },
+    {
+      "id": "qtest-Q25",
+      "kind": "question-txt",
+      "query": "UEFI/PI 固件从上电到把控制权交给 OS，启动流程分哪几个阶段？每个阶段各干什么？",
+      "expected": [
+        {
+          "source": "tianocore-wiki",
+          "file": "development/design-architecture/pi_boot_flow.md",
+          "chapter": "（SEC/PEI/DXE/BDS/TSL/RT/AL 各段）"
+        },
+        {
+          "source": "spec",
+          "file": "PI_Spec_1_8_A_final_2024.03.05.pdf",
+          "chapter": "Volume I 章节 I-6.2 Pre-EFI Initialization (PEI) Phase、Volume II 章节 II-1 Introduction / II-2 Overview（DXE）"
+        }
+      ],
+      "r_raw": "tianocore-wiki.github.io/development/design-architecture/pi_boot_flow.md（SEC/PEI/DXE/BDS/TSL/RT/AL 各段）; PI_Spec_1_8_A_final_2024.03.05.pdf Volume I 章节 I-6.2 Pre-EFI Initialization (PEI) Phase、Volume II 章节 II-1 Introduction / II-2 Overview（DXE）"
+    },
+    {
+      "id": "qtest-Q26",
+      "kind": "question-txt",
+      "query": "PEI 阶段还没有 DXE 的 Boot Services，PEIM 之间怎么互相调用？PPI 和 HOB 分别是什么？",
+      "expected": [
+        {
+          "source": "spec",
+          "file": "PI_Spec_1_8_A_final_2024.03.05.pdf",
+          "chapter": "Volume I: I-6.7 PEIM-to-PEIM Interfaces (PPIs)、I-7.2 PEI Services Table、I-8.2 PPI Services、I-8.4 HOB Services"
+        },
+        {
+          "source": "tianocore-wiki",
+          "file": "development/design-architecture/pi_boot_flow.md",
+          "chapter": "PEI Phase 段"
+        }
+      ],
+      "r_raw": "PI_Spec_1_8_A_final_2024.03.05.pdf Volume I: I-6.7 PEIM-to-PEIM Interfaces (PPIs)、I-7.2 PEI Services Table、I-8.2 PPI Services、I-8.4 HOB Services; tianocore-wiki.github.io/development/design-architecture/pi_boot_flow.md PEI Phase 段"
+    },
+    {
+      "id": "qtest-Q27",
+      "kind": "question-txt",
+      "query": "Boot Services 和 Runtime Services 有什么区别？ExitBootServices() 被调用后系统状态发生什么变化？",
+      "expected": [
+        {
+          "source": "spec",
+          "file": "UEFI_Spec_Final_2.11.pdf",
+          "chapter": "7.4.6 ExitBootServices()、8.1 Runtime Services Rules and Restrictions、2.2.2 Runtime Services"
+        },
+        {
+          "source": "tianocore-wiki",
+          "file": "development/design-architecture/pi_boot_flow.md",
+          "chapter": "RT Phase 段"
+        }
+      ],
+      "r_raw": "UEFI_Spec_Final_2.11.pdf 7.4.6 ExitBootServices()、8.1 Runtime Services Rules and Restrictions、2.2.2 Runtime Services; tianocore-wiki.github.io/development/design-architecture/pi_boot_flow.md RT Phase 段"
+    },
+    {
+      "id": "qtest-Q28",
+      "kind": "question-txt",
+      "query": "TPL(Task Priority Level) 是什么？有哪几级？RaiseTPL/RestoreTPL 怎么用才不踩坑？",
+      "expected": [
+        {
+          "source": "spec",
+          "file": "UEFI_Spec_Final_2.11.pdf",
+          "chapter": "7.1.8 RaiseTPL()、7.1.9 RestoreTPL()、7.1 节 TPL 限制表"
+        }
+      ],
+      "r_raw": "UEFI_Spec_Final_2.11.pdf 7.1.8 RaiseTPL()、7.1.9 RestoreTPL()、7.1 节 TPL 限制表"
+    },
+    {
+      "id": "qtest-Q29",
+      "kind": "question-txt",
+      "query": "分配内存用 AllocatePages 还是 AllocatePool？EfiLoaderData / EfiBootServicesData / EfiRuntimeServicesData 这些内存类型怎么选？",
+      "expected": [
+        {
+          "source": "spec",
+          "file": "UEFI_Spec_Final_2.11.pdf",
+          "chapter": "7.2 Memory Allocation Services（7.2.1 AllocatePages()、7.2.3 GetMemoryMap()、7.2.4 AllocatePool() 及内存类型定义表）"
+        }
+      ],
+      "r_raw": "UEFI_Spec_Final_2.11.pdf 7.2 Memory Allocation Services（7.2.1 AllocatePages()、7.2.3 GetMemoryMap()、7.2.4 AllocatePool() 及内存类型定义表）"
+    },
+    {
+      "id": "qtest-Q30",
+      "kind": "question-txt",
+      "query": "UEFI 的事件(Event)机制怎么理解？EVT_TIMER、EVT_NOTIFY_SIGNAL、EVT_SIGNAL_EXIT_BOOT_SERVICES 各是什么意思？",
+      "expected": [
+        {
+          "source": "spec",
+          "file": "UEFI_Spec_Final_2.11.pdf",
+          "chapter": "7.1.1 CreateEvent()、7.1.2 CreateEventEx()、7.1.7 SetTimer()"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/8_dxe_drivers_non-uefi_drivers/87_handler_for_evtsignal_exit_boot_services.md",
+          "chapter": "8.7"
+        }
+      ],
+      "r_raw": "UEFI_Spec_Final_2.11.pdf 7.1.1 CreateEvent()、7.1.2 CreateEventEx()、7.1.7 SetTimer(); edk2-ModuleWriteGuide/8_dxe_drivers_non-uefi_drivers/87_handler_for_evtsignal_exit_boot_services.md 8.7"
+    },
+    {
+      "id": "qtest-Q31",
+      "kind": "question-txt",
+      "query": "UEFI 变量(Variable)服务怎么用？GetVariable/SetVariable 的 Attribute 各是什么意思？",
+      "expected": [
+        {
+          "source": "spec",
+          "file": "UEFI_Spec_Final_2.11.pdf",
+          "chapter": "8.2 Variable Services（8.2.1 GetVariable()、8.2.3 SetVariable()、8.2.4 QueryVariableInfo()）"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/5_uefi_drivers/54_communication_between_uefi_drivers.md",
+          "chapter": "5.4.2 Variable"
+        }
+      ],
+      "r_raw": "UEFI_Spec_Final_2.11.pdf 8.2 Variable Services（8.2.1 GetVariable()、8.2.3 SetVariable()、8.2.4 QueryVariableInfo()）; edk2-ModuleWriteGuide/5_uefi_drivers/54_communication_between_uefi_drivers.md 5.4.2 Variable"
+    },
+    {
+      "id": "qtest-Q32",
+      "kind": "question-txt",
+      "query": "SMM 和 MM 是什么？传统 SMM 驱动(DXE_SMM_DRIVER)和 Standalone MM 驱动有什么区别？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-GettingStartedGuideforStandaloneMMonX86Systems/1_mm_introduction.md",
+          "chapter": "1.1-1.4"
+        },
+        {
+          "source": "spec",
+          "file": "PI_Spec_1_8_A_final_2024.03.05.pdf",
+          "chapter": "Volume IV Management Mode Core Interface（IV-1 Overview、IV-3 MMST）"
+        }
+      ],
+      "r_raw": "edk2-GettingStartedGuideforStandaloneMMonX86Systems/1_mm_introduction.md 1.1-1.4; PI_Spec_1_8_A_final_2024.03.05.pdf Volume IV Management Mode Core Interface（IV-1 Overview、IV-3 MMST）"
+    },
+    {
+      "id": "qtest-Q33",
+      "kind": "question-txt",
+      "query": "想给固件做一个图形化设置界面(BIOS Setup)，HII 是什么？VFR 文件扮演什么角色？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/3_module_development/36_module_using_hii.md",
+          "chapter": "3.6"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-VfrSpecification/2_vfr_description_in_bnf"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "UEFI_Driver_HII_Win_Lab_Guide/uefi_driver_wizard__adding_hii"
+        },
+        {
+          "source": "spec",
+          "file": "UEFI_Spec_Final_2.11.pdf",
+          "chapter": "Chapter 33 Human Interface Infrastructure Overview、Chapter 35 HII Configuration Processing and Browser Protocol"
+        }
+      ],
+      "r_raw": "edk2-ModuleWriteGuide/3_module_development/36_module_using_hii.md 3.6; edk2-VfrSpecification/2_vfr_description_in_bnf; UEFI_Driver_HII_Win_Lab_Guide/uefi_driver_wizard__adding_hii; UEFI_Spec_Final_2.11.pdf Chapter 33 Human Interface Infrastructure Overview、Chapter 35 HII Configuration Processing and Browser Protocol"
+    },
+    {
+      "id": "qtest-Q34",
+      "kind": "question-txt",
+      "query": "UEFI Secure Boot 的原理是什么？和 Trusted Boot(Measured Boot) 有什么区别？",
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "Understanding_UEFI_Secure_Boot_Chain/overview.md",
+          "chapter": "（Integrity Models）"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "Understanding_UEFI_Secure_Boot_Chain/introduction-to-the-secure-boot-chain.md"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "Understanding_UEFI_Secure_Boot_Chain/secure_boot_chain_in_uefi/uefi_secure_boot.md",
+          "chapter": "（PK/KEK/db/dbx 验证关系表）"
+        }
+      ],
+      "r_raw": "Understanding_UEFI_Secure_Boot_Chain/overview.md（Integrity Models）、introduction-to-the-secure-boot-chain.md、secure_boot_chain_in_uefi/uefi_secure_boot.md（PK/KEK/db/dbx 验证关系表）"
+    }
+  ],
+  "disambiguation": [
+    {
+      "id": "disambig-driver-binding-version",
+      "kind": "disambiguation",
+      "compiled_wiki_id": "driver-binding-version",
+      "queries": [
+        "uefi driver binding version 可以用来做什么",
+        "driver binding version",
+        "Driver Binding Protocol Version 有什么用"
+      ],
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/9_driver_binding_protocol/91_driver_binding_protocol_implementations.md",
+          "chapter": "9.1",
+          "note": "Version 字段定义"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/3_foundation/314_uefi_driver_model_connection_process/3141_connectcontroller.md",
+          "chapter": "3.14.1",
+          "note": "ConnectController 连接优先级"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/3_foundation/314_uefi_driver_model_connection_process/3142_loading_uefi_option_rom_drivers.md",
+          "chapter": "3.14.2",
+          "note": "Option ROM Version 0x10/0x11/0x12 示例"
+        }
+      ],
+      "confounders": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/16_driver_supported_efi_version_protocol/README.md",
+          "canonical": "EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/16_driver_supported_efi_version_protocol/161_driver_supported_efi_version_protocol_implemen.md",
+          "canonical": "EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/7_driver_entry_point/73_adding_the_driver_supported_efi_version_protoco.md",
+          "canonical": "EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL"
+        }
+      ],
+      "note": "question.txt 里 Q8/Q20-Q24 问的是 Supported/Start/Stop，没有 Version 字段这道近义误召回题。命中 confounder 应记为假阳性。"
+    },
+    {
+      "id": "disambig-ppi",
+      "kind": "disambiguation",
+      "compiled_wiki_id": "ppi",
+      "queries": [
+        "PPI 是什么",
+        "PEIM-to-PEIM Interface 是做什么的"
+      ],
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/7_pre-efi_initialization_modules/75_communicate_between_peim_modules.md",
+          "chapter": "7.5"
+        }
+      ],
+      "confounders": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/7_pre-efi_initialization_modules/76_communicate_with_dxe_modules.md",
+          "canonical": "HOB (Hand-Off Block)"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/8_dxe_drivers_non-uefi_drivers/85_communication_with_peims.md",
+          "canonical": "HOB (Hand-Off Block)"
+        }
+      ],
+      "related_question_txt": "qtest-Q26",
+      "note": "question.txt Q26 的 R 只标了 PI 规范和 wiki，未标 Module Write Guide 7.5/7.6。"
+    },
+    {
+      "id": "disambig-hob",
+      "kind": "disambiguation",
+      "compiled_wiki_id": "hob",
+      "queries": [
+        "HOB 是什么",
+        "Hand-Off Block 是做什么的"
+      ],
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/7_pre-efi_initialization_modules/76_communicate_with_dxe_modules.md",
+          "chapter": "7.6"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/8_dxe_drivers_non-uefi_drivers/85_communication_with_peims.md",
+          "chapter": "8.5"
+        }
+      ],
+      "confounders": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-ModuleWriteGuide/7_pre-efi_initialization_modules/75_communicate_between_peim_modules.md",
+          "canonical": "PPI (PEIM-to-PEIM Interface)"
+        }
+      ],
+      "related_question_txt": "qtest-Q26"
+    },
+    {
+      "id": "disambig-boot-services",
+      "kind": "disambiguation",
+      "compiled_wiki_id": "boot-services",
+      "queries": [
+        "Boot Services 是什么",
+        "ExitBootServices 之后还能用哪些服务"
+      ],
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/5_uefi_services/README.md",
+          "chapter": "5"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/7_driver_entry_point/77_adding_the_exit_boot_services_feature.md",
+          "chapter": "7.7"
+        }
+      ],
+      "confounders": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/7_driver_entry_point/711_runtime_drivers.md",
+          "canonical": "UEFI Runtime Services"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/8_dxe_drivers_non-uefi_drivers/88_dxe_runtime_driver.md",
+          "canonical": "UEFI Runtime Services"
+        }
+      ],
+      "related_question_txt": "qtest-Q27",
+      "note": "question.txt Q27 的 R 标的是 UEFI 规范和 wiki，未标 Driver Writers Guide 第 5/7.7 章。"
+    },
+    {
+      "id": "disambig-runtime-services",
+      "kind": "disambiguation",
+      "compiled_wiki_id": "runtime-services",
+      "queries": [
+        "Runtime Services 是什么",
+        "UEFI Runtime Services 在 ExitBootServices 之后还能做什么"
+      ],
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/7_driver_entry_point/711_runtime_drivers.md",
+          "chapter": "7.11"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/8_dxe_drivers_non-uefi_drivers/88_dxe_runtime_driver.md",
+          "chapter": "8.8"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/5_uefi_services/README.md",
+          "chapter": "5"
+        }
+      ],
+      "confounders": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/7_driver_entry_point/77_adding_the_exit_boot_services_feature.md",
+          "canonical": "UEFI Boot Services"
+        }
+      ],
+      "related_question_txt": "qtest-Q27"
+    },
+    {
+      "id": "disambig-event-tpl",
+      "kind": "disambiguation",
+      "compiled_wiki_id": "event-tpl",
+      "queries": [
+        "Event 和 TPL 是什么关系",
+        "TPL_NOTIFY 和 CreateEvent 有什么关系"
+      ],
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/3_foundation/38_events_and_task_priority_levels/README.8.md",
+          "chapter": "3.8"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/3_foundation/38_events_and_task_priority_levels/381_defining_priority.md",
+          "chapter": "3.8.1"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/515_event_services.md",
+          "chapter": "5.1.5"
+        },
+        {
+          "source": "tianocore-docs",
+          "file": "edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/514_task_priority_leveltpl_services.md",
+          "chapter": "5.1.4"
+        }
+      ],
+      "related_question_txt": [
+        "qtest-Q28",
+        "qtest-Q30"
+      ],
+      "note": "question.txt 把 Event 和 TPL 拆成 Q28/Q30，R 只标了 UEFI 规范章节，未标 Driver Writers Guide 3.8 / 5.1.4 / 5.1.5。"
+    },
+    {
+      "id": "disambig-secure-boot-vs-boot-guard",
+      "kind": "disambiguation",
+      "compiled_wiki_id": "secure-boot",
+      "queries": [
+        "UEFI Secure Boot 和 Intel Boot Guard 有什么区别",
+        "Secure Boot 和 Boot Guard 是一回事吗"
+      ],
+      "expected": [
+        {
+          "source": "tianocore-docs",
+          "file": "Understanding_UEFI_Secure_Boot_Chain/secure_boot_chain_in_uefi/uefi_secure_boot.md"
+        }
+      ],
+      "confounders": [
+        {
+          "source": "tianocore-docs",
+          "file": "Understanding_UEFI_Secure_Boot_Chain/secure_boot_chain_in_uefi/intel_boot_guard.md",
+          "canonical": "Intel Boot Guard"
+        }
+      ],
+      "note": "question.txt Q34 对比的是 Trusted Boot / Measured Boot，对比文字写在 introduction-to-the-secure-boot-chain.md（overview.md 里也内嵌了同一段），没有单独的 Measured Boot 页，不能把该页当 confounder 降权。Boot Guard 才有独立原文路径。"
+    }
+  ],
+  "suggested_additions_for_question_txt": {
+    "qtest-Q26": [
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-ModuleWriteGuide/7_pre-efi_initialization_modules/75_communicate_between_peim_modules.md",
+        "chapter": "7.5",
+        "note": "PPI"
+      },
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-ModuleWriteGuide/7_pre-efi_initialization_modules/76_communicate_with_dxe_modules.md",
+        "chapter": "7.6",
+        "note": "HOB"
+      },
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-ModuleWriteGuide/8_dxe_drivers_non-uefi_drivers/85_communication_with_peims.md",
+        "chapter": "8.5",
+        "note": "HOB"
+      }
+    ],
+    "qtest-Q27": [
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/5_uefi_services/README.md",
+        "chapter": "5"
+      },
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/7_driver_entry_point/77_adding_the_exit_boot_services_feature.md",
+        "chapter": "7.7"
+      },
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/7_driver_entry_point/711_runtime_drivers.md",
+        "chapter": "7.11"
+      },
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/8_dxe_drivers_non-uefi_drivers/88_dxe_runtime_driver.md",
+        "chapter": "8.8"
+      }
+    ],
+    "qtest-Q28": [
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/3_foundation/38_events_and_task_priority_levels/README.8.md",
+        "chapter": "3.8"
+      },
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/3_foundation/38_events_and_task_priority_levels/381_defining_priority.md",
+        "chapter": "3.8.1"
+      },
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/514_task_priority_leveltpl_services.md",
+        "chapter": "5.1.4"
+      }
+    ],
+    "qtest-Q30": [
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/515_event_services.md",
+        "chapter": "5.1.5"
+      },
+      {
+        "source": "tianocore-docs",
+        "file": "edk2-UefiDriverWritersGuide/3_foundation/38_events_and_task_priority_levels/README.8.md",
+        "chapter": "3.8"
+      }
+    ]
+  }
+}
