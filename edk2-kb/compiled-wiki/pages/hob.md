@@ -38,6 +38,10 @@ source_paths:
     repo: edk2-ModuleWriteGuide
     file: edk2-ModuleWriteGuide/8_dxe_drivers_non-uefi_drivers/85_communication_with_peims.md
     url: https://tianocore-docs.github.io/edk2-ModuleWriteGuide/draft/8_dxe_drivers_non-uefi_drivers/85_communication_with_peims.html
+  - source: uefi-specs
+    repo: PI_1.10
+    file: PI_1.10/source/V1_Services_PEI.rst
+    url: https://github.com/UEFI/PI-Specification-Release/blob/main/source/V1_Services_PEI.rst
 ---
 
 HOB 是 PEI → DXE 的单向、DXE 只读移交结构。PEIM 之间按 GUID 找服务应走 PPI，而不是 HOB。证据只引用原文。

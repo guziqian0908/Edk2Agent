@@ -41,6 +41,10 @@ source_paths:
     repo: edk2-UefiDriverWritersGuide
     file: edk2-UefiDriverWritersGuide/5_uefi_services/51_services_that_uefi_drivers_commonly_use/514_task_priority_leveltpl_services.md
     url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/5_uefi_services/51_services_that_uefi_drivers_commonly_use/514_task_priority_leveltpl_services.html
+  - source: uefi-specs
+    repo: UEFI_2.11
+    file: UEFI_2.11/source/07_Services_Boot_Services.rst
+    url: https://github.com/UEFI/UEFI-Specification-Release/blob/main/source/07_Services_Boot_Services.rst
 ---
 
 Event 是通知对象，TPL 是通知函数运行的优先级（也用于加锁）。创建/等待事件走 Event Services，提升/恢复优先级走 RaiseTPL/RestoreTPL。证据只引用原文。

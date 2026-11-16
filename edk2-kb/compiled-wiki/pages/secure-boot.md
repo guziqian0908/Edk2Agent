@@ -32,6 +32,14 @@ source_paths:
     repo: Understanding_UEFI_Secure_Boot_Chain
     file: Understanding_UEFI_Secure_Boot_Chain/secure_boot_chain_in_uefi/uefi_secure_boot.md
     url: https://tianocore-docs.github.io/Understanding_UEFI_Secure_Boot_Chain/draft/secure_boot_chain_in_uefi/uefi_secure_boot.html
+  - source: tianocore-docs
+    repo: Understanding_UEFI_Secure_Boot_Chain
+    file: Understanding_UEFI_Secure_Boot_Chain/introduction-to-the-secure-boot-chain.md
+    url: https://tianocore-docs.github.io/Understanding_UEFI_Secure_Boot_Chain/draft/introduction-to-the-secure-boot-chain.html
+  - source: tianocore-docs
+    repo: Understanding_UEFI_Secure_Boot_Chain
+    file: Understanding_UEFI_Secure_Boot_Chain/overview.md
+    url: https://tianocore-docs.github.io/Understanding_UEFI_Secure_Boot_Chain/draft/overview.html
 ---
 
 UEFI Secure Boot 校验的是第三方启动镜像和安全数据库（已认证变量）更新，不要和 Intel Boot Guard 等平台固件真实性机制混成同一件事。证据只引用原文。

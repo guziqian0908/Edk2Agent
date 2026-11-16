@@ -64,7 +64,7 @@ source_paths:                     # required, non-empty; original docs only
 | `aliases` | Deterministic phrase match against the user query and its translation. Case-insensitive; collapse whitespace; keep punctuation-stripping conservative (do not strip digits or dots in `9.1` / `3.14.1`). Prefer the longest alias hit. |
 | `sense` | The disambiguated meaning. Topic routing and relational expansion run from this sense, not the raw surface form, after a high-confidence hit. |
 | `distinguishes_from.source_paths` | Downweight these original paths in the candidate pool (they are still originals, just the wrong sense). |
-| `source_paths` | Seed the existing exact-anchor merge, ahead of focus-topic hits and the docs path. `file` must equal the KB metadata `file` field: for `tianocore-docs` this is `{repo}/{path-inside-repo}` (see `init_kb.py`, `rel_path` relative to `tianocore-docs/repos/`). |
+| `source_paths` | Seed the existing exact-anchor merge, ahead of focus-topic hits and the docs path. `file` must equal the KB metadata `file` field: for `tianocore-docs` this is `{repo}/{path-inside-repo}` (see `init_kb.py`, `rel_path` relative to `tianocore-docs/repos/`); for `uefi-specs` this is `{version}/source/{rst}` (for example `UEFI_2.11/source/07_Services_Boot_Services.rst`, `PI_1.10/source/V1_Services_PEI.rst`). Do not use PDF names such as `UEFI_Spec_Final_2.11.pdf`. Wiki paths must not appear in `source_paths`. |
 
 ### Topic tags (first batch)
 

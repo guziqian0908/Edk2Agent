@@ -28,3 +28,9 @@ prefix is **not** part of the repository or KB `file` path.
 | secure-boot | distinguishes_from only | `Understanding_UEFI_Secure_Boot_Chain/secure_boot_chain_in_uefi/intel_boot_guard.md` | Intel Boot Guard is a platform/firmware authenticity mechanism, not UEFI Secure Boot itself. File exists (HTTP 200). |
 
 No unverified path was kept. UEFI Forum RST paths under `uefi-specs/` were not added in this batch because the exact `UEFI_2.11/source/*.rst` filenames were not opened and confirmed in this pass; they can be appended later without an index rebuild.
+
+## 2026-11-13：Q27–Q29 / Q35 的 R 对照知识库 `file`
+
+- UEFI/PI：在 `UEFI/UEFI-Specification-Release` 与 `UEFI/PI-Specification-Release` 的 main RST 中核对了节标题和函数名（RaiseTPL、RestoreTPL、TPL Restrictions、ExitBootServices、Runtime Services Rules and Restrictions、PEIM-to-PEIM Interfaces、PEI Services Table、PPI Services、HOB Services）。知识库 `file` 用 `{version}/source/{rst}`（`UEFI_2.11`、`PI_1.10`），不用 `question.txt` 里的 PDF 文件名。
+- Q35：`overview.md`、`introduction-to-the-secure-boot-chain.md`、`secure_boot_chain_in_uefi/uefi_secure_boot.md` 的 raw GitHub 与 published draft HTML 先前已确认可打开。
+- Wiki `pi_boot_flow.md` 不写入 `source_paths`。

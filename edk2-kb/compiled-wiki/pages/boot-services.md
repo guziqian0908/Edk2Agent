@@ -40,6 +40,10 @@ source_paths:
     repo: edk2-UefiDriverWritersGuide
     file: edk2-UefiDriverWritersGuide/7_driver_entry_point/77_adding_the_exit_boot_services_feature.md
     url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/7_driver_entry_point/77_adding_the_exit_boot_services_feature.html
+  - source: uefi-specs
+    repo: UEFI_2.11
+    file: UEFI_2.11/source/07_Services_Boot_Services.rst
+    url: https://github.com/UEFI/UEFI-Specification-Release/blob/main/source/07_Services_Boot_Services.rst
 ---
 
 Boot Services 在 `ExitBootServices()` 之后不可用。变量、时间、复位、SetVirtualAddressMap、UpdateCapsule 等属于 Runtime Services，不要和 Boot Services 混为一谈。证据只引用原文。
