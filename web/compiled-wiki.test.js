@@ -23,6 +23,8 @@ const {
   dropExcludedQueries,
   neighborSeeds,
   considerCachedAnswer,
+  COMPILED_WIKI_EVENT,
+  compiledWikiGuide,
 } = require('./compiled-wiki');
 
 const WIKI = defaultCompiledWikiDir();
@@ -263,4 +265,138 @@ test('directory neighbors stay on the original source files', () => {
   assert.deepEqual(seeds.map((r) => r.file), [connect]);
   const untouched = [{ file: 'a.md' }, { file: 'b.md' }];
   assert.equal(neighborSeeds(untouched, null), untouched);
+});
+
+function assertGuideKeys(guide) {
+  assert.deepEqual(Object.keys(guide), ['canonical', 'distinguishes_from', 'source_paths']);
+  for (const item of guide.distinguishes_from) {
+    const keys = Object.keys(item);
+    assert.deepEqual(keys.filter((k) => k !== 'id'), ['canonical', 'source_paths']);
+    for (const k of keys) assert.ok(k === 'id' || k === 'canonical' || k === 'source_paths');
+    for (const p of item.source_paths) assert.deepEqual(Object.keys(p), ['source', 'file']);
+  }
+  for (const p of guide.source_paths) assert.deepEqual(Object.keys(p), ['source', 'file']);
+}
+
+test('guide event name is compiled_wiki and the payload is not a citation', () => {
+  assert.equal(COMPILED_WIKI_EVENT, 'compiled_wiki');
+  const text = `---
+id: guide-shape
+title: Title Must Not Leak
+topic: driver-binding
+canonical: SOME_CANONICAL
+aliases:
+  - unique alias phrase
+sense: >-
+  sense sentence must not leak
+distinguishes_from:
+  - id: other-id
+    canonical: OTHER_CANONICAL
+    name: Other Name
+    aliases:
+      - alias dump must not leak
+    source_paths:
+      - source: tianocore-docs
+        repo: some-repo
+        file: some-repo/other.md
+        url: https://example.invalid/other
+source_paths:
+  - source: uefi-specs
+    repo: uefi-spec
+    file: uefi-spec/real.md
+    url: https://example.invalid/real
+---
+BODY_MUST_NOT_LEAK
+`;
+  const page = pageFromMarkdown(text, 'guide-shape.md');
+  const match = matchCompiledWiki('unique alias phrase', [page]);
+  const guide = compiledWikiGuide(match);
+  assert.deepEqual(guide, {
+    canonical: 'SOME_CANONICAL',
+    distinguishes_from: [{
+      id: 'other-id',
+      canonical: 'OTHER_CANONICAL',
+      source_paths: [{ source: 'tianocore-docs', file: 'some-repo/other.md' }],
+    }],
+    source_paths: [{ source: 'uefi-specs', file: 'uefi-spec/real.md' }],
+  });
+  assertGuideKeys(guide);
+  const blob = JSON.stringify(guide);
+  for (const hidden of [
+    'BODY_MUST_NOT_LEAK',
+    'alias dump must not leak',
+    'unique alias phrase',
+    'sense sentence must not leak',
+    'example.invalid',
+    'Title Must Not Leak',
+    'Other Name',
+    '"aliases"',
+    '"url"',
+    '"repo"',
+    '"body"',
+    '"content"',
+  ]) {
+    assert.equal(blob.includes(hidden), false, hidden);
+  }
+  assert.equal(compiledWikiGuide(null), null);
+});
+
+test('a real hit guide keeps stored source and file, and a tie does not', () => {
+  const pages = loadCompiledWiki(WIKI);
+  const hit = matchCompiledWiki('driver binding version', pages);
+  const guide = compiledWikiGuide(hit);
+  assertGuideKeys(guide);
+  assert.equal(guide.canonical, 'EFI_DRIVER_BINDING_PROTOCOL.Version');
+  assert.deepEqual(guide.source_paths, [
+    {
+      source: 'tianocore-docs',
+      file: 'edk2-UefiDriverWritersGuide/9_driver_binding_protocol/91_driver_binding_protocol_implementations.md',
+    },
+    {
+      source: 'tianocore-docs',
+      file: 'edk2-UefiDriverWritersGuide/3_foundation/314_uefi_driver_model_connection_process/3141_connectcontroller.md',
+    },
+    {
+      source: 'tianocore-docs',
+      file: 'edk2-UefiDriverWritersGuide/3_foundation/314_uefi_driver_model_connection_process/3142_loading_uefi_option_rom_drivers.md',
+    },
+  ]);
+  assert.equal(guide.distinguishes_from.length, 1);
+  assert.equal(guide.distinguishes_from[0].id, 'driver-supported-efi-version');
+  assert.equal(guide.distinguishes_from[0].canonical, 'EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL');
+  assert.deepEqual(guide.distinguishes_from[0].source_paths.map((p) => p.file), [
+    'edk2-UefiDriverWritersGuide/16_driver_supported_efi_version_protocol/README.md',
+    'edk2-UefiDriverWritersGuide/16_driver_supported_efi_version_protocol/161_driver_supported_efi_version_protocol_implemen.md',
+    'edk2-UefiDriverWritersGuide/7_driver_entry_point/73_adding_the_driver_supported_efi_version_protoco.md',
+  ]);
+  const raw = fs.readFileSync(path.join(WIKI, 'pages', 'driver-binding-version.md'), 'utf8');
+  const body = raw.split(/^---\s*$/m).slice(2).join('---').trim();
+  const blob = JSON.stringify(guide);
+  assert.equal(blob.includes('不引用本页'), false);
+  assert.equal(blob.includes(body), false);
+  assert.equal(blob.includes('tianocore-docs.github.io'), false);
+  assert.equal(blob.includes('FirmwareVersion'), false);
+  assert.equal(compiledWikiGuide(matchCompiledWiki('version', pages)), null);
+
+  const page = (id) => `---
+id: ${id}
+title: ${id}
+topic: driver-binding
+canonical: ${id}
+aliases:
+  - driver binding version
+sense: >-
+  sense ${id}
+source_paths:
+  - source: tianocore-docs
+    file: edk2-UefiDriverWritersGuide/${id}.md
+---
+body ${id} must not be returned
+`;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'compiled-wiki-guide-tie-'));
+  writePage(dir, 'a.md', page('alpha-sense'));
+  writePage(dir, 'b.md', page('beta-sense'));
+  const tied = loadCompiledWiki(dir);
+  assert.equal(matchCompiledWiki('driver binding version', tied), null);
+  assert.equal(compiledWikiGuide(matchCompiledWiki('driver binding version', tied)), null);
 });

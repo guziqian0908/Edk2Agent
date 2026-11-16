@@ -7,6 +7,9 @@
  * The body is a short 导读 and is never returned, indexed, or searched.
  * COMPILED_WIKI=false|0|off|no disables matching. An empty or missing
  * directory is the same as disabled and does not throw.
+ *
+ * compiledWikiGuide() is the display-only payload for the SSE event
+ * `compiled_wiki`. It is not a retrieval hit and is not evidence.
  */
 
 const fs = require('fs');
@@ -516,6 +519,57 @@ function applyCompiledQuery(translated, match) {
   return q.replace(/[^\x00-\x7F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
+const COMPILED_WIKI_EVENT = 'compiled_wiki';
+
+function guideSourcePath(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const file = String(entry.file || '').trim();
+  if (!file) return null;
+  return {
+    source: String(entry.source || '').trim(),
+    file,
+  };
+}
+
+/**
+ * Display-only 导读 for one compiled-wiki hit.
+ * Null when `match` is null (miss, alias-length tie, or flag off at the caller).
+ * Keys are only canonical, distinguishes_from, and source_paths.
+ * Paths keep the stored source and file. Body, aliases, urls, and repo
+ * names are left out so this cannot be read as a citation.
+ */
+function compiledWikiGuide(match) {
+  if (!match || !match.canonical) return null;
+  const sourcePaths = [];
+  for (const entry of match.source_paths || []) {
+    const pathEntry = guideSourcePath(entry);
+    if (pathEntry) sourcePaths.push(pathEntry);
+  }
+  if (!sourcePaths.length) return null;
+  const distinguishes = [];
+  for (const item of match.distinguishes_from || []) {
+    if (!item || typeof item !== 'object') continue;
+    const paths = [];
+    for (const entry of item.source_paths || []) {
+      const pathEntry = guideSourcePath(entry);
+      if (pathEntry) paths.push(pathEntry);
+    }
+    const canonical = String(item.canonical || '').trim();
+    const id = String(item.id || '').trim();
+    if (!canonical && !id && !paths.length) continue;
+    const shaped = {};
+    if (id) shaped.id = id;
+    shaped.canonical = canonical;
+    shaped.source_paths = paths;
+    distinguishes.push(shaped);
+  }
+  return {
+    canonical: String(match.canonical),
+    distinguishes_from: distinguishes,
+    source_paths: sourcePaths,
+  };
+}
+
 function considerCachedAnswer(cache, question, model, match, opts = {}) {
   const enabled = opts.enabled != null ? !!opts.enabled : true;
   if (!cache) return null;
@@ -548,4 +602,6 @@ module.exports = {
   neighborSeeds,
   applyCompiledQuery,
   considerCachedAnswer,
+  COMPILED_WIKI_EVENT,
+  compiledWikiGuide,
 };
