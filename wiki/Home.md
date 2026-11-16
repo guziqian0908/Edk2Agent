@@ -1,6 +1,8 @@
 # Edk2Agent（edk2-opencode）Wiki
 
-> 本文档面向"仅凭本 Wiki 即可从零复现环境搭建、知识库构建、服务部署与功能验证"的 AI 工程师与验收人员。所有命令、路径、指标均与 **v6.0.22**（`package.json` 版本号）严格对应，可直接对照执行。知识库已从最初的双数据源扩展为 **6 大数据源（82297 个分块）**，并提供三条搭建路径（`setup_kb` 一键重建 / `install_kb` 预构建包 / `--init-edk2-wiki` 原始终端命令）。
+> 本文档面向"仅凭本 Wiki 即可从零复现环境搭建、知识库构建、服务部署与功能验证"的 AI 工程师与验收人员。仓库路径以 `main` 为准。`package.json` 版本号仍为 **v6.0.22**，但 `main` 在该标签之后还合入了 Web 问答、相似缓存、主题聚焦路由、关系扩展、编译 Wiki 消歧和金标 source/章节召回评测；命令与行为以当前 `main` 为准，不要只按 2026-08 的标签理解。知识库为 **6 大数据源（82297 个分块）**，搭建路径仍是 `setup_kb` 一键重建 / `install_kb` 预构建包 / `--init-edk2-wiki` 原始终端命令。
+>
+> **本文档是仓库里的项目说明**（`wiki/Home.md`），不是消歧用的编译 Wiki 种子页（`edk2-kb/compiled-wiki/`），也不是 TianoCore 官方 Wiki 数据源。若 GitHub Wiki 仍挂着同一份内容，以仓库这份文件为源，合入后再同步。指标只保留已经测过并注明日期的数字，未公布的召回率不写。
 
 ---
 
@@ -10,7 +12,7 @@
    - [1.1 项目定位与开发属性](#11-项目定位与开发属性)
    - [1.2 完整过程总览（端到端）](#12-完整过程总览端到端)
    - [1.3 RAG 三层架构](#13-rag-三层架构)
-   - [1.4 迭代演进 v6.0.5 → v6.0.22](#14-迭代演进-v605--v6022)
+   - [1.4 迭代演进 v6.0.5 → 当前 main](#14-迭代演进-v605--当前-main)
 2. [全流程环境搭建](#2-全流程环境搭建)
    - [2.1 系统要求](#21-系统要求)
    - [2.2 前置环境依赖清单（先装基础工具）](#22-前置环境依赖清单先装基础工具)
@@ -35,6 +37,7 @@
    - [4.4 eval-query 命令与解读（含实操示例）](#44-eval-query-命令与解读含实操示例)
    - [4.5 评测框架与指标体系](#45-评测框架与指标体系)
    - [4.6 当前评测结果（验收基准）](#46-当前评测结果验收基准)
+   - [4.7 编译 Wiki 消歧与种子页更新](#47-编译-wiki-消歧与种子页更新)
 5. [任务验收判定规则](#5-任务验收判定规则)
    - [5.1 AI 复现路径核查表](#51-ai-复现路径核查表)
    - [5.2 硬性验收指标](#52-硬性验收指标)
@@ -58,7 +61,7 @@
 ### 1.1 项目定位与开发属性
 
 - **仓库**：**`Edk2Agent`**（GitHub，`guziqian0908/Edk2Agent`），npm 包名 **`edk2-opencode`**，版本 **v6.0.22**（以 `package.json` 为准；`README.md` 头部历史遗留标记为 v6.0.1、postinstall 标记为 v6.0.0，均不影响功能）。
-- **定位**：面向 EDK II / UEFI 技术问答的**自研 RAG 检索服务端**。它不包含 LLM，是一个"纯检索引擎服务"，LLM（如 Claude / opencode）作为 **MCP 客户端**调用其 `/mcp` 端点获取检索结果后组织回答。
+- **定位**：面向 EDK II / UEFI 技术问答的自研系统。知识库 daemon（MCP `/mcp`、`/search`）本身仍是**检索引擎**，不内置生成模型；回答有两条路径：① MCP 客户端（如 Claude / opencode）调用 `/mcp` 获取检索结果后自行组织；② 仓库内的 Web 问答服务（`web/server.js`，`POST /api/ask`）在检索之后调用配置的生成模型写出带引用的回答。不能再把整个项目理解成"不含 LLM 的纯检索服务"。
 - **开发属性**：混合检索（向量 + 全文）、重排（交叉编码器）、置信度分级、评测框架的**逻辑全部自主开发**。底层仅依赖开源组件：
   - **ChromaDB** —— 向量数据库（持久化）。
   - **bge-m3**（Embedding）与 **bge-reranker-v2-m3**（重排）—— 开源模型（本地化加载）。
@@ -91,14 +94,20 @@
    ├─ 动态端口 + daemon.json + 单例锁
    └─ /mcp /health /search /stats /shutdown
             │
-⑤ 检索链路（search_engine.py, LLM 为 MCP 客户端）
-   ├─ 向量召回 + FTS 召回 → RRF + β 融合 → bge-reranker-v2-m3 重排
-   ├─ 置信度分级（high/medium/low/poor）
-   └─ citation 组装 → 返回 LLM 组织回答
+⑤ 检索与回答
+   ├─ MCP 路径：search_engine.py（向量 + FTS → RRF + β → 重排 → 置信度 + citation）→ 客户端组织回答
+   └─ Web 路径：web/server.js
+        ├─ 编译 Wiki 消歧（默认开启，先于相似缓存）
+        ├─ 相似问题缓存（命中编译页时，只回放相同 id 与 source_paths.file 集合）
+        ├─ 主题聚焦路由、关系扩展与目录邻居
+        ├─ daemon /search + 重排
+        └─ 生成模型回答；命中时另下发一条 compiled_wiki 导读事件（不当引用）
             │
 ⑥ 验证与评测（edk2-kb/eval/）
    ├─ eval-query：单条新旧对比（快速迭代）
-   └─ run_eval.py：330 条全量评测 → Hit@5 / MRR
+   ├─ run_eval.py：330 条全量评测 → Hit@5 / MRR
+   ├─ run_web_eval.py：18 题 LLM-judge（faithfulness / relevancy）与分档门控
+   └─ gold-recall：对已记录的检索列表打 source/章节召回（不启动 Web、不打开索引、不调用 LLM）
 ```
 
 **开源 vs 自研的边界**：
@@ -148,9 +157,11 @@
 └──────────────────────────────────────────────────────────┘
 ```
 
-**一次查询的完整链路**：LLM → MCP `search_kb` → `SearchEngine.search()` → Chroma（向量 topN）+ FTS（全文 topN）→ RRF 融合 + β 加权 → 交叉编码器重排 → 置信度分级 + citation 组装 → 返回给 LLM 组织回答。
+**MCP 一次查询的完整链路**：客户端 LLM → MCP `search_kb` → `SearchEngine.search()` → Chroma（向量 topN）+ FTS（全文 topN）→ RRF 融合 + β 加权 → 交叉编码器重排 → 置信度分级 + citation 组装 → 返回给客户端组织回答。
 
-### 1.4 迭代演进 v6.0.5 → v6.0.22（+ Web 回答服务增强）
+**Web 问答**是同一检索引擎之上的编排层（见第 7 节）：`POST /api/ask` 先做编译 Wiki 消歧（默认在相似缓存之前），再检索、生成，并通过 SSE 流式返回。编译 Wiki 只用于对齐近义词和精确锚点，页面正文不进入索引，也不作为引用证据。
+
+### 1.4 迭代演进 v6.0.5 → 当前 main
 
 | 版本 | 目标 | 主要改动 | 收益 |
 |------|------|----------|------|
@@ -171,7 +182,16 @@
 | **6.0.23*** | Web 回答服务层增强（已合入 `main`） | ① **完整性强制令**：prompt 要求完整枚举所有规则/枚举值/API 签名，禁止省略概括；② **混合重排**：检索 `top_k` 25→35，rerank 后保顶 3 防关键块被挤出，再按重排序回填至 15；③ **元数据过滤** `pruneByMetadata`：检索结果在重排前置前被剪除标题/章节/文件无任何查询信号者（保底 floor=10、信号 <3 跳过）；④ **引用本地化**：参考来源由 gitbook 外链改为 `文件路径 > 章节` 本地定位，禁止拼造网址；⑤ **多轮对话**：`web/index.html` 携带 `prevResults`（上一轮检索结果）与历史，追问时跳过重复检索 | 枚举类问题完整性显著提升；关键命中块（如 4.4 Identifiers）不再被 reranker 挤出 top 3；明显无关知识块被前置过滤；回答参考来源全部指向本地文档，可离线追溯；多轮追问上下文连续 |
 | **6.0.24*** | 知识库扩容与一键重建 | ① **数据源 2→6**：新增 `uefi-specs`（UEFI/ACPI/PI/Shell 官方规范）、`edk2-commits`（完整提交历史）、`edk2-prs`（全部 PR）、`edk2-mdepkg`（MdePkg 源码）；② **`setup_kb.ps1/.sh` 一键重建**：`fetch_models.py`（本地模型）→ `fetch_specs.py` → `fetch_commits.py` → `fetch_prs.py` → `init_kb.py` → `add_mdepkg.py`；③ **`package_kb.py` + `install_kb.ps1/.sh` 预构建包**：kb-runtime / kb-full 分片（≤1.8GB）+ SHA-256 清单，免重建嵌入；④ 分块数 14819 → **82297** | 覆盖真实 EDK2 开发活动（代码/PR/提交/规范），问答域从纯文档扩展到工程实践 |
 
-> 版本发布节奏：tags `v6.0.4` ~ `v6.0.22` 已全部推送到 GitHub，`main` 分支 HEAD 即 v6.0.22。`6.0.23*`（Web 回答服务）与 `6.0.24*`（数据源扩容 + 一键重建）为 main 分支上的未发版增强，改动集中在 `web/server.js`（LLM 回答编排层）、`edk2-kb/fetchers/` 与仓库根目录的 `setup_kb.*` / `install_kb.*` / `package_kb.py`。
+| **main #17** | 相似问题缓存 | Web 侧对相同或接近的问题回放缓存答案；与编译 Wiki 联用时，必须同一页面 `id` 且 `source_paths.file` 集合相同才允许回放 | 降低重复问题的检索和生成开销（具体耗时以实测为准，本文不编造数字） |
+| **main #18** | 漏题主题聚焦路由 | `FOCUS_TOPIC_ROUTING`（默认开）：规范类查询按主题聚焦，聚焦结果优先于 commits/PRs；设 `false` 回退旧的 `source=all` 与旧合并顺序 | 减少主题外噪音（收益以评测为准） |
+| **main #19** | 生成端默认模型 | Web 生成模型推荐 `deepseek-v4-pro`（仍由 `LLM_MODEL` 覆盖） | 与当前 `web/.env.example` 一致 |
+| **main #20** | 关系型查询扩展与目录邻居 | `RELATIONAL_QUERY_EXPANSION`（默认开）：翻译之外补充 2–3 条英文关联查询（只打 tianocore-docs）；目录邻居按已召回或磁盘上的 `SUMMARY.md` 补兄弟节，不另开向量检索、不重建索引 | 覆盖换了一种说法的章节 |
+| **main #21** | 编译 Wiki 消歧 | `web/compiled-wiki.js` 读取 `edk2-kb/compiled-wiki/pages/*.md`；默认在相似缓存之前匹配；`COMPILED_WIKI=false` 关闭。命中时用 `canonical`/`sense` 做后续路由，`source_paths` 作精确锚点，`distinguishes_from` 降权；正文不进生成上下文，也不写入 Chroma/FTS | 降低近义协议误召回（召回率需用金标评测，本文不提前写数字） |
+| **main #22** | 金标 source/章节召回评测 | `edk2-kb/eval/gold_source_chapters.json` + `kb_file_map_q27_q35.md`；`run_web_eval.py --gold-recall` / `gold_recall.py` 对已记录检索列表打 file/section hit，不改检索路由，不重建索引 | 工具已合入；实测召回率待用 recorded 列表跑出后再写入本文 |
+| **main #23** | 补已核对的 UEFI/PI RST 原文路径 | 整页替换官方种子页 `source_paths`（`canonical` / aliases / sense 未改）；uefi-specs 的 `file` 为 `{version}/source/{rst}`；Secure Boot 的 intro/overview 是金标、不是 confounder；`driver-binding-version.md` 未改 | 给检索锚点和导读提供已核对路径 |
+| **main #24** | 编译 Wiki 消歧导读 SSE 事件 | `/api/ask` 命中时最多一条 `compiled_wiki` 事件，字段只有 `canonical`、`distinguishes_from`、`source_paths`；正文和 url 不下发；未命中或 `COMPILED_WIKI=false` 时不发 | 给界面做消歧导读，不参与引用 |
+
+> 版本发布节奏：tags `v6.0.4` ~ `v6.0.22` 已推送到 GitHub，`package.json` 仍为 6.0.22。`6.0.23*`、`6.0.24*` 以及上表 `#17`–`#24` 均为随后合入 `main`、尚未打新标签的增强。本文命令与行为以 `main` 为准。
 
 ---
 
@@ -361,6 +381,8 @@ npx edk2-opencode --search "PcdDebugPrintErrorLevel"
 | `HF_HUB_DISABLE_XET` | — | 设为 `1` 绕过 Xet 协议下载 |
 | `local_files_only` | `True` | 模型只从本地加载（内置） |
 
+Web 问答编排另有 `COMPILED_WIKI`、`FOCUS_TOPIC_ROUTING`、`RELATIONAL_QUERY_EXPANSION` 等开关（默认均开启），完整列表见 `web/README.md` 与第 7.2 节。改这些开关不必重建 16G 知识库。
+
 ### 2.8 目录与数据布局
 
 ```
@@ -485,6 +507,7 @@ score = β · Chroma cosine 归一化得分 + (1 − β) · RRF 融合分
 - 回答首行固定 `Based on <n> result(s).` 说明依据的检索结果数量。
 - 多来源时逐条列出 citation，不得混用来源；不得引用超出检索返回范围的内容。
 - 该规范固化在 MCP prompt（`edk2_kb_search_instruction`）中，由 LLM 侧执行。
+- Web 回答的引用必须落在本次检索返回的原文（如 tianocore-docs、uefi-specs）。**编译 Wiki 种子页不是引用来源**，不得写入 `results`，也不得当成 citation。命中时的 `compiled_wiki` 事件只用于消歧导读。
 
 ### 4.3 服务端点与 MCP 工具
 
@@ -572,6 +595,11 @@ NOW  (hybrid + rerank, current)  top5
 | `compare_query.py` | 单条新旧对比（4.4 的底层实现） |
 | `judge_eval.py` | 用 judge 对 130 条标注质量做校验（人工标注入库前校验） |
 | `RESULTS.md` | 历史评测结果归档（各版本对比表） |
+| `run_web_eval.py` | Web 全链路 18 题 LLM-judge（faithfulness / relevancy）与分档门控；加 `--gold-recall` 时改为只打金标召回，不跑评判 |
+| `gold_source_chapters.json` | 金标：`question.txt` 35 题的 `R:`，外加 7 组 15 问消歧（含 confounder 假阳性） |
+| `kb_file_map_q27_q35.md` | question.txt 第 27、28、29 题的 RST 对照：`source` 为 `uefi-specs`，`file` 为 `PI_1.10/source/*.rst` 或 `UEFI_2.11/source/*.rst` |
+| `gold_recall.py` | 对已记录检索列表打 file hit@k / section hit@k；不启动 Web、不打开索引、不调用 LLM |
+| `test_gold_recall.py` | 金标召回的单元测试（夹具检索列表，25 项） |
 
 **测试集数据结构**（`edk2_eval_set.json`，每条约 3 个字段）：
 
@@ -617,11 +645,24 @@ NOW  (hybrid + rerank, current)  top5
 - **Hit@5**：期望文档出现在 top5 中即命中，命中数 ÷ 总条数。
 - **MRR（Mean Reciprocal Rank）**：命中位置的倒数均值。
 
-**运行全量评测**：
+**运行全量检索评测**：
 
 ```powershell
 & "$env:USERPROFILE\.edk2-opencode\kb\venv\Scripts\python.exe" edk2-kb/eval/run_eval.py --data-dir "$env:USERPROFILE\.edk2-opencode\kb\data"
 ```
+
+**金标 source / 章节召回**（不需要 16G 索引、Web 服务或 LLM；`--retrievals` 为已记录的检索/引用列表）：
+
+```bash
+python edk2-kb/eval/run_web_eval.py --gold-recall --retrievals recorded.json
+# 等价：
+python edk2-kb/eval/gold_recall.py --retrievals recorded.json
+python edk2-kb/eval/test_gold_recall.py
+```
+
+报告分三块：question.txt 总体、近义子集（第 27、28、29、31、35 题）、消歧集（7 组 15 问；命中 `confounders` 记为 false recall，不算金标命中）。指标包括 file hit@5、hit@10，以及写了章节时的 section hit。
+
+打分规则（与 `#22` 一致，勿改）：第 27–29 题用 `kb_file_map_q27_q35.md` 的 RST `file`，**不要把 PDF 文件名当成金标**，也不要把 wiki `pi_boot_flow.md` 算进第 27、28 题。第 35 题的三条 tianocore-docs 路径是金标；`introduction-to-the-secure-boot-chain.md` 与 `overview.md` 不是 confounder。`intel_boot_guard.md` 只在 Secure Boot vs Boot Guard 消歧题里算假阳性。没有核对过 RST 对照、只剩 PDF 文件名的题（例如内存分配题 `qtest-Q29`）不发明路径，也不记为命中。`--include-additions` 才把 `suggested_additions_for_question_txt` 当作额外金标，默认关闭、且不替换已有条目。
 
 ### 4.6 当前评测结果（验收基准）
 
@@ -635,6 +676,28 @@ NOW  (hybrid + rerank, current)  top5
 > 全量 330 条、分语种、manual/auto 分组的逐条明细均可在 `RESULTS.md` 及各次评测输出中复现；任何实现变更后必须重跑并更新该文件。
 
 ---
+
+> 金标 source/章节召回的实测 hit 率尚未写入本文。跑出 `recorded.json` 上的报告后，再把数字补进本节，不要用占位值。
+
+### 4.7 编译 Wiki 消歧与种子页更新
+
+编译 Wiki 位于 `edk2-kb/compiled-wiki/`（`SCHEMA.md`、`VERIFICATION.md`、`pages/*.md`），由 `web/compiled-wiki.js` 做确定性匹配。它是检索编排用的消歧桥，**不是知识来源**：
+
+- 不得写入现有 Chroma 或 FTS 索引，改种子页**不必重建**约 16G 的知识库。
+- 页面正文不进入生成上下文，也不作为引用证据。
+- 命中条件是最长 alias，且至少有一条 `source_paths`；两个页面最长别名一样长视为未命中，立即走原来的检索。`PPI` / `HOB` / `TPL` 可以作为单 token 别名；`version` / `boot` / `event` 不能单独命中。
+- `source_paths.file` 必须等于知识库元数据里的 `file`：tianocore-docs 为 `{repo}/{path-inside-repo}`；uefi-specs 为 `{version}/source/{rst}`（例如 `UEFI_2.11/source/07_Services_Boot_Services.rst`）。不要写 PDF 文件名。官方 TianoCore Wiki 路径不要写入 `source_paths`。
+- 默认开启；`COMPILED_WIKI=false`（以及 `0` / `off` / `no`）关闭匹配，缓存也不再要求 page id 和路径集合。
+- 命中时 `/api/ask` 最多下发一条 SSE 事件 `compiled_wiki`，字段只有 `canonical`、`distinguishes_from`（每项保留 `id`（有则带上）、`canonical`，以及该项 `source_paths` 里已有的 `source` 和 `file`）和本页 `source_paths` 的 `source`、`file`。无正文、无 aliases、无 url。未命中或功能关闭时不发这条事件。界面只消费该事件，**不要在产品里做修改种子页的入口**。没有 `distinguishes_from` 时，前端不应渲染区分项。
+
+**种子页如何更新**（与本文 `wiki/Home.md` 的更新分开，不要混在同一个 PR 里）：
+
+1. 触发按需：金标召回或线上出现近义误召回、消歧失败，或已核对的原文路径 / 消歧字段需要修订。不提前批量扩写。
+2. 先核对应写入知识库的 `file`（RST，不用 PDF），再改 `pages/*.md`，必要时补消歧金标。
+3. 提交形态：一份压缩包，内含 `CHANGES-vs-main.md` 和整页 `pages/`（需要时带上 `SCHEMA.md` / `VERIFICATION.md`）。合入方按包做整页替换并对照哈希，**不以自己编的 canonical、别名、区分项或路径覆盖包内容**，然后单独开 PR。
+4. 缓存按 `id` + `source_paths.file` 集合回放，路径变更会使旧缓存自然失效。
+
+当前第一批主题包括 driver-binding、ppi-hob、boot-runtime、event-tpl、secure-boot。扩充优先依据评测失败题，而不是想象中的新词条。
 
 ## 5. 任务验收判定规则
 
@@ -657,8 +720,10 @@ NOW  (hybrid + rerank, current)  top5
 | 11 | Web 服务启动 | `cd web && node server.js` 启动成功，`/healthz` 返回 200 |
 | 12 | Web 问答 | `POST /api/ask` 返回带引用的回答（需配置 LLM_API_KEY） |
 | 13 | Web 详略分级 | simple/standard/complex 三档路由正确（`done` 事件含 `tier` 字段） |
-| 14 | Web 评测门控 | `python edk2-kb/eval/run_web_eval.py --gate` 分档 PASS |
+| 14 | Web 评测门控 | `python edk2-kb/eval/run_web_eval.py --gate` 分档 PASS（沿用第 7.6 节已公布的阈值与 2026-08-21 基准） |
 | 15 | 全量评测 | 重跑 330 条达到第 5.2 节指标 |
+| 16 | 金标召回工具 | `python edk2-kb/eval/test_gold_recall.py` 通过；已有 recorded 列表时可另跑 `--gold-recall`（本文暂不把门控数字写死） |
+| 17 | 编译 Wiki | 仓库存在 `edk2-kb/compiled-wiki/pages/*.md` 与 `SCHEMA.md`；默认 `COMPILED_WIKI` 开启。改种子页不必重建索引 |
 
 ### 5.2 硬性验收指标
 
@@ -700,7 +765,7 @@ NOW  (hybrid + rerank, current)  top5
 
 ## 7. Web 回答服务部署与验证
 
-> 本节覆盖 `web/server.js` 实现的 LLM 问答编排层，包括详略分级、查询分解、C' 批评-修订、评测门控、LTR 流水线等 Phase 0-4 增强。完整环境变量与接口说明见 `web/README.md`。
+> 本节覆盖 `web/server.js` 实现的 LLM 问答编排层，包括详略分级、查询分解、编译 Wiki 消歧、C' 批评-修订、评测门控、LTR 流水线等。完整环境变量与接口说明见 `web/README.md`。问答页的新界面（双栏、行内引用、常驻证据栏与消歧导读）若尚未落到 `web/index.html`，外观描述等该改动合入后再更新；下面的接口与编排以当前 `main` 为准。
 
 ### 7.1 架构概述
 
@@ -710,12 +775,14 @@ NOW  (hybrid + rerank, current)  top5
    ▼
 web/server.js（Node HTTP 服务，端口 8080）
    ├─ POST /api/ask → 检索 + LLM 回答
-   │   ├─ ① 查询分解（analyzeQuery）→ 简单直查 / 复杂拆子问题
-   │   ├─ ② daemon /search 检索（Top5-15，按档位调整）
-   │   ├─ ③ LLM 生成回答（详略分级：simple/standard/complex）
-   │   ├─ ④ L3 忠实度校验（LLM-judge 标记未支撑断言）
-   │   ├─ ⑤ C' 批评-修订（改写未支撑语句，answer_revision 替换）
-   │   └─ ⑥ 流式返回（SSE delta + citation_warn + faithfulness_warn）
+   │   ├─ ① 编译 Wiki 匹配（默认在相似缓存之前；未命中则跳过）
+   │   ├─ ② 相似问题缓存（命中编译页时，只回放相同 id 与 source_paths.file 集合）
+   │   ├─ ③ 查询分解（analyzeQuery）→ 简单直查 / 复杂拆子问题
+   │   ├─ ④ daemon /search 检索（含主题聚焦、关系扩展与目录邻居）
+   │   ├─ ⑤ LLM 生成回答（详略分级：simple/standard/complex）
+   │   ├─ ⑥ L3 忠实度校验（LLM-judge 标记未支撑断言）
+   │   ├─ ⑦ C' 批评-修订（改写未支撑语句，answer_revision 替换）
+   │   └─ ⑧ 流式返回（SSE：命中时最多一条 compiled_wiki，再加上 delta、citation_warn、faithfulness_warn 等）
    ├─ GET /api/status → daemon 健康 + LLM 配置
    └─ GET /healthz → 存活探针
 ```
@@ -730,7 +797,8 @@ web/server.js（Node HTTP 服务，端口 8080）
 | C' 修订 | `server.js` L3_REVISION | 单轮改写未支撑语句，answer_revision SSE 替换 |
 | 扩展规则 | `edk2-kb/expansion_rules.json` | 中英文查询扩展（43 条规则，web+daemon 共享） |
 | LTR | `edk2-kb/rank/` | LambdaMART 学习排序（9 特征，需打标+训练） |
-| 评测 | `edk2-kb/eval/run_web_eval.py` | 全链路 faithfulness+relevancy 评测 + 门控 |
+| 编译 Wiki | `web/compiled-wiki.js`、`edk2-kb/compiled-wiki/` | 近义消歧与精确锚点；导读事件 `compiled_wiki`，不当引用 |
+| 评测 | `edk2-kb/eval/run_web_eval.py` | 全链路 faithfulness+relevancy 评测 + 门控；`--gold-recall` 打 source/章节召回 |
 
 ### 7.2 环境配置
 
@@ -758,6 +826,11 @@ JUDGE_MODEL=deepseek-chat
 # 关闭忠实度校验（调试用）
 # L3_FAITHFULNESS_CHECK=false
 # L3_REVISION=false
+
+# 编排开关（默认都开；关闭不必重建知识库）
+# COMPILED_WIKI=false
+# FOCUS_TOPIC_ROUTING=false
+# RELATIONAL_QUERY_EXPANSION=false
 ```
 
 ### 7.3 启动与验证
@@ -812,6 +885,10 @@ python edk2-kb/eval/run_web_eval.py --gate
 
 # 全局门控模式（单一阈值 4.6/4.4）
 python edk2-kb/eval/run_web_eval.py --gate --gate-mode global
+
+# 金标 source/章节召回（不跑 LLM-judge，不启动 Web）
+python edk2-kb/eval/run_web_eval.py --gold-recall --retrievals recorded.json
+python edk2-kb/eval/test_gold_recall.py
 ```
 
 **分档门控阈值**（按实测能力标定）：
@@ -829,6 +906,8 @@ python edk2-kb/eval/run_web_eval.py --gate --gate-mode global
 | simple | 4.50 | 4.62 | ✅ PASS |
 | standard | 4.50 | 5.00 | ✅ PASS |
 | complex | 3.94 | 4.75 | ✅ PASS |
+
+金标召回的 hit 率不沿用上表。在提供 `recorded.json` 并跑出报告之前，不要把召回数字写进门控或验收标准。
 
 ### 7.7 学习排序（LTR）流水线
 
@@ -869,4 +948,4 @@ python edk2-kb/eval/tier_monitor.py
 
 ---
 
-*Wiki 版本：v6.0.22（含 main 上 Web 服务 + Phase 0-4 + C' 修订 + 分档门控增强） · 最后更新：2026-08-23 · 内容与 `D:\project-review-test\edk2-opencode-v3\` 源码逐命令核对*
+*Wiki 版本：main（package.json 仍为 v6.0.22，已含 Web 问答、#17–#24 检索编排、金标召回工具与导读事件） · 最后更新：2026-11-16（上海时间） · 检索编排、评测命令已按当前 main 核对；第 7 节界面外观待 `web/index.html` 改版合入后补*
