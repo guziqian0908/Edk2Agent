@@ -98,7 +98,13 @@ node --test web/retrieval-routing.test.js
 
 `FOCUS_TOPIC_ROUTING=false` 恢复旧的 `source=all` 与旧合并顺序。
 
-`COMPILED_WIKI` 默认开启。命中 `edk2-kb/compiled-wiki/pages/*.md` 后，主题路由和关系扩展使用该页的 `canonical` 与 `sense`，`source_paths.file` 作为精确锚点排在聚焦结果和 docs 路前面，`distinguishes_from.source_paths` 降权。目录邻居只从这些原文出发。页面正文不进入生成上下文，也不写入向量或全文索引。相似缓存只回放相同 `id` 且相同 `source_paths.file` 集合的条目。`COMPILED_WIKI=false` 关闭这一层。
+`COMPILED_WIKI` 默认开启。命中 `edk2-kb/compiled-wiki/pages/*.md` 后，主题路由和关系扩展使用该页的 `canonical` 与 `sense`，`source_paths.file` 作为精确锚点排在聚焦结果和 docs 路前面，`distinguishes_from.source_paths` 降权。目录邻居只从这些原文出发。页面正文不进入生成上下文，也不写入向量或全文索引。相似缓存只回放相同 `id` 且相同 `source_paths.file` 集合的条目。消歧仍在相似缓存之前。`COMPILED_WIKI=false` 关闭这一层。
+
+命中时，同一次 `/api/ask` 的 SSE 流最多多一条事件，名字是 `compiled_wiki`。这是给界面用的消歧导读，不是检索命中，也不会写进 `results`。载荷只有三个字段：`canonical`；`distinguishes_from`（区分项，沿用种子页字段，每项保留 `id`、`canonical`，以及 `source_paths` 里已有的 `source` 和 `file`）；本页 `source_paths` 的 `source` 和 `file`（原文规格路径，不是编译 Wiki 页）。不包含页面正文、别名列表、url。未命中（包括等长别名冲突）或 `COMPILED_WIKI=false` 时不发这条事件。
+
+```powershell
+node --test web/compiled-wiki.test.js web/compiled-wiki.http.test.js
+```
 
 ## 关系型查询扩展与目录邻居
 

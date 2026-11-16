@@ -60,6 +60,9 @@
  *   FOCUS_QUERY_CAP   max focused /search calls per question (default 36)
  *   COMPILED_WIKI     set 'false'/'0'/'off'/'no' to disable compiled-wiki
  *                     matching (default on). Cache then ignores page metadata.
+ *                     A hit emits one SSE event `compiled_wiki` (display-only
+ *                     导读). It is not retrieval evidence and is omitted on a
+ *                     miss or when this flag is off.
  *   RELATIONAL_QUERY_EXPANSION  set 'false' to skip related-concept queries
  *                        and SUMMARY.md directory neighbors (default on).
  *                        Focus-topic routing is unchanged.
@@ -100,6 +103,8 @@ const {
   neighborSeeds,
   applyCompiledQuery,
   considerCachedAnswer,
+  COMPILED_WIKI_EVENT,
+  compiledWikiGuide,
 } = require('./compiled-wiki');
 const {
   relationalExpansionEnabled,
@@ -117,6 +122,13 @@ try {
   compiledPages = loadCompiledWiki(defaultCompiledWikiDir());
 } catch {
   compiledPages = [];
+}
+
+// Test hook. Production reads pages once from edk2-kb/compiled-wiki/pages.
+function setCompiledPages(pages) {
+  const prev = compiledPages;
+  compiledPages = Array.isArray(pages) ? pages : [];
+  return prev;
 }
 
 const WEB_DIR = __dirname;
@@ -333,9 +345,11 @@ function storeAnswerCache(question, model, data, daemonUrl) {
 }
 
 // Replay a cached answer as the same SSE stream a live LLM call emits:
-// phase(cache_hit) -> results -> phase(llm) -> delta* -> phase(llm_done) -> done.
+// [compiled_wiki] -> phase(cache_hit) -> results -> phase(llm) -> delta* -> phase(llm_done) -> done.
 // `match` is 'exact' | 'lexical' | 'semantic'.
-function replayCachedAnswer(res, cached, question, match = 'exact', startTs = null, similarity = null) {
+// `compiledMatch` is the display-only 导读. It is not copied into `results`.
+function replayCachedAnswer(res, cached, question, match = 'exact', startTs = null, similarity = null, compiledMatch = null) {
+  sendCompiledWikiGuide(res, compiledMatch);
   const tier = routeQuery(question);
   const semantic = match === 'semantic';
   const text = match === 'semantic'
@@ -1912,6 +1926,15 @@ function sendSSE(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+// One display-only 导读. Returns false when there is nothing to send
+// (miss, alias tie, or a match with no original source_paths).
+function sendCompiledWikiGuide(res, match) {
+  const data = compiledWikiGuide(match);
+  if (!data) return false;
+  sendSSE(res, COMPILED_WIKI_EVENT, data);
+  return true;
+}
+
 async function handleAsk(req, res) {
   const chunks = [];
   let received = 0;
@@ -2006,7 +2029,7 @@ async function handleAsk(req, res) {
           'X-Accel-Buffering': 'no',
         });
         const cacheStart = Date.now();
-        replayCachedAnswer(res, cached, question, match, startedAt, similarity);
+        replayCachedAnswer(res, cached, question, match, startedAt, similarity, compiledMatch);
         res.end();
         emitTrace({
           traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
@@ -2065,7 +2088,7 @@ async function handleAsk(req, res) {
         const semHit = answerCache.bestSemantic(await embedQuery(question, url), model);
         if (semHit && cacheReplayAllowed(semHit.entry, compiledMatch, { enabled: wikiOn })) {
           const cacheStart = Date.now();
-          replayCachedAnswer(res, semHit.entry, question, 'semantic', startedAt, semHit.similarity);
+          replayCachedAnswer(res, semHit.entry, question, 'semantic', startedAt, semHit.similarity, compiledMatch);
           res.end();
           emitTrace({
             traceId, stage: 'answer_cache', durationMs: Date.now() - cacheStart,
@@ -2081,6 +2104,16 @@ async function handleAsk(req, res) {
           return;
         }
       }
+      // At most one compiled_wiki event per response. An early hit is sent
+      // here; a hit that appears only after translation is sent once below.
+      // The payload is not merged into results or the generation context.
+      let guideSent = false;
+      const emitGuideOnce = () => {
+        if (guideSent || !wikiOn) return;
+        if (sendCompiledWikiGuide(res, compiledMatch)) guideSent = true;
+      };
+      emitGuideOnce();
+
       let results = getCachedContext(question, compiledContextKey(compiledMatch));
       let fromCache = false;
       
@@ -2118,6 +2151,7 @@ async function handleAsk(req, res) {
               compiledMatch = matchCompiledWiki(question, compiledPages, { extraText: translatedEarly });
             }
           }
+          emitGuideOnce();
           const relationalOn = relationalExpansionEnabled();
           const wikiHint = compiledMatch ? relationalExpansionHint(compiledMatch) : null;
           let relationalQueries = relationalOn ? (analysis.relatedQueries || []) : [];
@@ -2996,4 +3030,4 @@ server.listen(port, host, () => {
   console.log(`LLM configured: ${!!(process.env.LLM_API_KEY && process.env.LLM_BASE_URL && process.env.LLM_MODEL)}`);
 });
 
-module.exports = { server, answerCache };
+module.exports = { server, answerCache, setCompiledPages };
