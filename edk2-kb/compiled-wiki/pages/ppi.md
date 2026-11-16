@@ -36,6 +36,22 @@ source_paths:
     repo: edk2-ModuleWriteGuide
     file: edk2-ModuleWriteGuide/7_pre-efi_initialization_modules/75_communicate_between_peim_modules.md
     url: https://tianocore-docs.github.io/edk2-ModuleWriteGuide/draft/7_pre-efi_initialization_modules/75_communicate_between_peim_modules.html
+  - source: uefi-specs
+    repo: PI_1.10
+    file: PI_1.10/source/V1_Overview.rst
+    url: https://github.com/UEFI/PI-Specification-Release/blob/main/source/V1_Overview.rst
+  - source: uefi-specs
+    repo: PI_1.10
+    file: PI_1.10/source/V1_PEIMs.rst
+    url: https://github.com/UEFI/PI-Specification-Release/blob/main/source/V1_PEIMs.rst
+  - source: uefi-specs
+    repo: PI_1.10
+    file: PI_1.10/source/V1_PEI_Services_Table.rst
+    url: https://github.com/UEFI/PI-Specification-Release/blob/main/source/V1_PEI_Services_Table.rst
+  - source: uefi-specs
+    repo: PI_1.10
+    file: PI_1.10/source/V1_Services_PEI.rst
+    url: https://github.com/UEFI/PI-Specification-Release/blob/main/source/V1_Services_PEI.rst
 ---
 
 PPI 是 PEI 阶段的按 GUID 服务接口（InstallPpi / LocatePpi）。同一章还对比了 HOB 和动态 PCD：HOB 主要用于向 DXE 做单向移交，不要把 PPI 和 HOB 当成同一种机制。证据只引用原文。

@@ -42,6 +42,14 @@ source_paths:
     repo: edk2-UefiDriverWritersGuide
     file: edk2-UefiDriverWritersGuide/5_uefi_services/README.md
     url: https://tianocore-docs.github.io/edk2-UefiDriverWritersGuide/draft/5_uefi_services/
+  - source: uefi-specs
+    repo: UEFI_2.11
+    file: UEFI_2.11/source/08_Services_Runtime_Services.rst
+    url: https://github.com/UEFI/UEFI-Specification-Release/blob/main/source/08_Services_Runtime_Services.rst
+  - source: uefi-specs
+    repo: UEFI_2.11
+    file: UEFI_2.11/source/02_Overview.rst
+    url: https://github.com/UEFI/UEFI-Specification-Release/blob/main/source/02_Overview.rst
 ---
 
 Runtime Services / Runtime Driver 活过 `ExitBootServices()`。Boot Services（包括 CreateEvent、ConnectController、普通内存分配）在此之后不能再用。证据只引用原文。
