@@ -3,165 +3,474 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Edk2Agent Web 问答</title>
+<title>Edk2Agent — EDK2 / UEFI 固件问答</title>
 <style>
   :root {
-    --bg: #0f172a;
-    --panel: #1e293b;
-    --panel2: #273449;
-    --text: #e2e8f0;
-    --muted: #94a3b8;
-    --accent: #38bdf8;
-    --high: #22c55e;
-    --medium: #3b82f6;
-    --low: #f59e0b;
-    --poor: #94a3b8;
-    --border: #334155;
-    --user-bubble: #1d4ed8;
+    --bg: #0c0d0b;
+    --bg-2: #121311;
+    --panel: #171915;
+    --panel-2: #1e201b;
+    --line: #2a2d26;
+    --text: #ece8df;
+    --muted: #9a9588;
+    --faint: #6d6a60;
+    --accent: #d4a054;
+    --accent-dim: rgba(212,160,84,.14);
+    --sage: #8faf8a;
+    --sage-dim: rgba(143,175,138,.14);
+    --sky: #7ea4c4;
+    --sky-dim: rgba(126,164,196,.14);
+    --violet: #a898c8;
+    --violet-dim: rgba(168,152,200,.14);
+    --coral: #d4896c;
+    --coral-dim: rgba(212,137,108,.14);
+    --danger: #d67a6a;
+    --danger-dim: rgba(214,122,106,.12);
+    --warn: #e0b25a;
+    --warn-dim: rgba(224,178,90,.12);
+    --user: #26231c;
+    --shadow: 0 18px 40px rgba(0,0,0,.35);
+    --font: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    --serif: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif;
+    --mono: ui-monospace, "IBM Plex Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
-    margin: 0; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-    background: var(--bg); color: var(--text);
-    display: flex; flex-direction: column;
-    overflow-x: hidden;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
-  .chat, .msg, .card, .result, .answer, .askbar { min-width: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .hidden { display: none !important; }
+
   header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px; flex-wrap: wrap; gap: 8px;
-    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #141512 0%, var(--bg) 100%);
+    flex-shrink: 0;
   }
-  h1 { font-size: 18px; margin: 0; }
+  .brand { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+  .wordmark { font-size: 17px; font-weight: 600; letter-spacing: .02em; margin: 0; }
+  .wordmark span { color: var(--accent); }
+  .tagline {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: .08em;
+    white-space: nowrap;
+  }
   .status {
-    display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
-    background: var(--panel); border: 1px solid var(--border);
-    padding: 6px 12px; border-radius: 999px; color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 5px 12px 5px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel);
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--poor); }
-  .dot.ok { background: var(--high); }
-  .dot.bad { background: #ef4444; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex-shrink: 0; }
+  .dot.ok { background: var(--sage); box-shadow: 0 0 0 3px var(--sage-dim); }
+  .dot.bad { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-dim); }
 
-  /* chat scroll area */
-  .chat {
-    flex: 1; overflow-y: auto; padding: 20px;
-    max-width: 960px; width: 100%; margin: 0 auto;
+  .workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 400px);
+    min-height: 0;
   }
+  .main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--line);
+  }
+  .chat { flex: 1; overflow-y: auto; padding: 28px 36px 20px; min-width: 0; }
+  .chat-inner { max-width: 760px; margin: 0 auto; }
+
   .llm-warn {
-    font-size: 12px; color: var(--low);
-    background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3);
-    padding: 10px 12px; border-radius: 10px; margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--warn);
+    background: var(--warn-dim);
+    border: 1px solid rgba(224,178,90,.35);
+    padding: 10px 14px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    line-height: 1.55;
   }
-  .empty-hint { text-align: center; color: var(--muted); margin-top: 60px; font-size: 14px; }
-  .empty-hint .ex { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
-  .msg { margin-bottom: 20px; }
-  .msg.user { display: flex; justify-content: flex-end; }
-  .msg.user .bubble {
-    background: var(--user-bubble); color: #fff;
-    padding: 10px 14px; border-radius: 14px 14px 2px 14px;
-    max-width: 75%; font-size: 14px; white-space: pre-wrap; word-break: break-word;
+  .empty { padding: 72px 8px 40px; }
+  .empty .kicker {
+    font-size: 11px;
+    letter-spacing: .16em;
+    color: var(--accent);
+    margin-bottom: 14px;
   }
-  .msg.assistant .role { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-  .card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 16px;
+  .empty h2 {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 1.3;
+    margin: 0 0 12px;
+    letter-spacing: -.02em;
   }
-  .card .h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .card .h .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel2); color: var(--muted); }
-  .answer { line-height: 1.7; font-size: 14px; word-break: break-word; }
-  .answer p { margin: 0 0 10px; }
-  .answer h1, .answer h2, .answer h3, .answer h4 { margin: 14px 0 8px; font-size: 16px; }
-  .answer h1 { font-size: 18px; } .answer h2 { font-size: 17px; }
+  .empty p {
+    margin: 0 0 28px;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 36em;
+  }
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; }
+  .examples button {
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  .examples button:hover { border-color: var(--accent); background: var(--accent-dim); }
+
+  .turn { margin-bottom: 32px; }
+  .turn.active-turn .answer-block { outline: 1px solid rgba(212,160,84,.25); outline-offset: 8px; border-radius: 8px; }
+  .user { display: flex; justify-content: flex-end; margin-bottom: 18px; }
+  .user .bubble {
+    max-width: 80%;
+    background: var(--user);
+    border: 1px solid #3a362c;
+    color: var(--text);
+    padding: 10px 16px;
+    border-radius: 16px 16px 4px 16px;
+    font-size: 14.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .banners { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .banner {
+    border-radius: 10px;
+    padding: 12px 14px 12px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    border: 1px solid transparent;
+    word-break: break-word;
+  }
+  .banner .label { font-size: 11px; font-weight: 600; display: block; margin-bottom: 6px; }
+  .banner strong { font-weight: 600; }
+  .banner ul { margin: 6px 0 0; padding-left: 18px; }
+  .banner.faith { background: var(--danger-dim); border-color: rgba(214,122,106,.35); color: #f0c4bc; }
+  .banner.citewarn { background: var(--warn-dim); border-color: rgba(224,178,90,.35); color: #f0d7a4; }
+
+  .answer {
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.75;
+    color: #f3efe6;
+    word-break: break-word;
+  }
+  .answer p { margin: 0 0 14px; }
+  .answer p:last-child { margin-bottom: 0; }
+  .answer h1, .answer h2, .answer h3, .answer h4 { margin: 14px 0 8px; font-size: 18px; font-weight: 600; }
+  .answer h1 { font-size: 20px; } .answer h2 { font-size: 19px; }
   .answer ul, .answer ol { margin: 0 0 10px; padding-left: 22px; }
   .answer li { margin: 3px 0; }
   .answer code {
-    background: rgba(148,163,184,.15); padding: 1px 5px; border-radius: 5px;
-    font-family: Consolas, "Courier New", monospace; font-size: 13px; color: #7dd3fc;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    background: var(--accent-dim);
+    color: #e8c48a;
+    padding: 1px 6px;
+    border-radius: 4px;
     word-break: break-all;
   }
   .answer pre {
-    background: #0b1120; border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 14px; margin: 0 0 12px;
-    white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+    background: #0b0c0a;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 0 0 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
-  .answer pre code { background: none; padding: 0; font-size: 13px; color: var(--text); line-height: 1.6; word-break: break-word; }
+  .answer pre code { background: none; padding: 0; color: var(--text); }
   .answer blockquote {
-    margin: 0 0 10px; padding: 2px 14px; border-left: 3px solid var(--accent);
-    color: var(--muted); background: var(--panel2); border-radius: 0 8px 8px 0;
+    margin: 0 0 10px;
+    padding: 2px 14px;
+    border-left: 3px solid var(--accent);
+    color: var(--muted);
+    background: var(--panel-2);
+    border-radius: 0 8px 8px 0;
   }
-  .answer table { border-collapse: collapse; margin: 0 0 12px; font-size: 13px; table-layout: fixed; width: 100%; }
-  .answer th, .answer td { border: 1px solid var(--border); padding: 6px 10px; word-break: break-word; overflow-wrap: anywhere; }
-  .answer th { background: var(--panel2); }
-  .results-title { font-size: 13px; color: var(--muted); margin: 16px 0 10px; }
-  .result {
-    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 14px; margin-bottom: 10px;
-  }
-  .result .meta { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
-  .result .num { font-weight: 700; color: var(--accent); font-size: 13px; }
-  .conf { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
-  .conf.high { background: rgba(34,197,94,.15); color: var(--high); }
-  .conf.medium { background: rgba(59,130,246,.15); color: var(--medium); }
-  .conf.low { background: rgba(245,158,11,.15); color: var(--low); }
-  .conf.poor { background: rgba(148,163,184,.15); color: var(--poor); }
-  .result .title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-  .result .src { font-size: 12px; color: var(--muted); }
-  .result .snippet { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
-  .result .link { font-size: 12px; color: var(--accent); word-break: break-all; }
-  .result .cid { font-size: 11px; color: #64748b; font-family: ui-monospace, Consolas, monospace; background: rgba(148,163,184,.12); padding: 1px 5px; border-radius: 4px; }
-  .result.flash { background: rgba(56,189,248,.15); box-shadow: inset 3px 0 0 var(--accent); }
-  html { scroll-behavior: smooth; }
+  .answer table { border-collapse: collapse; margin: 0 0 12px; font-size: 14px; table-layout: fixed; width: 100%; }
+  .answer th, .answer td { border: 1px solid var(--line); padding: 6px 10px; word-break: break-word; }
+  .answer th { background: var(--panel-2); }
 
-  .error { color: #fca5a5; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); padding: 12px; border-radius: 10px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
-  .warnbox { color: #fcd34d; background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.35); padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-top: 10px; line-height: 1.6; word-break: break-word; }
-  .warnbox ul { margin: 6px 0 0 0; padding-left: 20px; }
+  .cite {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font);
+    font-size: 11px;
+    font-weight: 700;
+    font-style: normal;
+    color: #1a140a;
+    background: var(--accent);
+    border-radius: 999px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    margin: 0 1px 0 4px;
+    vertical-align: 3px;
+    text-decoration: none !important;
+    line-height: 18px;
+    cursor: pointer;
+  }
+  .cite:hover { filter: brightness(1.08); }
+  .cite.active { box-shadow: 0 0 0 3px var(--accent-dim); }
+
+  .turn-foot {
+    margin-top: 14px;
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: .02em;
+  }
+  .turn-foot b { color: var(--muted); font-weight: 600; }
+  .error {
+    color: #f0c4bc;
+    background: var(--danger-dim);
+    border: 1px solid rgba(214,122,106,.35);
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
   .typing { color: var(--muted); font-size: 13px; padding: 6px 2px; }
-  .turn-meta { font-size: 12px; color: var(--muted); margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--border); }
-  .turn-meta b { color: var(--text); font-weight: 600; }
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; vertical-align: middle; margin-right: 8px; }
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* input bar pinned at bottom */
   .askbar {
-    border-top: 1px solid var(--border); background: var(--bg);
-    padding: 14px 20px;
+    flex-shrink: 0;
+    padding: 16px 36px 22px;
+    border-top: 1px solid var(--line);
+    background: var(--bg-2);
   }
-  .askbar .inner { display: flex; gap: 8px; max-width: 960px; margin: 0 auto; }
+  .askbar .inner {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
   .askbar input {
-    flex: 1; padding: 12px 14px; font-size: 15px; border-radius: 10px;
-    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    flex: 1;
+    font-family: var(--font);
+    font-size: 15px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 13px 16px;
     outline: none;
   }
-  .askbar input:focus { border-color: var(--accent); }
-  .askbar button {
-    padding: 12px 24px; font-size: 15px; border: none; border-radius: 10px;
-    background: var(--accent); color: #0f172a; font-weight: 600; cursor: pointer;
+  .askbar input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .askbar button.send {
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a140a;
+    background: var(--accent);
+    border: none;
+    border-radius: 12px;
+    padding: 0 22px;
+    cursor: pointer;
   }
-  .askbar button:disabled { opacity: .5; cursor: wait; }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
+  .askbar button.send:hover { filter: brightness(1.06); }
+  .askbar button.send:disabled { opacity: .5; cursor: wait; }
+
+  .rail {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--bg-2);
+    overflow: hidden;
+  }
+  .rail-scroll { flex: 1; overflow-y: auto; padding: 20px 18px 28px; }
+  .rail-kicker {
+    font-size: 10px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 6px;
+  }
+  .rail h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .rail-lead { font-size: 12px; color: var(--muted); line-height: 1.55; margin: 0 0 16px; }
+  .hint-card {
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .hint-card b { color: var(--text); font-weight: 600; }
+
+  .guide {
+    background: var(--panel);
+    border: 1px solid #3a362c;
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px 13px 10px;
+    margin-bottom: 16px;
+  }
+  .guide .eyebrow {
+    font-size: 10px;
+    letter-spacing: .14em;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .guide h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  .guide .sub {
+    font-size: 10px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 8px 0 4px;
+  }
+  .guide ul { margin: 0; padding: 0; list-style: none; }
+  .guide li {
+    font-size: 13px;
+    color: var(--text);
+    padding: 4px 0;
+    border-top: 1px solid var(--line);
+    line-height: 1.45;
+  }
+  .guide .path {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #c8c0b0;
+    display: block;
+    padding: 5px 0 1px;
+    word-break: break-all;
+  }
+
+  .ev-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 13px 11px;
+    margin-bottom: 10px;
+    transition: border-color .15s, box-shadow .15s, background .15s;
+  }
+  .ev-card.flash {
+    border-color: var(--accent);
+    background: #211c14;
+    box-shadow: inset 3px 0 0 var(--accent), var(--shadow);
+  }
+  .ev-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .num { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--accent); }
+  .badge { font-size: 10px; font-weight: 600; letter-spacing: .06em; padding: 2px 7px; border-radius: 999px; }
+  .badge.spec { background: var(--sage-dim); color: var(--sage); }
+  .badge.docs { background: var(--sky-dim); color: var(--sky); }
+  .badge.wiki { background: var(--violet-dim); color: var(--violet); }
+  .badge.commit { background: var(--accent-dim); color: var(--accent); }
+  .badge.pr { background: var(--coral-dim); color: var(--coral); }
+  .conf { margin-left: auto; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
+  .conf.high { background: var(--sage-dim); color: var(--sage); }
+  .conf.medium { background: var(--sky-dim); color: var(--sky); }
+  .conf.low { background: var(--warn-dim); color: var(--warn); }
+  .conf.poor { background: rgba(148,163,184,.15); color: var(--faint); }
+  .ev-title { font-size: 14px; font-weight: 600; margin: 0 0 4px; line-height: 1.4; }
+  .ev-section { font-size: 13px; color: var(--accent); margin: 0 0 6px; line-height: 1.4; }
+  .ev-file { font-family: var(--mono); font-size: 10.5px; color: var(--faint); word-break: break-all; margin-bottom: 8px; }
+  .ev-snip { font-size: 12px; color: var(--muted); line-height: 1.55; margin: 0; white-space: pre-wrap; word-break: break-word; }
+  .ev-link { display: inline-block; margin-top: 8px; font-size: 12px; word-break: break-all; }
+
+  @media (max-width: 900px) {
+    .workspace { grid-template-columns: 1fr; }
+    .main { border-right: none; }
+    .rail { border-top: 1px solid var(--line); max-height: 42vh; }
+    header, .chat, .askbar { padding-left: 18px; padding-right: 18px; }
+    .empty h2 { font-size: 26px; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>Edk2Agent Web 问答</h1>
-  <span class="status"><span class="dot" id="dot"></span><span id="statusText">连接中…</span></span>
+  <div class="brand">
+    <h1 class="wordmark">Edk2<span>Agent</span></h1>
+    <div class="tagline">EDK2 / UEFI 固件问答</div>
+  </div>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">连接中…</span></div>
 </header>
 
-<div class="chat" id="chat">
-  <div class="empty-hint" id="emptyHint">
-    <div>请输入下方 EDK2 / UEFI 技术问题开始问答，历史问答将保留在本页</div>
-    <div class="ex" id="examples"></div>
-  </div>
-</div>
+<div class="workspace">
+  <section class="main">
+    <div class="chat" id="chat">
+      <div class="chat-inner" id="chatInner">
+        <div class="empty" id="emptyHint">
+          <div class="kicker">回溯到原文规格</div>
+          <h2>向原文规格提问，答案回溯到具体章节。</h2>
+          <p>这不是通用聊天框。每条回答都会带上可核对的规范、文档、Wiki 或提交记录；编译 Wiki 只作消歧导读，不会被当成引用证据。</p>
+          <div class="examples" id="examples"></div>
+        </div>
+      </div>
+    </div>
+    <div class="askbar">
+      <div class="inner">
+        <input id="q" type="text" placeholder="输入 EDK2 / UEFI 问题，例如某项协议或启动阶段…" autocomplete="off">
+        <button class="send" id="askBtn" type="button">提问</button>
+      </div>
+    </div>
+  </section>
 
-<div class="askbar">
-  <div class="inner">
-    <input id="q" type="text" placeholder="输入问题后回车，可连续提问…" autocomplete="off">
-    <button id="askBtn">提问</button>
-  </div>
+  <aside class="rail" id="rail">
+    <div class="rail-scroll" id="railEmpty">
+      <div class="rail-kicker">Evidence</div>
+      <h2>原文证据</h2>
+      <p class="rail-lead">提问之后，这里会常驻列出可回溯的来源与章节，而不是收在折叠列表里。</p>
+      <div class="hint-card">
+        <b>规范、文档、Wiki、Commit、PR</b> 会按类型分开标记。章节是第一信息，点击回答中的引用即可定位到对应条目。编译 Wiki 若命中，只会作为「消歧导读」单独出现，不当引用。
+      </div>
+    </div>
+    <div class="rail-scroll hidden" id="railFilled">
+      <div id="guideWrap" class="hidden"></div>
+      <div id="evidenceWrap">
+        <div class="rail-kicker">Evidence</div>
+        <h2>原文证据</h2>
+        <p class="rail-lead" id="evidenceLead">尚无检索结果。</p>
+        <div id="evidenceList"></div>
+      </div>
+    </div>
+  </aside>
 </div>
 
 <script>
@@ -186,36 +495,54 @@ function setStatus(text, cls) {
   dot.className = 'dot' + (cls ? ' ' + cls : '');
 }
 
-function renderConf(conf) {
-  const c = (conf || 'unknown').toLowerCase();
-  const label = { high: '高置信', medium: '中置信', low: '低置信', poor: '差' }[c] || conf || 'unknown';
-  return '<span class="conf ' + (['high','medium','low','poor'].includes(c) ? c : 'poor') + '">' + label + '</span>';
-}
-
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ---- minimal safe Markdown renderer (no external lib) ----
-function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-function mdInline(s) {
-  // inline code first (so markers inside code are untouched)
+function renderConf(conf) {
+  const c = (conf || 'unknown').toLowerCase();
+  const label = { high: '高置信', medium: '中置信', low: '低置信', poor: '差' }[c] || conf || 'unknown';
+  return '<span class="conf ' + (['high','medium','low','poor'].includes(c) ? c : 'poor') + '">' + esc(label) + '</span>';
+}
+
+function sourceBadge(r) {
+  const id = String(r.source || '').toLowerCase();
+  const src = String(r.source_display || r.source || '').toLowerCase();
+  const file = String(r.file || '').toLowerCase();
+  const blob = id + ' ' + src + ' ' + file;
+  if (id === 'edk2-prs' || /(edk2-prs|pr_)/.test(blob)) return { cls: 'pr', label: 'PR' };
+  if (id === 'edk2-commits' || /(edk2-commits|commit_)/.test(blob)) return { cls: 'commit', label: 'Commit' };
+  if (id === 'uefi-specs' || src.includes('spec') || src.includes('specification')) return { cls: 'spec', label: '规范' };
+  if (id === 'tianocore-wiki' || /(tianocore-wiki|\bwiki\b)/.test(blob)) return { cls: 'wiki', label: 'Wiki' };
+  if (id === 'tianocore-docs' || src.includes('tianocore-docs') || src.includes('tianocore-doc')) return { cls: 'docs', label: '文档' };
+  return { cls: 'docs', label: r.source_display || r.source || '来源' };
+}
+
+function cidIndexMap(results) {
+  const map = new Map();
+  (results || []).forEach((r, i) => {
+    if (r && r.cid) map.set(String(r.cid).toLowerCase(), i + 1);
+  });
+  return map;
+}
+
+function mdInline(s, cids) {
   const codes = [];
   s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return '\u0000' + (codes.length - 1) + '\u0000'; });
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
   s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  // Stable [cid] citation markers are stripped from the displayed answer:
-  // sources are already listed in the side panel, so inline jump links only
-  // clutter the reading flow.
-  s = s.replace(/\[(c[a-f0-9]{6,12})\]/gi, '');
+  s = s.replace(/\[(c[a-f0-9]{6,12})\]/gi, (m, cid) => {
+    const n = cids ? cids.get(String(cid).toLowerCase()) : null;
+    return '<a class="cite" href="#src-' + cid + '" data-cid="' + cid + '">' + (n != null ? n : '·') + '</a>';
+  });
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => '<code>' + esc(codes[+i]) + '</code>');
   return s;
 }
 
-function mdParagraphs(src) {
+function mdParagraphs(src, cids) {
   const lines = src.split('\n');
   const out = [];
   let i = 0;
@@ -239,68 +566,56 @@ function mdParagraphs(src) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // fenced code block: open on first ```, close on next ```
     if (/^```/.test(trimmed)) {
-      if (inCode) {
-        emitCode();
-      } else {
-        closeLists();
-        inCode = true; codeBuf = [];
-      }
+      if (inCode) emitCode();
+      else { closeLists(); inCode = true; codeBuf = []; }
       i++; continue;
     }
     if (inCode) { codeBuf.push(line); i++; continue; }
 
-    // headings
     const h = /^(#{1,4})\s+(.*)$/.exec(trimmed);
     if (h) {
       closeLists();
       const lvl = h[1].length;
-      out.push('<h' + lvl + '>' + mdInline(esc(h[2])) + '</h' + lvl + '>');
+      out.push('<h' + lvl + '>' + mdInline(esc(h[2]), cids) + '</h' + lvl + '>');
       i++; continue;
     }
-    // hr
     if (/^([-*_])\1{2,}$/.test(trimmed)) {
       closeLists();
       out.push('<hr>');
       i++; continue;
     }
-    // unordered list
     const ul = /^[-*+]\s+(.*)$/.exec(trimmed);
     if (ul) {
       if (!inUl) { out.push('<ul>'); inUl = true; }
-      out.push('<li>' + mdInline(esc(ul[1])) + '</li>');
+      out.push('<li>' + mdInline(esc(ul[1]), cids) + '</li>');
       i++; continue;
     }
-    // ordered list
     const ol = /^\d+[.)]\s+(.*)$/.exec(trimmed);
     if (ol) {
       if (!inOl) { out.push('<ol>'); inOl = true; }
-      out.push('<li>' + mdInline(esc(ol[1])) + '</li>');
+      out.push('<li>' + mdInline(esc(ol[1]), cids) + '</li>');
       i++; continue;
     }
-    // table | a | b |
     if (/^\|.*\|$/.test(trimmed) && i + 1 < lines.length && /^\|[\s\-:|]+\|$/.test(lines[i + 1].trim())) {
       closeLists();
       const cells = trimmed.split('|');
-      const hs = cells.filter((x, idx) => idx > 0 && idx < cells.length - 1).map((x) => mdInline(esc(x.trim())));
-      out.push('<table><thead><tr>' + hs.map((h) => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>');
+      const hs = cells.filter((x, idx) => idx > 0 && idx < cells.length - 1).map((x) => mdInline(esc(x.trim()), cids));
+      out.push('<table><thead><tr>' + hs.map((x) => '<th>' + x + '</th>').join('') + '</tr></thead><tbody>');
       i += 2;
       while (i < lines.length && /^\|.*\|$/.test(lines[i].trim())) {
         const c = lines[i].split('|');
-        out.push('<tr>' + c.filter((x, idx) => idx > 0 && idx < c.length - 1).map((x) => '<td>' + mdInline(esc(x.trim())) + '</td>').join('') + '</tr>');
+        out.push('<tr>' + c.filter((x, idx) => idx > 0 && idx < c.length - 1).map((x) => '<td>' + mdInline(esc(x.trim()), cids) + '</td>').join('') + '</tr>');
         i++;
       }
       out.push('</tbody></table>');
       continue;
     }
-    // blockquote
     if (/^>\s?/.test(trimmed)) {
       closeLists();
-      out.push('<blockquote>' + mdInline(esc(trimmed.replace(/^>\s?/, ''))) + '</blockquote>');
+      out.push('<blockquote>' + mdInline(esc(trimmed.replace(/^>\s?/, '')), cids) + '</blockquote>');
       i++; continue;
     }
-    // blank line: keep an open list across a single blank line
     if (!trimmed) {
       let j = i + 1;
       while (j < lines.length && !lines[j].trim()) j++;
@@ -311,26 +626,22 @@ function mdParagraphs(src) {
       i++; continue;
     }
 
-    // normal paragraph
     closeLists();
     const para = [];
     while (i < lines.length && lines[i].trim() && !/^```/.test(lines[i].trim()) && !/^#{1,4}\s/.test(lines[i].trim()) && !/^>\s?/.test(lines[i].trim()) && !/^[-*+]\s+/.test(lines[i].trim()) && !/^\d+[.)]\s+/.test(lines[i].trim())) {
       para.push(lines[i]); i++;
     }
-    out.push('<p>' + para.map((l) => mdInline(esc(l))).join('<br>') + '</p>');
+    out.push('<p>' + para.map((l) => mdInline(esc(l), cids)).join('<br>') + '</p>');
   }
   closeLists();
   emitCode();
   return out.join('\n');
 }
 
-function renderMarkdown(src) {
-  return mdParagraphs(String(src || ''));
+function renderMarkdown(src, cids) {
+  return mdParagraphs(String(src || ''), cids || new Map());
 }
 
-// Remove trailing source-list sections ("Based on: ...", "References: ...",
-// "## 参考来源") from an answer. Sources live in the side panel, so these
-// trailing lists are stripped from the displayed text.
 function stripBasedOn(src) {
   let s = String(src || '');
   s = s.replace(/\n?\s*Based\s*on\s*:\s*[\s\S]*$/i, '');
@@ -344,82 +655,34 @@ function scrollBottom() {
   chat.scrollTop = chat.scrollHeight;
 }
 
+function showRailFilled() {
+  el('railEmpty').classList.add('hidden');
+  el('railFilled').classList.remove('hidden');
+}
+
 function addUserMsg(text) {
   el('emptyHint').style.display = 'none';
   const m = document.createElement('div');
-  m.className = 'msg user';
+  m.className = 'user';
   m.innerHTML = '<div class="bubble">' + esc(text) + '</div>';
-  el('chat').appendChild(m);
+  const wrap = document.createElement('div');
+  wrap.className = 'turn';
+  wrap.appendChild(m);
+  el('chatInner').appendChild(wrap);
   scrollBottom();
-  return m;
+  return wrap;
 }
 
-function addAssistantTurn() {
-  el('emptyHint').style.display = 'none';
-  const m = document.createElement('div');
-  m.className = 'msg assistant';
-  m.innerHTML = '<div class="role">Edk2Agent</div>';
+function addAssistantTurn(turnEl) {
   const body = document.createElement('div');
-  m.appendChild(body);
-  el('chat').appendChild(m);
+  body.className = 'answer-block';
+  turnEl.appendChild(body);
   scrollBottom();
   return body;
 }
 
-// Per-turn source list state. Rerank completes AFTER the LLM stream starts and
-// arrives as a second 'results' event, so renderResultsInto replaces the list
-// in place: the panel keeps its collapse state, and [cid] anchors in the answer
-// keep resolving because they key on the stable cid, not display position.
-function renderResultsInto(body, results) {
-  if (!body._sourcesState) body._sourcesState = { titleEl: null, listEl: null };
-  const st = body._sourcesState;
-  const entries = (results || []).filter(r => r && (r.cid || r.title || r.file || r.section));
-  const n = entries.length;
-  const has = n > 0;
-
-  const titleText = has ? '检索结果（Top ' + n + '）' : '未检索到结果';
-  if (!st.titleEl) {
-    st.titleEl = document.createElement('div');
-    st.titleEl.className = 'results-title';
-    st.titleEl.style.cursor = 'pointer';
-    st.titleEl.style.userSelect = 'none';
-    body.appendChild(st.titleEl);
-    st.listEl = document.createElement('div');
-    st.listEl.className = 'results-list';
-    st.listEl.style.display = 'none';
-    body.appendChild(st.listEl);
-    st.titleEl.addEventListener('click', () => {
-      const collapsed = st.listEl.style.display === 'none';
-      st.listEl.style.display = collapsed ? '' : 'none';
-      const cnt = st.listEl.childElementCount;
-      st.titleEl.textContent = (cnt ? '检索结果（Top ' + cnt + '）' : '未检索到结果') + (collapsed ? ' ▾' : ' ▸');
-    });
-  }
-  const collapsed = st.listEl.style.display === 'none';
-  st.titleEl.textContent = titleText + (collapsed ? ' ▸' : ' ▾');
-  st.listEl.innerHTML = '';
-  entries.forEach((r, i) => {
-    const cid = r.cid || '';
-    const url = r.url || '';
-    const snippet = r.snippet || '';
-    const t = r.title || r.section || r.file || '(无标题)';
-    const div = document.createElement('div');
-    div.className = 'result';
-    if (cid) div.id = 'src-' + cid;
-    div.innerHTML =
-      '<div class="meta"><span class="num">[' + (i + 1) + ']</span>' + renderConf(r.confidence) +
-      (cid ? '<code class="cid">' + cid + '</code>' : '') +
-      '<span class="src">' + esc(r.source_display || r.source || '') + '</span></div>' +
-      '<div class="title">' + esc(t) + '</div>' +
-      (r.section ? '<div class="src">' + esc(r.section) + '</div>' : '') +
-      (snippet ? '<div class="snippet">' + esc(snippet.substring(0, 300)) + (snippet.length > 300 ? '…' : '') + '</div>' : '') +
-      (url ? '<div class="link"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a></div>' : '');
-    st.listEl.appendChild(div);
-  });
-  // Mirror the current display list for the next turn's prevResults (multi-turn
-  // recency stack: the newest turn is pushed to the front with turn = 1, and
-  // older turns keep their increasing distance).
-  const snapshot = entries.map(e => ({
+function snapshotResults(entries) {
+  return (entries || []).map((e) => ({
     cid: e.cid || '',
     title: e.title || '',
     source: e.source || '',
@@ -430,16 +693,125 @@ function renderResultsInto(body, results) {
     type: e.type || '',
     snippet: e.snippet || '',
     content: e.content || e.snippet || '',
+    confidence: e.confidence || '',
   }));
-  turnStack = turnStack.map(t => ({ turn: t.turn + 1, results: t.results }));
-  turnStack.unshift({ turn: 1, results: snapshot });
-  if (turnStack.length > MAX_PREV_TURNS) turnStack.length = MAX_PREV_TURNS;
-  lastResults = entries;
-  scrollBottom();
+}
+
+function renderGuide(data) {
+  const wrap = el('guideWrap');
+  if (!data || !String(data.canonical || '').trim()) {
+    wrap.className = 'hidden';
+    wrap.innerHTML = '';
+    return;
+  }
+  const diffs = (data.distinguishes_from || []).filter((d) => d && String(d.canonical || '').trim());
+  const paths = (data.source_paths || []).filter((p) => p && String(p.file || '').trim());
+  let html = '<div class="rail-kicker">Disambiguation</div>' +
+    '<h2>消歧导读</h2>' +
+    '<p class="rail-lead">用于对齐问法，不是引用证据。正文不进入检索或回答依据。</p>' +
+    '<div class="guide">' +
+    '<div class="eyebrow">非正式引用 · 仅一条导读</div>' +
+    '<h3>' + esc(data.canonical) + '</h3>';
+  if (diffs.length) {
+    html += '<div class="sub">需与下列概念区分</div><ul>';
+    for (const d of diffs) {
+      html += '<li>' + esc(d.canonical) + '</li>';
+    }
+    html += '</ul>';
+  }
+  if (paths.length) {
+    html += '<div class="sub">已核对的原文路径</div><ul>';
+    for (const p of paths) {
+      html += '<li><span class="path">' + esc(p.file) + '</span></li>';
+    }
+    html += '</ul>';
+  }
+  html += '</div>';
+  wrap.innerHTML = html;
+  wrap.classList.remove('hidden');
+  showRailFilled();
+}
+
+function renderEvidence(results) {
+  const entries = (results || []).filter((r) => r && (r.cid || r.title || r.file || r.section));
+  const list = el('evidenceList');
+  const lead = el('evidenceLead');
+  showRailFilled();
+  if (!entries.length) {
+    lead.textContent = '未检索到结果。';
+    list.innerHTML = '';
+    return entries;
+  }
+  lead.textContent = entries.length + ' 条可引用结果，章节与来源常驻展示。';
+  list.innerHTML = '';
+  entries.forEach((r, i) => {
+    const cid = r.cid || '';
+    const badge = sourceBadge(r);
+    const t = r.title || r.section || r.file || '(无标题)';
+    const snippet = r.snippet || '';
+    const url = r.url || '';
+    const div = document.createElement('article');
+    div.className = 'ev-card';
+    if (cid) div.id = 'src-' + cid;
+    div.innerHTML =
+      '<div class="ev-top"><span class="num">[' + (i + 1) + ']</span>' +
+      '<span class="badge ' + badge.cls + '">' + esc(badge.label) + '</span>' +
+      renderConf(r.confidence) + '</div>' +
+      '<h3 class="ev-title">' + esc(t) + '</h3>' +
+      (r.section ? '<div class="ev-section">' + esc(r.section) + '</div>' : '') +
+      (r.file ? '<div class="ev-file">' + esc(r.file) + '</div>' : '') +
+      (snippet ? '<div class="ev-snip">' + esc(snippet.substring(0, 300)) + (snippet.length > 300 ? '…' : '') + '</div>' : '') +
+      (url ? '<div class="ev-link"><a href="' + esc(url) + '" target="_blank" rel="noopener">打开来源</a></div>' : '');
+    list.appendChild(div);
+  });
+  return entries;
+}
+
+function paintRail(state) {
+  renderGuide(state && state.guide);
+  renderEvidence(state && state.results);
+  if (!(state && ((state.guide && state.guide.canonical) || (state.results && state.results.length)))) {
+    if (!(state && state.pending)) {
+      el('railFilled').classList.add('hidden');
+      el('railEmpty').classList.remove('hidden');
+    }
+  }
+}
+
+function activateTurn(turnEl) {
+  document.querySelectorAll('.turn').forEach((t) => t.classList.remove('active-turn'));
+  if (turnEl) {
+    turnEl.classList.add('active-turn');
+    if (turnEl._railState) paintRail(turnEl._railState);
+  }
 }
 
 let lastResults = [];
 let turnStack = [];
+let activeTurn = null;
+
+function renderTurnMeta(div, d, opts) {
+  if (!div) return;
+  const parts = [];
+  if (d) {
+    const total = ((d.totalMs || 0) / 1000).toFixed(1);
+    let s = '本轮 ' + total + 's';
+    if (d.searchMs != null) {
+      s += ' · 检索 ' + (d.searchMs / 1000).toFixed(1) + 's';
+      if (d.searchCalls) s += '（' + d.searchCalls + ' 次）';
+    }
+    if (d.from_cache) {
+      const kind = d.cache_match === 'semantic' ? '语义相似'
+        : d.cache_match === 'lexical' ? '相似问法'
+        : '相同问题';
+      s += ' · 命中缓存（' + kind + '）';
+    }
+    if (d.model) s += ' · ' + d.model;
+    parts.push(s);
+  }
+  if (opts && opts.verified) parts.push('已核对原文规格');
+  div.innerHTML = parts.map((p, i) => (i && opts && opts.verified && i === parts.length - 1) ? '<b>' + esc(p) + '</b>' : esc(p)).join(' · ');
+}
 
 async function refreshStatus() {
   try {
@@ -447,108 +819,89 @@ async function refreshStatus() {
     const d = await r.json();
     const h = d.daemon_health;
     if (h && h.status === 'ok') {
-      setStatus('服务就绪 · 文档 ' + (h.indexed_documents || '?') + ' · ' + d.daemon_url, 'ok');
+      setStatus('知识库就绪' + (h.indexed_documents ? ' · 文档 ' + h.indexed_documents : ''), 'ok');
     } else if (h) {
-      setStatus('daemon 未就绪', 'bad');
+      setStatus('知识库未就绪', 'bad');
     } else {
-      setStatus('daemon 未启动', 'bad');
+      setStatus('知识库未启动', 'bad');
     }
-    if (!d.llm_configured) {
+    if (!d.llm_configured && !document.querySelector('.llm-warn')) {
       const warn = document.createElement('div');
       warn.className = 'llm-warn';
-      warn.textContent = '提示：未配置 LLM（缺少 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL）。页面仍会返回检索结果，但不会生成整理后的自然语言回答。';
-      el('chat').prepend(warn);
+      warn.textContent = '未配置 LLM。页面仍会返回检索结果，但不会生成整理后的自然语言回答。';
+      el('chatInner').insertBefore(warn, el('chatInner').firstChild);
     }
   } catch (e) {
     setStatus('无法连接 Web 服务', 'bad');
   }
 }
 
-function renderTurnMeta(div, d) {
-  if (!div) return;
-  const total = ((d.totalMs || 0) / 1000).toFixed(1);
-  let s = '本轮耗时 <b>' + total + 's</b>';
-  if (d.searchMs != null) {
-    s += ' · 检索 <b>' + (d.searchMs / 1000).toFixed(1) + 's</b>';
-    if (d.searchCalls) s += '（' + d.searchCalls + ' 次检索）';
-  } else {
-    s += ' · 检索：跳过（命中缓存/闲聊）';
-  }
-  if (d.from_cache) {
-    const kind = d.cache_match === 'semantic' ? '语义相似'
-      : d.cache_match === 'lexical' ? '相似问法'
-      : '相同问题';
-    s += ' · 命中缓存（' + kind + '）';
-  }
-  div.innerHTML = s;
-}
-
 async function ask(question) {
-  addUserMsg(question);
-  const body = addAssistantTurn();
+  const turnEl = addUserMsg(question);
+  const body = addAssistantTurn(turnEl);
+  turnEl._railState = { results: [], guide: null, pending: true };
+  activeTurn = turnEl;
+  activateTurn(turnEl);
+  showRailFilled();
+  el('evidenceLead').textContent = '正在检索…';
+  el('evidenceList').innerHTML = '';
+  el('guideWrap').className = 'hidden';
+  el('guideWrap').innerHTML = '';
+
   const btn = el('askBtn');
   btn.disabled = true;
   let history = [];
   try { history = JSON.parse(localStorage.getItem('kb_history') || '[]'); } catch { history = []; }
-  // Send the recency-stacked previous-turn retrieval results so the server can
-  // base the answer on multi-turn context: the most recent turn (turn=1) has
-  // the highest share, older turns fade by PREV_DECAY.
-  const prevResults = turnStack.map(t => ({ turn: t.turn, results: t.results }));
+  const prevResults = turnStack.map((t) => ({ turn: t.turn, results: t.results }));
 
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.innerHTML =
-    '<div class="h"><strong>回答</strong>' +
-    '<span class="tag" id="modelTag" style="display:none"></span></div>' +
-    '<div class="answer"></div>' +
-    '<div class="turn-meta"></div>';
-  const answerDiv = card.querySelector('.answer');
-  const metaDiv = card.querySelector('.turn-meta');
-  body.appendChild(card);
+  const banners = document.createElement('div');
+  banners.className = 'banners';
+  const answerDiv = document.createElement('div');
+  answerDiv.className = 'answer';
+  const metaDiv = document.createElement('div');
+  metaDiv.className = 'turn-foot';
+  body.appendChild(banners);
+  body.appendChild(answerDiv);
+  body.appendChild(metaDiv);
   answerDiv.innerHTML = '<div class="typing"><span class="spinner"></span>正在检索知识库…</div>';
 
-  const ctrl = new AbortController();
   let answerText = '';
   try {
     const r = await fetch('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question, history, prevResults }),
-      signal: ctrl.signal,
     });
     if (r.status === 429) {
       const d = await r.json();
-      body.innerHTML = '<div class="error">' + esc(d.error || '请求过于频繁') + '</div>';
+      answerDiv.innerHTML = '<div class="error">' + esc(d.error || '请求过于频繁') + '</div>';
       return;
     }
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
-      body.innerHTML = '<div class="error">' + esc(d.error || '请求失败') + '</div>';
+      answerDiv.innerHTML = '<div class="error">' + esc(d.error || '请求失败') + '</div>';
       return;
     }
     if (!r.body) {
-      body.innerHTML = '<div class="error">响应无流式内容</div>';
+      answerDiv.innerHTML = '<div class="error">响应无流式内容</div>';
       return;
     }
 
     const reader = r.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buf = '';
-    let resultsAppended = false;
     let lastRender = 0;
-    // Post-generation warnings (citation / faithfulness checks) arrive AFTER
-    // the deltas; they are queued and rendered after the final render so the
-    // streaming re-renders never wipe them. The faithfulness warning is kept
-    // separately: a critic-revise pass (answer_revision) replaces the answer
-    // and drops it.
     const warnBoxes = [];
     let faithWarnHtml = null;
+    let donePayload = null;
+
+    const currentCids = () => cidIndexMap(turnEl._railState.results);
 
     const renderThrottled = () => {
       const now = Date.now();
       if (now - lastRender > 40) {
         lastRender = now;
-        answerDiv.innerHTML = renderMarkdown(stripBasedOn(answerText));
+        answerDiv.innerHTML = renderMarkdown(stripBasedOn(answerText), currentCids());
         scrollBottom();
       }
     };
@@ -569,55 +922,73 @@ async function ask(question) {
         try { d = JSON.parse(dataMatch[1]); } catch { continue; }
 
         if (type === 'phase') {
-          answerDiv.innerHTML = '<div class="typing"><span class="spinner"></span>' + esc(d.text || '处理中…') + '</div>';
+          if (!answerText) {
+            answerDiv.innerHTML = '<div class="typing"><span class="spinner"></span>' + esc(d.text || '处理中…') + '</div>';
+          }
+        } else if (type === 'compiled_wiki') {
+          turnEl._railState.guide = d;
+          if (activeTurn === turnEl) renderGuide(d);
         } else if (type === 'results') {
-          renderResultsInto(body, d.results || []);
-          resultsAppended = true;
+          const entries = renderEvidence(d.results || []);
+          turnEl._railState.results = entries;
+          const snapshot = snapshotResults(entries);
+          if (turnEl._stacked) {
+            turnStack[0] = { turn: 1, results: snapshot };
+          } else {
+            turnStack = turnStack.map((t) => ({ turn: t.turn + 1, results: t.results }));
+            turnStack.unshift({ turn: 1, results: snapshot });
+            if (turnStack.length > MAX_PREV_TURNS) turnStack.length = MAX_PREV_TURNS;
+            turnEl._stacked = true;
+          }
+          lastResults = entries;
+          if (answerText) renderThrottled();
         } else if (type === 'delta') {
           answerText += d.text || '';
           renderThrottled();
         } else if (type === 'done') {
-          const tag = el('modelTag');
-          if (d.model) { tag.textContent = d.model; tag.style.display = ''; }
-          renderTurnMeta(metaDiv, d);
+          donePayload = d;
         } else if (type === 'faithfulness_warn') {
           const claims = (d.claims || []).filter(Boolean);
           if (claims.length) {
-            faithWarnHtml = '<div class="warnbox">' + esc(d.note || '以下内容未被检索上下文支撑，请谨慎参考。') +
-              '<ul>' + claims.map(c => '<li>' + esc(c) + '</li>').join('') + '</ul></div>';
+            faithWarnHtml = '<div class="banner faith"><span class="label">忠实度告警</span><div>' +
+              esc(d.note || '以下内容未被检索上下文支撑，请谨慎参考。') +
+              '</div><ul>' + claims.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul></div>';
           }
         } else if (type === 'answer_revision') {
           if (d.answer) {
             answerText = d.answer;
-            faithWarnHtml = null; // flagged claims were revised away
+            faithWarnHtml = null;
           }
         } else if (type === 'citation_warn') {
-          warnBoxes.push('<div class="warnbox">' + esc(d.note || '引用编号未出现在本次检索结果中，请以上下文为准。') + '</div>');
+          warnBoxes.push('<div class="banner citewarn"><span class="label">引用告警</span><div>' +
+            esc(d.note || '引用编号未出现在本次检索结果中，请以上下文为准。') + '</div></div>');
         } else if (type === 'error') {
           answerDiv.innerHTML = '<div class="error">' + esc(d.error || '处理出错') + '</div>';
         }
       }
     }
-    // final render (flush throttled)
+
     answerText = stripBasedOn(answerText);
-    answerDiv.innerHTML = renderMarkdown(answerText);
-    if (faithWarnHtml) answerDiv.insertAdjacentHTML('beforeend', faithWarnHtml);
-    for (const w of warnBoxes) answerDiv.insertAdjacentHTML('beforeend', w);
+    answerDiv.innerHTML = renderMarkdown(answerText, currentCids());
+    const hasWarn = !!(faithWarnHtml || warnBoxes.length);
+    banners.innerHTML = '';
+    if (faithWarnHtml) banners.insertAdjacentHTML('beforeend', faithWarnHtml);
+    for (const w of warnBoxes) banners.insertAdjacentHTML('beforeend', w);
+    const hasEvidence = (turnEl._railState.results || []).length > 0;
+    renderTurnMeta(metaDiv, donePayload, { verified: hasEvidence && !hasWarn });
     scrollBottom();
 
-    // persist history for multi-turn
     if (answerText.trim()) {
       history.push({ role: 'user', content: question });
       history.push({ role: 'assistant', content: answerText });
-      try {
-        localStorage.setItem('kb_history', JSON.stringify(history.slice(-10)));
-      } catch {}
+      try { localStorage.setItem('kb_history', JSON.stringify(history.slice(-10))); } catch {}
     }
   } catch (e) {
     if (e.name !== 'AbortError') {
-      body.innerHTML = '<div class="error">请求异常：' + esc(e.message) + '</div>';
+      answerDiv.innerHTML = '<div class="error">请求异常：' + esc(e.message) + '</div>';
     }
   } finally {
+    turnEl._railState.pending = false;
     btn.disabled = false;
     el('q').focus();
   }
@@ -626,6 +997,7 @@ async function ask(question) {
 const exampleBox = el('examples');
 EXAMPLES.forEach((ex) => {
   const b = document.createElement('button');
+  b.type = 'button';
   b.textContent = ex;
   b.addEventListener('click', () => {
     el('q').value = ex;
@@ -643,6 +1015,25 @@ el('q').addEventListener('keydown', (e) => {
     const q = el('q').value.trim();
     if (q) { el('q').value = ''; ask(q); }
   }
+});
+
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a.cite');
+  if (a) {
+    e.preventDefault();
+    const cid = a.getAttribute('data-cid');
+    document.querySelectorAll('.ev-card').forEach((c) => c.classList.remove('flash'));
+    document.querySelectorAll('a.cite').forEach((c) => c.classList.remove('active'));
+    a.classList.add('active');
+    const card = document.getElementById('src-' + cid);
+    if (card) {
+      card.classList.add('flash');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    return;
+  }
+  const turn = e.target.closest('.turn');
+  if (turn && turn._railState && !e.target.closest('a')) activateTurn(turn);
 });
 
 refreshStatus();
